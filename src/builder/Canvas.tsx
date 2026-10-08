@@ -44,6 +44,7 @@ import { OpeningTaggingPanel } from './OpeningTaggingPanel';
 import { VoxelDebugMesh, VoxelDebugControls } from './VoxelDebug';
 import { ScaleReference } from './ScaleReference';
 import { usePlacementValidation } from './usePlacementValidation';
+import { SceneExporter } from './SceneExporter';
 
 /**
  * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
@@ -966,6 +967,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
               labels={['X', 'Y', 'Z']}
             />
           </GizmoHelper>
+          <SceneExporter />
         </Suspense>
       </R3FCanvas>
 

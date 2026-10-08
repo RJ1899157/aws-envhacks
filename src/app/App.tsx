@@ -13,6 +13,7 @@ import { useAutosave } from '../store/useAutosave';
 
 import { handleFileDrop } from '../io/import/ImportManager';
 import { ImportModals } from '../ui/import/ImportModals';
+import { ExportModal } from '../ui/export/ExportModal';
 
 export const App: React.FC = () => {
   const { pendingRestore, restoreSession, dismissRestore } = useAutosave();
@@ -99,6 +100,9 @@ export const App: React.FC = () => {
 
       {/* Import Modals */}
       <ImportModals />
+
+      {/* Export Modal */}
+      <ExportModal />
 
       {/* Global Drag Overlay */}
       {isDraggingOver && (

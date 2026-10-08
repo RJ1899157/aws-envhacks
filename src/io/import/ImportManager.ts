@@ -32,6 +32,19 @@ export async function handleFileDrop(items: DataTransferItemList | FileList) {
       return;
     }
 
+    // Handle .airforce project
+    if (ext === 'airforce') {
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(resolved.mainFile);
+      const sceneFile = zip.file('scene.json');
+      if (!sceneFile) throw new Error('Invalid .airforce project: missing scene.json');
+      const text = await sceneFile.async('string');
+      // For a real app, we would also extract and save embedded blobs here
+      window.dispatchEvent(new CustomEvent('airforce:import-json', { detail: text }));
+      store.setProgressModal({ isOpen: false });
+      return;
+    }
+
     // Handle 2D Floor Plans
     if (ext === 'dxf' || ext === 'svg') {
       store.setProgressModal({ isOpen: true, progress: 0.5, message: 'Parsing 2D floorplan...' });

@@ -677,6 +677,7 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
       name={`asset-${object.id}`}
       position={position}
       rotation={rotation}
+      userData={{ isExportable: !isGhost, exportType: 'furniture' }}
       onPointerDown={handlePointerDownInternal}
       onDoubleClick={handleDoubleClick}
       onPointerOver={handlePointerOver}

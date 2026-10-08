@@ -286,6 +286,7 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
       material={cornerMaterial}
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, 0, 0]}
+      userData={{ isExportable: true, exportType: 'wall' }}
       castShadow
       receiveShadow
     />
@@ -432,6 +433,7 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
     return (
       <group
         name={`wall-segment-${wallIndex}`}
+        userData={{ isExportable: true, exportType: 'wall' }}
         onPointerDown={(e) => {
           if (e.button === 0) {
             e.stopPropagation();
@@ -575,7 +577,7 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
   return (
     <group name="room-shell">
       {/* 1. Floor Mesh */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow userData={{ isExportable: true, exportType: 'wall' }}>
         <shapeGeometry args={[floorShape]} />
         <meshStandardMaterial
           {...floorProps}
@@ -646,7 +648,7 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
 
       {/* 4. Optional Ceiling Mesh */}
       {showCeiling && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, wallHeight, 0]} receiveShadow>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, wallHeight, 0]} receiveShadow userData={{ isExportable: true, exportType: 'wall' }}>
           <shapeGeometry args={[floorShape]} />
           <meshStandardMaterial
             color="#52525b"

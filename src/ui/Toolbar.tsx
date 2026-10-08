@@ -30,7 +30,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
   const room = useSceneStore((state) => state.room);
   const resetRoom = useSceneStore((state) => state.resetRoom);
   const loadRoom = useSceneStore((state) => state.loadRoom);
-  const exportRoom = useSceneStore((state) => state.exportRoom);
+
 
   // UI state
   const toolMode = useUiStore((state) => state.toolMode);
@@ -96,31 +96,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
     };
   }, [room.openings]);
 
-  // Export JSON handler with validation
-  const handleExportJson = useCallback(() => {
-    try {
-      const validation = parseRoom(room);
-      if (validation.issues.some((i) => i.level === 'error')) {
-        const confirmed = confirm(
-          'Warning: The current room contains geometry/schema errors. Do you still wish to export room.json?'
-        );
-        if (!confirmed) return;
-      }
-
-      const json = exportRoom();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'room.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to export room JSON:', err);
-    }
-  }, [exportRoom, room]);
 
   // Unified JSON import processing logic (used by file picker and canvas drop)
   const processImportContent = useCallback(
@@ -559,11 +534,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
           </button>
           <button
             type="button"
-            data-testid="export-json-btn"
-            onClick={handleExportJson}
-            aria-label="Export Room JSON"
+            data-testid="export-btn"
+            onClick={() => {
+              import('../store/exportStore').then(m => m.useExportStore.getState().setIsOpen(true));
+            }}
+            aria-label="Export Room"
             className="px-2 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/60 transition-colors"
-            title="Export Room JSON (validates before download)"
+            title="Export Scene or 2D Drawing"
           >
             Export
           </button>

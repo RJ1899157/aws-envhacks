@@ -416,7 +416,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
   const windowAngle = !isDoor && openFraction > 0 ? openFraction * (Math.PI / 3) * (flipHinge ? -1 : 1) : 0;
 
   return (
-    <group name={`opening-group-${opening.id}`}>
+    <group name={`opening-group-${opening.id}`} userData={{ isExportable: true, exportType: 'opening' }}>
       {/* Snap Guide Line & Label in 3D */}
       {snapGuideInfo && (
         <Html center position={snapGuideInfo.position} className="pointer-events-none select-none">

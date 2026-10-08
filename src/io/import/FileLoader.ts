@@ -82,7 +82,7 @@ export function analyzeDrop(files: File[]): ResolvedFile | null {
   }
 
   // Find main file
-  const mainExts = ['.glb', '.gltf', '.obj', '.fbx', '.stl', '.dae', '.dxf', '.svg', '.json'];
+  const mainExts = ['.glb', '.gltf', '.obj', '.fbx', '.stl', '.dae', '.dxf', '.svg', '.json', '.airforce'];
   let mainFile: File | null = null;
   let extension = '';
 
