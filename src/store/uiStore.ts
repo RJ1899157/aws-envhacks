@@ -28,6 +28,7 @@ export interface UiState {
   voxelOpacity: number;
   showSolidVoxels: boolean;
   voxelStats: import('../core/voxelizer').VoxelStats | null;
+  showScaleReference: boolean;
 
   // Actions
   setToolMode: (mode: ToolMode) => void;
@@ -45,6 +46,8 @@ export interface UiState {
   toggleDimensions: () => void;
   setShowCeiling: (show: boolean) => void;
   toggleCeiling: () => void;
+  setShowScaleReference: (show: boolean) => void;
+  toggleScaleReference: () => void;
   setSelectedVertexIndex: (index: number | null) => void;
   setActiveAssetId: (id: string | null) => void;
   setGhostPosition: (pos: Vec3 | null) => void;
@@ -81,6 +84,7 @@ export const initialUiState = {
   voxelOpacity: 0.65,
   showSolidVoxels: true,
   voxelStats: null as import('../core/voxelizer').VoxelStats | null,
+  showScaleReference: false,
 };
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -101,6 +105,8 @@ export const useUiStore = create<UiState>()((set) => ({
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
   setShowCeiling: (showCeiling) => set({ showCeiling }),
   toggleCeiling: () => set((state) => ({ showCeiling: !state.showCeiling })),
+  setShowScaleReference: (showScaleReference) => set({ showScaleReference }),
+  toggleScaleReference: () => set((state) => ({ showScaleReference: !state.showScaleReference })),
   setSelectedVertexIndex: (selectedVertexIndex) => set({ selectedVertexIndex }),
   setActiveAssetId: (activeAssetId) => set({ activeAssetId }),
   setGhostPosition: (ghostPosition) => set({ ghostPosition }),

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { AirflowRoleSchema, PositiveVec3Schema, type PositiveVec3 } from './schema';
 
+export const SourceUnitSchema = z.enum(['m', 'cm', 'mm', 'in']);
+export type SourceUnit = z.infer<typeof SourceUnitSchema>;
+
+export const FitModeSchema = z.enum(['contain', 'stretch']);
+export type FitMode = z.infer<typeof FitModeSchema>;
+
 /**
  * Asset definition schema for the item catalog
  */
@@ -15,6 +21,8 @@ export const AssetDefSchema = z.object({
   color: z.string(),
   defaultAirflow: z.number().optional(), // airflow rate in m³/h
   model: z.string().optional(), // optional path to GLTF/GLB model
+  fitMode: FitModeSchema.default('contain').optional(),
+  sourceUnit: SourceUnitSchema.default('m').optional(),
 });
 export type AssetDef = z.infer<typeof AssetDefSchema>;
 

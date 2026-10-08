@@ -49,6 +49,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
   const toggleCeiling = useUiStore((state) => state.toggleCeiling);
   const showVoxelDebug = useUiStore((state) => state.showVoxelDebug);
   const toggleVoxelDebug = useUiStore((state) => state.toggleVoxelDebug);
+  const showScaleReference = useUiStore((state) => state.showScaleReference);
+  const toggleScaleReference = useUiStore((state) => state.toggleScaleReference);
 
   // Zundo temporal undo/redo reactive bindings via useStore
   const pastStates = useStore(useSceneStore.temporal, (state) => state.pastStates);
@@ -444,6 +446,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
         >
           <span>🧊</span>
           <span>Voxels: {showVoxelDebug ? 'On' : 'Off'}</span>
+        </button>
+
+        {/* Scale Reference (1.7m Human + 1m³ Cube) Debug Toggle */}
+        <button
+          type="button"
+          data-testid="toggle-scale-ref-btn"
+          onClick={toggleScaleReference}
+          aria-label="Toggle Scale Reference"
+          className={`px-2.5 py-1 rounded-lg font-medium border transition-colors shadow-sm flex items-center gap-1.5 ${
+            showScaleReference
+              ? 'bg-sky-600 border-sky-400 text-white font-semibold shadow-sky-900/30'
+              : 'bg-neutral-800/80 hover:bg-neutral-700 border-neutral-700/60 text-neutral-300'
+          }`}
+          title="Toggle 1.7m Human & 1m³ Scale Reference"
+        >
+          <span>🧍</span>
+          <span>Scale Ref: {showScaleReference ? 'On' : 'Off'}</span>
         </button>
 
         {/* Undo / Redo */}

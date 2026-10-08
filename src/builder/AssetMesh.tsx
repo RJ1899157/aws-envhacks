@@ -1,8 +1,9 @@
 import React, { Suspense, useMemo } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import { Outlines, RoundedBox, useGLTF } from '@react-three/drei';
+import { Html, Outlines, RoundedBox, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { getCatalogAsset } from '../core/catalog';
+import { getCatalogAsset, type FitMode, type SourceUnit } from '../core/catalog';
+import { normalizeModel } from '../core/modelNormalizer';
 import type { AirflowRole, SceneObject } from '../core/schema';
 
 interface GLTFModelProps {
@@ -11,11 +12,13 @@ interface GLTFModelProps {
   role: AirflowRole;
   isGhost?: boolean;
   isValid?: boolean;
+  fitMode?: FitMode;
+  sourceUnit?: SourceUnit;
 }
 
 /**
- * Loads a GLTF/GLB model, auto-scales to target bounding box,
- * and recentres pivot to bottom centre.
+ * Loads a GLTF/GLB model, normalizes it using pure normalizeModel,
+ * and applies simulation role styling.
  */
 const GLTFModel: React.FC<GLTFModelProps> = ({
   url,
@@ -23,29 +26,16 @@ const GLTFModel: React.FC<GLTFModelProps> = ({
   role,
   isGhost = false,
   isValid = true,
+  fitMode = 'contain',
+  sourceUnit = 'm',
 }) => {
   const { scene } = useGLTF(url);
 
-  const clonedScene = useMemo(() => {
-    const clone = scene.clone(true);
-    const box = new THREE.Box3().setFromObject(clone);
-    const modelSize = new THREE.Vector3();
-    box.getSize(modelSize);
-    const modelCenter = new THREE.Vector3();
-    box.getCenter(modelCenter);
-
-    // Compute scale multipliers to match targetSize exactly
-    const scaleX = targetSize[0] / (modelSize.x || 1);
-    const scaleY = targetSize[1] / (modelSize.y || 1);
-    const scaleZ = targetSize[2] / (modelSize.z || 1);
-
-    clone.scale.set(scaleX, scaleY, scaleZ);
-
-    // Recenter pivot to bottom centre
-    clone.position.set(-modelCenter.x * scaleX, -box.min.y * scaleY, -modelCenter.z * scaleZ);
+  const normalizedScene = useMemo(() => {
+    const norm = normalizeModel(scene, targetSize, { fitMode, sourceUnit });
 
     // Apply role-based and ghost materials
-    clone.traverse((child) => {
+    norm.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
         mesh.castShadow = !isGhost;
@@ -78,10 +68,82 @@ const GLTFModel: React.FC<GLTFModelProps> = ({
       }
     });
 
-    return clone;
-  }, [scene, targetSize, role, isGhost, isValid]);
+    return norm;
+  }, [scene, targetSize, role, isGhost, isValid, fitMode, sourceUnit]);
 
-  return <primitive object={clonedScene} />;
+  return <primitive object={normalizedScene} />;
+};
+
+interface SelectedObjectBoundsProps {
+  size: [number, number, number];
+  isColliding?: boolean;
+}
+
+/**
+ * Dashed bounding box with labelled edges (Width, Height, Depth in meters)
+ * rendered whenever an object is selected.
+ */
+export const SelectedObjectBounds: React.FC<SelectedObjectBoundsProps> = ({
+  size,
+  isColliding = false,
+}) => {
+  const [width, height, depth] = size;
+  const outlineColor = isColliding ? '#ef4444' : '#f59e0b';
+
+  const dashedLines = useMemo(() => {
+    const geom = new THREE.BoxGeometry(width * 1.01, height * 1.01, depth * 1.01);
+    const edges = new THREE.EdgesGeometry(geom);
+    const mat = new THREE.LineDashedMaterial({
+      color: outlineColor,
+      dashSize: 0.08,
+      gapSize: 0.04,
+      linewidth: 2,
+    });
+    const lines = new THREE.LineSegments(edges, mat);
+    lines.computeLineDistances();
+    return lines;
+  }, [width, height, depth, outlineColor]);
+
+  return (
+    <group position={[0, height / 2, 0]}>
+      {/* Dashed bounding box wireframe */}
+      <primitive object={dashedLines} />
+
+      {/* Labelled Dimension Edges */}
+      {/* 1. Width (X edge) along front bottom */}
+      <Html
+        center
+        position={[0, -height / 2 + 0.03, depth / 2 + 0.06]}
+        className="pointer-events-none select-none"
+      >
+        <span className="px-1.5 py-0.5 rounded bg-neutral-900/90 text-amber-300 border border-amber-500/60 font-mono text-[10px] shadow whitespace-nowrap">
+          W: {width.toFixed(2)}m
+        </span>
+      </Html>
+
+      {/* 2. Height (Y edge) along front-right vertical corner */}
+      <Html
+        center
+        position={[width / 2 + 0.06, 0, depth / 2 + 0.06]}
+        className="pointer-events-none select-none"
+      >
+        <span className="px-1.5 py-0.5 rounded bg-neutral-900/90 text-sky-300 border border-sky-500/60 font-mono text-[10px] shadow whitespace-nowrap">
+          H: {height.toFixed(2)}m
+        </span>
+      </Html>
+
+      {/* 3. Depth (Z edge) along right bottom */}
+      <Html
+        center
+        position={[width / 2 + 0.06, -height / 2 + 0.03, 0]}
+        className="pointer-events-none select-none"
+      >
+        <span className="px-1.5 py-0.5 rounded bg-neutral-900/90 text-emerald-300 border border-emerald-500/60 font-mono text-[10px] shadow whitespace-nowrap">
+          D: {depth.toFixed(2)}m
+        </span>
+      </Html>
+    </group>
+  );
 };
 
 interface PlaceholderProps {
@@ -162,14 +224,6 @@ export const RoundedBoxPlaceholder: React.FC<PlaceholderProps> = ({
       >
         {isSelected && <Outlines thickness={0.03} color={outlineColor} />}
       </RoundedBox>
-      {isSelected && (
-        <lineSegments>
-          <edgesGeometry
-            args={[new THREE.BoxGeometry(width * 1.02, height * 1.02, depth * 1.02)]}
-          />
-          <lineBasicMaterial color={outlineColor} linewidth={2} />
-        </lineSegments>
-      )}
     </group>
   );
 };
@@ -309,8 +363,6 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
   const hasFanArrow =
     object.assetId.includes('fan') || role === 'source' || Boolean(catalogDef?.defaultAirflow);
 
-  const outlineColor = isColliding ? '#ef4444' : '#f59e0b';
-
   return (
     <group
       name={`asset-${object.id}`}
@@ -326,21 +378,9 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
             role={role}
             isGhost={isGhost}
             isValid={isValidPlacement}
+            fitMode={catalogDef.fitMode}
+            sourceUnit={catalogDef.sourceUnit}
           />
-          {isSelected && (
-            <lineSegments position={[0, targetSize[1] / 2, 0]}>
-              <edgesGeometry
-                args={[
-                  new THREE.BoxGeometry(
-                    targetSize[0] * 1.02,
-                    targetSize[1] * 1.02,
-                    targetSize[2] * 1.02
-                  ),
-                ]}
-              />
-              <lineBasicMaterial color={outlineColor} linewidth={2} />
-            </lineSegments>
-          )}
         </Suspense>
       ) : (
         <RoundedBoxPlaceholder
@@ -352,6 +392,11 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
           isSelected={isSelected}
           isColliding={isColliding}
         />
+      )}
+
+      {/* Dashed bounding box with labelled dimension edges when selected */}
+      {isSelected && !isGhost && (
+        <SelectedObjectBounds size={targetSize} isColliding={isColliding} />
       )}
 
       {/* Fan / Source airflow direction arrow */}

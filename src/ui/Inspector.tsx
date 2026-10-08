@@ -3,6 +3,7 @@ import { useSceneStore, useUiStore } from '../store';
 import { RoomParamsSchema } from '../core/schema';
 import { signedArea } from '../core/parser';
 import { radToDeg, degToRad } from '../core/units';
+import { getCatalogAsset } from '../core/catalog';
 import { z } from 'zod';
 import type { RoomParams } from '../core/types';
 
@@ -118,6 +119,8 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
 
   const isPlacingPollutantSource = useUiStore((state) => state.isPlacingPollutantSource);
   const setIsPlacingPollutantSource = useUiStore((state) => state.setIsPlacingPollutantSource);
+  const showScaleReference = useUiStore((state) => state.showScaleReference);
+  const toggleScaleReference = useUiStore((state) => state.toggleScaleReference);
 
   // Selected object instance
   const selectedObject = useMemo(() => {
@@ -244,9 +247,17 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
   const [draftScaleX, setDraftScaleX] = useState('1');
   const [draftScaleY, setDraftScaleY] = useState('1');
   const [draftScaleZ, setDraftScaleZ] = useState('1');
+  const [draftRealWidth, setDraftRealWidth] = useState('1');
+  const [draftRealHeight, setDraftRealHeight] = useState('1');
+  const [draftRealDepth, setDraftRealDepth] = useState('1');
   const [draftElevation, setDraftElevation] = useState('0');
   const [draftAirflow, setDraftAirflow] = useState('0');
   const [lockAspect, setLockAspect] = useState(true);
+
+  // Selected asset catalog definition
+  const selectedCatalogAsset = useMemo(() => {
+    return selectedObject ? getCatalogAsset(selectedObject.assetId) : undefined;
+  }, [selectedObject]);
 
   // Sync draft object state on object selection change
   useEffect(() => {
@@ -256,13 +267,21 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
       setDraftPosY(selectedObject.position[1].toFixed(2));
       setDraftPosZ(selectedObject.position[2].toFixed(2));
       setDraftRotY(Math.round(radToDeg(selectedObject.rotation[1] || 0)).toString());
-      setDraftScaleX((selectedObject.scale?.[0] ?? 1).toFixed(2));
-      setDraftScaleY((selectedObject.scale?.[1] ?? 1).toFixed(2));
-      setDraftScaleZ((selectedObject.scale?.[2] ?? 1).toFixed(2));
+      const sx = selectedObject.scale?.[0] ?? 1;
+      const sy = selectedObject.scale?.[1] ?? 1;
+      const sz = selectedObject.scale?.[2] ?? 1;
+      setDraftScaleX(sx.toFixed(2));
+      setDraftScaleY(sy.toFixed(2));
+      setDraftScaleZ(sz.toFixed(2));
       setDraftElevation(selectedObject.elevation.toFixed(2));
       setDraftAirflow((selectedObject.defaultAirflow ?? 0).toString());
+
+      const base = selectedCatalogAsset?.size ?? selectedObject.size;
+      setDraftRealWidth((base[0] * sx).toFixed(2));
+      setDraftRealHeight((base[1] * sy).toFixed(2));
+      setDraftRealDepth((base[2] * sz).toFixed(2));
     }
-  }, [selectedObject]);
+  }, [selectedObject, selectedCatalogAsset]);
 
   // Object position commit
   const commitObjectPosition = () => {
@@ -287,10 +306,53 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
     }
   };
 
+  // Commit real-world size directly and back-compute the multiplier
+  const commitTargetSize = (axis: 'width' | 'height' | 'depth', targetVal: number) => {
+    if (!selectedObject || isNaN(targetVal) || targetVal <= 0) return;
+    const base = selectedCatalogAsset?.size ?? selectedObject.size;
+    const currentScale = selectedObject.scale || [1, 1, 1];
+    const axisIdx = axis === 'width' ? 0 : axis === 'height' ? 1 : 2;
+    const baseDim = base[axisIdx];
+    if (!baseDim || baseDim <= 0) return;
+
+    const newScaleForAxis = Number((targetVal / baseDim).toFixed(4));
+
+    if (lockAspect) {
+      const oldScale = currentScale[axisIdx] || 1;
+      const ratio = newScaleForAxis / oldScale;
+      const nextScale: [number, number, number] = [
+        Number((currentScale[0] * ratio).toFixed(3)),
+        Number((currentScale[1] * ratio).toFixed(3)),
+        Number((currentScale[2] * ratio).toFixed(3)),
+      ];
+      setDraftScaleX(nextScale[0].toFixed(2));
+      setDraftScaleY(nextScale[1].toFixed(2));
+      setDraftScaleZ(nextScale[2].toFixed(2));
+      setDraftRealWidth((base[0] * nextScale[0]).toFixed(2));
+      setDraftRealHeight((base[1] * nextScale[1]).toFixed(2));
+      setDraftRealDepth((base[2] * nextScale[2]).toFixed(2));
+      updateObject(selectedObject.id, { scale: nextScale });
+    } else {
+      const nextScale: [number, number, number] = [
+        axis === 'width' ? newScaleForAxis : currentScale[0],
+        axis === 'height' ? newScaleForAxis : currentScale[1],
+        axis === 'depth' ? newScaleForAxis : currentScale[2],
+      ];
+      setDraftScaleX(nextScale[0].toFixed(2));
+      setDraftScaleY(nextScale[1].toFixed(2));
+      setDraftScaleZ(nextScale[2].toFixed(2));
+      setDraftRealWidth((base[0] * nextScale[0]).toFixed(2));
+      setDraftRealHeight((base[1] * nextScale[1]).toFixed(2));
+      setDraftRealDepth((base[2] * nextScale[2]).toFixed(2));
+      updateObject(selectedObject.id, { scale: nextScale });
+    }
+  };
+
   // Object scale commit with aspect-ratio locking
   const commitObjectScale = (axis: 'x' | 'y' | 'z', newVal: number) => {
     if (!selectedObject || isNaN(newVal) || newVal <= 0) return;
     const currentScale = selectedObject.scale || [1, 1, 1];
+    const base = selectedCatalogAsset?.size ?? selectedObject.size;
 
     if (lockAspect) {
       const oldVal =
@@ -304,6 +366,9 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
       setDraftScaleX(nextScale[0].toFixed(2));
       setDraftScaleY(nextScale[1].toFixed(2));
       setDraftScaleZ(nextScale[2].toFixed(2));
+      setDraftRealWidth((base[0] * nextScale[0]).toFixed(2));
+      setDraftRealHeight((base[1] * nextScale[1]).toFixed(2));
+      setDraftRealDepth((base[2] * nextScale[2]).toFixed(2));
       updateObject(selectedObject.id, { scale: nextScale });
     } else {
       const nextScale: [number, number, number] = [
@@ -311,6 +376,12 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
         axis === 'y' ? newVal : currentScale[1],
         axis === 'z' ? newVal : currentScale[2],
       ];
+      setDraftScaleX(nextScale[0].toFixed(2));
+      setDraftScaleY(nextScale[1].toFixed(2));
+      setDraftScaleZ(nextScale[2].toFixed(2));
+      setDraftRealWidth((base[0] * nextScale[0]).toFixed(2));
+      setDraftRealHeight((base[1] * nextScale[1]).toFixed(2));
+      setDraftRealDepth((base[2] * nextScale[2]).toFixed(2));
       updateObject(selectedObject.id, { scale: nextScale });
     }
   };
@@ -450,11 +521,11 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
             />
           </div>
 
-          {/* Scale XYZ with Lock Aspect Ratio */}
-          <div className="flex flex-col gap-1.5 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+          {/* Real-World Dimensions & Direct Target Size Inputs */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-                Scale Multiplier
+                Real-World Dimensions (m)
               </label>
               <button
                 type="button"
@@ -469,6 +540,99 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
               >
                 {lockAspect ? '🔒 Locked' : '🔓 Free'}
               </button>
+            </div>
+
+            {/* Dimension Readout Chip */}
+            <div
+              data-testid="dimension-readout"
+              className="bg-sky-950/40 border border-sky-800/60 rounded-md px-2.5 py-1.5 font-mono text-sky-200 text-xs flex items-center justify-between shadow-inner"
+            >
+              <span className="text-[10px] text-sky-400 font-sans uppercase font-semibold">
+                W × H × D:
+              </span>
+              <span className="font-bold">
+                {draftRealWidth} m × {draftRealHeight} m × {draftRealDepth} m
+              </span>
+            </div>
+
+            {/* Direct Target Size Inputs */}
+            <div className="grid grid-cols-3 gap-2 pt-0.5">
+              <div>
+                <span className="text-[10px] text-amber-400 font-bold block mb-0.5">Width (m)</span>
+                <input
+                  type="number"
+                  data-testid="target-size-width"
+                  step="0.05"
+                  min="0.05"
+                  value={draftRealWidth}
+                  onChange={(e) => setDraftRealWidth(e.target.value)}
+                  onBlur={() => commitTargetSize('width', parseFloat(draftRealWidth))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitTargetSize('width', parseFloat(draftRealWidth));
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-1.5 py-1 font-mono text-white text-xs focus:border-amber-500"
+                  title="Direct Width in meters"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-sky-400 font-bold block mb-0.5">Height (m)</span>
+                <input
+                  type="number"
+                  data-testid="target-size-height"
+                  step="0.05"
+                  min="0.05"
+                  value={draftRealHeight}
+                  onChange={(e) => setDraftRealHeight(e.target.value)}
+                  onBlur={() => commitTargetSize('height', parseFloat(draftRealHeight))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitTargetSize('height', parseFloat(draftRealHeight));
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-1.5 py-1 font-mono text-white text-xs focus:border-sky-500"
+                  title="Direct Height in meters"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-emerald-400 font-bold block mb-0.5">
+                  Depth (m)
+                </span>
+                <input
+                  type="number"
+                  data-testid="target-size-depth"
+                  step="0.05"
+                  min="0.05"
+                  value={draftRealDepth}
+                  onChange={(e) => setDraftRealDepth(e.target.value)}
+                  onBlur={() => commitTargetSize('depth', parseFloat(draftRealDepth))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitTargetSize('depth', parseFloat(draftRealDepth));
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-1.5 py-1 font-mono text-white text-xs focus:border-emerald-500"
+                  title="Direct Depth in meters"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Scale Multiplier Inputs */}
+          <div className="flex flex-col gap-1.5 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Scale Multipliers
+              </label>
+              {selectedCatalogAsset && (
+                <span className="text-[10px] text-neutral-500 font-mono">
+                  Base: {selectedCatalogAsset.size.join(' × ')}m
+                </span>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div>
@@ -514,6 +678,28 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Scale Reference Debug Toggle */}
+          <div className="flex items-center justify-between bg-neutral-950/40 p-2.5 rounded-lg border border-neutral-800">
+            <div className="flex items-center gap-1.5">
+              <span>🧍</span>
+              <span className="text-[11px] text-neutral-300 font-medium">
+                Scale Reference (1.7m Human)
+              </span>
+            </div>
+            <button
+              type="button"
+              data-testid="inspector-scale-ref-btn"
+              onClick={toggleScaleReference}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-colors ${
+                showScaleReference
+                  ? 'bg-sky-600 border-sky-400 text-white'
+                  : 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-white'
+              }`}
+            >
+              {showScaleReference ? 'Showing' : 'Hidden'}
+            </button>
           </div>
 
           {/* Elevation */}

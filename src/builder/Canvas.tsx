@@ -23,6 +23,7 @@ import { snap } from '../core/units';
 import { SelectionGizmo } from './SelectionGizmo';
 import { OpeningTaggingPanel } from './OpeningTaggingPanel';
 import { VoxelDebugMesh, VoxelDebugControls } from './VoxelDebug';
+import { ScaleReference } from './ScaleReference';
 
 /**
  * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
@@ -621,6 +622,9 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
           {/* Placed Objects in the Room */}
           <PlacedObjects />
+
+          {/* Interactive Scale Reference (1.7m human & 1.0m³ cube) */}
+          <ScaleReference />
 
           {/* Interactive Selection & Transform Gizmo */}
           <SelectionGizmo />
