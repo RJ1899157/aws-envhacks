@@ -2,10 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { CATALOG_ASSETS, type AssetDef } from '../core/catalog';
 import { useUiStore } from '../store/uiStore';
 
-type CategoryFilter = 'all' | 'furniture' | 'hvac' | 'openings' | 'decor';
+type CategoryFilter = 'all' | 'furniture' | 'hvac' | 'openings' | 'decor' | 'my-assets';
 
 const CATEGORY_TABS: { id: CategoryFilter; label: string }[] = [
   { id: 'all', label: 'All' },
+  { id: 'my-assets', label: 'My Assets' },
   { id: 'furniture', label: 'Furniture' },
   { id: 'hvac', label: 'Appliances/Airflow' },
   { id: 'openings', label: 'Openings' },
@@ -30,12 +31,20 @@ export const AssetThumbnailSkeleton: React.FC = () => (
   </div>
 );
 
-const AssetThumbnail: React.FC<{ asset: AssetDef; isLoading?: boolean }> = ({
+const AssetThumbnail: React.FC<{ asset: AssetDef & { thumbnailDataUrl?: string }; isLoading?: boolean }> = ({
   asset,
   isLoading = false,
 }) => {
   if (isLoading) {
     return <div className="w-11 h-11 rounded-md skeleton-shimmer bg-neutral-800/60 flex-shrink-0" />;
+  }
+
+  if (asset.thumbnailDataUrl) {
+    return (
+      <div className="relative w-11 h-11 rounded-md flex items-center justify-center border border-neutral-700/60 overflow-hidden flex-shrink-0 shadow-inner bg-black/40">
+        <img src={asset.thumbnailDataUrl} alt={asset.label} className="w-full h-full object-contain" />
+      </div>
+    );
   }
 
   return (
@@ -59,7 +68,14 @@ const AssetThumbnail: React.FC<{ asset: AssetDef; isLoading?: boolean }> = ({
   );
 };
 
+import { useAssetLibraryStore } from '../store/assetLibraryStore';
+
 export const AssetLibrary: React.FC<AssetLibraryProps> = ({ className = '' }) => {
+  const { assets: myAssets, loadAssets } = useAssetLibraryStore();
+
+  React.useEffect(() => {
+    loadAssets();
+  }, [loadAssets]);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
@@ -70,7 +86,21 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ className = '' }) =>
 
   // Filter assets by selected tab and search term
   const filteredAssets = useMemo(() => {
-    return CATALOG_ASSETS.filter((asset) => {
+    // Map MyAsset to AssetDef roughly
+    const convertedMyAssets = myAssets.map(a => ({
+      id: a.id,
+      label: a.name,
+      category: 'my-assets',
+      role: 'solid', // Default, we could save this in DB
+      wallMounted: false,
+      color: '#4ade80',
+      size: a.dimensions,
+      thumbnailDataUrl: a.thumbnailDataUrl,
+    } as AssetDef & { thumbnailDataUrl?: string }));
+
+    const allAssets = [...CATALOG_ASSETS, ...convertedMyAssets];
+
+    return allAssets.filter((asset) => {
       const matchesCategory = activeCategory === 'all' || asset.category === activeCategory;
       const matchesSearch =
         searchQuery.trim() === '' ||
@@ -79,7 +109,7 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ className = '' }) =>
         asset.role.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, searchQuery]);
+  }, [activeCategory, searchQuery, myAssets]);
 
   const handleSelectAsset = (asset: AssetDef) => {
     if (activeAssetId === asset.id) {

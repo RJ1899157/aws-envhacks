@@ -17,6 +17,8 @@
     "@react-three/fiber": "^8.18.0",
     "@react-three/postprocessing": "^2.19.1",
     "clsx": "^2.1.1",
+    "dxf-parser": "^1.1.2",
+    "idb": "^8.0.3",
     "immer": "^10.1.1",
     "lucide-react": "^1.52.0",
     "n8ao": "^2.0.1",
