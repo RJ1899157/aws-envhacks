@@ -8,6 +8,8 @@ export * from './PlacementController';
 export * from './SelectionGizmo';
 export * from './OpeningTaggingPanel';
 export * from './OpeningVisual';
+export * from './SelectedGroundGlow';
+export * from './DropRipplesVisualizer';
 export * from './screenshot';
 export * from './VoxelDebug';
 export * from './CanvasErrorBoundary';

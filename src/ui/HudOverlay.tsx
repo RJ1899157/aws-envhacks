@@ -372,19 +372,31 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
         </button>
       </div>
 
-      {/* Floating Toast Notification */}
+      {/* Floating Toast Notification (bottom-centre with Undo action) */}
       {toastMessage && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
           <div
             data-testid="hud-toast-message"
-            className="bg-neutral-900/95 border border-amber-500/70 text-amber-200 px-4 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-3 text-xs font-medium animate-bounce"
+            className="bg-neutral-900/95 border border-amber-500/70 text-amber-200 px-4 py-2.5 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-3 text-xs font-medium animate-in fade-in slide-in-from-bottom-3 duration-200"
           >
             <span>ℹ️</span>
             <span>{toastMessage}</span>
             <button
               type="button"
+              onClick={() => {
+                useSceneStore.temporal.getState().undo();
+                setToastMessage(null);
+              }}
+              className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold text-[11px] border border-amber-500/50 transition-colors cursor-pointer flex items-center gap-1"
+              aria-label="Undo last action"
+            >
+              <span>↩</span>
+              <span>Undo</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setToastMessage(null)}
-              className="ml-2 text-neutral-400 hover:text-white"
+              className="ml-1 text-neutral-400 hover:text-white"
               aria-label="Dismiss notification"
             >
               ✕

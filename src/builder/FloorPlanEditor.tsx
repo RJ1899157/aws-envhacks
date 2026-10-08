@@ -18,6 +18,7 @@ import {
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { sharedOrbitControlsRef } from './Canvas';
+import { setCanvasCursor, resetCanvasCursor } from '../core/cursor';
 
 export const FloorPlanEditor: React.FC = () => {
   const room = useSceneStore((state) => state.room);
@@ -938,12 +939,18 @@ export const FloorPlanEditor: React.FC = () => {
                 onPointerOver={(e) => {
                   e.stopPropagation();
                   setHoveredWallIndex(w.index);
+                  setCanvasCursor('move');
                 }}
                 onPointerOut={(e) => {
                   e.stopPropagation();
                   setHoveredWallIndex(null);
+                  resetCanvasCursor();
                 }}
-                onPointerDown={(e) => handleWallPointerDown(w.index, e)}
+                onPointerDown={(e) => {
+                  setCanvasCursor('grabbing');
+                  handleWallPointerDown(w.index, e);
+                }}
+                onPointerUp={() => resetCanvasCursor()}
                 onDoubleClick={(e) => handleWallDoubleClick(w.index, e)}
               >
                 <boxGeometry args={[w.len, 0.08, 0.35]} />
@@ -974,7 +981,16 @@ export const FloorPlanEditor: React.FC = () => {
               <mesh
                 key={`vertex-${index}`}
                 position={[pt[0], 0.05, pt[1]]}
-                onPointerDown={(e) => handleVertexPointerDown(index, e)}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setCanvasCursor('move');
+                }}
+                onPointerOut={() => resetCanvasCursor()}
+                onPointerDown={(e) => {
+                  setCanvasCursor('grabbing');
+                  handleVertexPointerDown(index, e);
+                }}
+                onPointerUp={() => resetCanvasCursor()}
               >
                 <cylinderGeometry args={[0.13, 0.13, 0.08, 16]} />
                 <meshStandardMaterial
@@ -1183,9 +1199,15 @@ export const FloorPlanEditor: React.FC = () => {
           {/* 6. Room Center Move Handle */}
           <group position={[roomCentroid[0], 0.02, roomCentroid[1]]}>
             <mesh
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setCanvasCursor('move');
+              }}
+              onPointerOut={() => resetCanvasCursor()}
               onPointerDown={(e) => {
                 if (e.button !== 0) return;
                 e.stopPropagation();
+                setCanvasCursor('grabbing');
                 originalOutline.current = outline.map((pt) => [...pt]);
                 setDraggingRoomCenter({
                   startPoint: [e.point.x, e.point.z],
@@ -1196,6 +1218,7 @@ export const FloorPlanEditor: React.FC = () => {
                   sharedOrbitControlsRef.current.enabled = false;
                 }
               }}
+              onPointerUp={() => resetCanvasCursor()}
             >
               <cylinderGeometry args={[0.26, 0.26, 0.03, 24]} />
               <meshStandardMaterial
@@ -1215,9 +1238,15 @@ export const FloorPlanEditor: React.FC = () => {
           {/* 7. Room Scale Handle at Outer Corner */}
           <group position={[bounds.max[0] + 0.35, 0.03, bounds.max[1] + 0.35]}>
             <mesh
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setCanvasCursor('nwse-resize');
+              }}
+              onPointerOut={() => resetCanvasCursor()}
               onPointerDown={(e) => {
                 if (e.button !== 0) return;
                 e.stopPropagation();
+                setCanvasCursor('nwse-resize');
                 const curW = bounds.max[0] - bounds.min[0];
                 const curD = bounds.max[1] - bounds.min[1];
                 setDraggingRoomScale({
@@ -1232,6 +1261,7 @@ export const FloorPlanEditor: React.FC = () => {
                   sharedOrbitControlsRef.current.enabled = false;
                 }
               }}
+              onPointerUp={() => resetCanvasCursor()}
             >
               <boxGeometry args={[0.2, 0.06, 0.2]} />
               <meshStandardMaterial

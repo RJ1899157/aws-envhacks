@@ -17,12 +17,30 @@ export interface AssetLibraryProps {
 }
 
 /**
- * Thumbnail icon rendering a 3D isometric representation of the asset using its real dimensions and color
+ * Thumbnail icon rendering a 3D isometric representation of the asset using its real dimensions and color,
+ * with skeleton shimmer while loading.
  */
-const AssetThumbnail: React.FC<{ asset: AssetDef }> = ({ asset }) => {
+export const AssetThumbnailSkeleton: React.FC = () => (
+  <div className="flex items-center gap-3 p-2 rounded-lg border border-neutral-800/60 bg-neutral-900/40">
+    <div className="w-11 h-11 rounded-md skeleton-shimmer bg-neutral-800/60 flex-shrink-0" />
+    <div className="flex-1 space-y-1.5">
+      <div className="h-3 w-3/4 rounded skeleton-shimmer bg-neutral-800/80" />
+      <div className="h-2.5 w-1/2 rounded skeleton-shimmer bg-neutral-800/50" />
+    </div>
+  </div>
+);
+
+const AssetThumbnail: React.FC<{ asset: AssetDef; isLoading?: boolean }> = ({
+  asset,
+  isLoading = false,
+}) => {
+  if (isLoading) {
+    return <div className="w-11 h-11 rounded-md skeleton-shimmer bg-neutral-800/60 flex-shrink-0" />;
+  }
+
   return (
     <div
-      className="relative w-11 h-11 rounded-md flex items-center justify-center border border-neutral-700/60 overflow-hidden flex-shrink-0 shadow-inner"
+      className="relative w-11 h-11 rounded-md flex items-center justify-center border border-neutral-700/60 overflow-hidden flex-shrink-0 shadow-inner group-hover:border-neutral-500 transition-colors"
       style={{ backgroundColor: `${asset.color}20` }}
     >
       {/* Isometric 3D box glyph */}

@@ -10,6 +10,8 @@ import { degToRad, radToDeg, snap } from '../core/units';
 import type { SceneObject, Vec3 } from '../core/schema';
 import { getObjectGroup } from './objectRegistry';
 import { sharedOrbitControlsRef } from './Canvas';
+import { springEase, prefersReducedMotion } from '../core/motion';
+import { useDropFeedbackStore } from '../store/dropFeedbackStore';
 
 // Module-level drag starter so PlacedObjects can trigger drag on pointer down
 let globalStartDragHandler: ((objectId: string, event: ThreeEvent<PointerEvent>) => void) | null =
@@ -677,19 +679,17 @@ export const DirectObjectManipulator: React.FC = () => {
       }
     }
 
-    // 2. Release Animation (150 ms ease-out with slight overshoot spring)
+    // 2. Release Animation (~180 ms critically damped spring settle)
     if (isAnimatingRelease.current && dragTargetRef.current) {
       const now = performance.now();
-      const duration = 160; // 160 ms
-      const p = Math.min((now - animStartTime.current) / duration, 1);
+      const duration = prefersReducedMotion() ? 0 : 180;
+      const p = duration === 0 ? 1 : Math.min((now - animStartTime.current) / duration, 1);
 
       const group = getObjectGroup(dragTargetRef.current.objectId);
 
       if (p < 1) {
-        // Slight overshoot spring curve
-        const s = 1.35;
-        const t = p - 1;
-        const ease = 1 + (s + 1) * Math.pow(t, 3) + s * Math.pow(t, 2);
+        // Shared critically damped spring ease curve
+        const ease = springEase(p);
 
         if (group) {
           group.position.x = THREE.MathUtils.lerp(
@@ -743,6 +743,14 @@ export const DirectObjectManipulator: React.FC = () => {
           elevation: Number(finalPos.y.toFixed(4)),
           rotation: [0, Number(finalRotY.toFixed(4)), 0],
         });
+
+        // Trigger drop feedback (scale pulse + floor ripple)
+        useDropFeedbackStore.getState().triggerDropFeedback(
+          target.objectId,
+          finalPos.x,
+          finalPos.z,
+          Math.max(target.objectSize[0], target.objectSize[2]) * 0.7
+        );
 
         // Also commit any secondary objects
         const deltaX = finalPos.x - target.startPos[0];

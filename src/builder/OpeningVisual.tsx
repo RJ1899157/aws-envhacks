@@ -14,6 +14,7 @@ import {
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { sharedOrbitControlsRef } from './Canvas';
+import { setCanvasCursor, resetCanvasCursor } from '../core/cursor';
 
 export interface OpeningVisualProps {
   opening: Opening;
@@ -430,12 +431,25 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
       <group
         position={position}
         quaternion={quaternion}
-        onPointerDown={handleOpeningPointerDown}
+        onPointerOver={(e) => {
+          if (!isDragging) {
+            e.stopPropagation();
+            setCanvasCursor('grab');
+          }
+        }}
+        onPointerOut={() => {
+          if (!isDragging) resetCanvasCursor();
+        }}
+        onPointerDown={(e) => {
+          setCanvasCursor('grabbing');
+          handleOpeningPointerDown(e);
+        }}
         onPointerMove={(e) => {
           handlePointerMove(e);
           handleResizePointerMove(e);
         }}
         onPointerUp={(e) => {
+          resetCanvasCursor();
           handlePointerUp(e);
           handleResizePointerUp(e);
         }}
@@ -574,6 +588,11 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
             {/* Left Edge Handle (Width) */}
             <mesh
               position={[-opening.width / 2, 0, 0]}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setCanvasCursor('ew-resize');
+              }}
+              onPointerOut={() => resetCanvasCursor()}
               onPointerDown={(e) => handleResizePointerDown('left', e)}
             >
               <sphereGeometry args={[0.08, 16, 16]} />
@@ -587,6 +606,11 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
             {/* Right Edge Handle (Width) */}
             <mesh
               position={[opening.width / 2, 0, 0]}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setCanvasCursor('ew-resize');
+              }}
+              onPointerOut={() => resetCanvasCursor()}
               onPointerDown={(e) => handleResizePointerDown('right', e)}
             >
               <sphereGeometry args={[0.08, 16, 16]} />
@@ -600,6 +624,11 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
             {/* Top Edge Handle (Height) */}
             <mesh
               position={[0, opening.height / 2, 0]}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setCanvasCursor('ns-resize');
+              }}
+              onPointerOut={() => resetCanvasCursor()}
               onPointerDown={(e) => handleResizePointerDown('top', e)}
             >
               <sphereGeometry args={[0.08, 16, 16]} />
@@ -613,6 +642,11 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
             {/* Bottom Edge Handle (Sill Height) */}
             <mesh
               position={[0, -opening.height / 2, 0]}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setCanvasCursor('ns-resize');
+              }}
+              onPointerOut={() => resetCanvasCursor()}
               onPointerDown={(e) => handleResizePointerDown('sill', e)}
             >
               <sphereGeometry args={[0.08, 16, 16]} />
@@ -631,6 +665,11 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
                   0,
                   0,
                 ]}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setCanvasCursor('pointer');
+                }}
+                onPointerOut={() => resetCanvasCursor()}
                 onClick={(e) => {
                   e.stopPropagation();
                   flipOpening(opening.id, 'hinge');

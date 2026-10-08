@@ -1,6 +1,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Canvas as R3FCanvas, useFrame, useThree } from '@react-three/fiber';
 import {
+  ContactShadows,
   GizmoHelper,
   GizmoViewport,
   Grid,
@@ -12,6 +13,11 @@ import {
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { polygonBounds } from '../core/parser';
+import { prefersReducedMotion } from '../core/motion';
+import { GLTFLoadProgressBar } from '../ui/GLTFLoadProgressBar';
+import { SelectedGroundGlow } from './SelectedGroundGlow';
+import { DropRipplesVisualizer } from './DropRipplesVisualizer';
+import { useDropFeedbackStore } from '../store/dropFeedbackStore';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { RoomShell } from './RoomShell';
@@ -192,8 +198,9 @@ const CanvasDropListener: React.FC = () => {
           z = snap(z, gridStep);
         }
 
+        const objId = `obj-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
         addObject({
-          id: `obj-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+          id: objId,
           assetId: catalogDef.id,
           name: catalogDef.label,
           position: [x, 0, z],
@@ -206,6 +213,13 @@ const CanvasDropListener: React.FC = () => {
           color: catalogDef.color,
           defaultAirflow: catalogDef.defaultAirflow,
         });
+
+        useDropFeedbackStore.getState().triggerDropFeedback(
+          objId,
+          x,
+          z,
+          Math.max(catalogDef.size[0], catalogDef.size[2]) * 0.7
+        );
       }
 
       setActiveAssetId(null);
@@ -387,7 +401,7 @@ interface CameraControllerProps {
  * Handles smooth camera transitions, mode switching (2D/3D), and Blender keyboard shortcuts
  */
 export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef }) => {
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const view = useUiStore((state) => state.view);
   const room = useSceneStore((state) => state.room);
 
@@ -413,11 +427,82 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
   }, [room.outline, room.wallHeight]);
 
   // Animate camera to specific preset views
-  const animateTo = (pos: THREE.Vector3, target: THREE.Vector3) => {
+  const animateTo = useCallback((pos: THREE.Vector3, target: THREE.Vector3) => {
     targetCamPos.current.copy(pos);
     targetLookAt.current.copy(target);
     isTransitioning.current = true;
-  };
+  }, []);
+
+  // Smoothly fly-focuses to a specific object's bounding center
+  const flyFocusToObject = useCallback(
+    (objectId: string) => {
+      const obj = room.objects.find((o) => o.id === objectId);
+      if (!obj) return;
+      const [w, h, d] = obj.size;
+      const sx = obj.scale?.[0] ?? 1;
+      const sy = obj.scale?.[1] ?? 1;
+      const sz = obj.scale?.[2] ?? 1;
+      const maxDim = Math.max(w * sx, h * sy, d * sz, 0.8);
+      const elev = obj.elevation ?? 0;
+      const objCenter = new THREE.Vector3(
+        obj.position[0],
+        (obj.position[1] ?? 0) + elev + (h * sy) / 2,
+        obj.position[2]
+      );
+      const flyDist = Math.max(maxDim * 2.5, 2.5);
+
+      if (view === '2d') {
+        animateTo(
+          new THREE.Vector3(objCenter.x, objCenter.y + flyDist * 1.5, objCenter.z + 0.0001),
+          new THREE.Vector3(objCenter.x, 0, objCenter.z)
+        );
+      } else {
+        animateTo(
+          new THREE.Vector3(
+            objCenter.x + flyDist * 0.7,
+            objCenter.y + flyDist * 0.5,
+            objCenter.z + flyDist * 0.7
+          ),
+          objCenter
+        );
+      }
+    },
+    [room.objects, view, animateTo]
+  );
+
+  // Mouse-wheel zooms toward cursor position
+  useEffect(() => {
+    const dom = gl.domElement;
+    const onWheel = (e: WheelEvent) => {
+      if (isTransitioning.current) return;
+      if (e.deltaY >= 0) return; // Only zoom-to-cursor when zooming in
+
+      const rect = dom.getBoundingClientRect();
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+
+      const targetY = controlsRef.current ? controlsRef.current.target.y : 0;
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -targetY);
+      const hit = new THREE.Vector3();
+
+      if (raycaster.ray.intersectPlane(groundPlane, hit)) {
+        if (controlsRef.current) {
+          const shiftFactor = 0.07;
+          const shift = new THREE.Vector3()
+            .subVectors(hit, controlsRef.current.target)
+            .multiplyScalar(shiftFactor);
+          controlsRef.current.target.add(shift);
+          camera.position.add(shift);
+        }
+      }
+    };
+
+    dom.addEventListener('wheel', onWheel, { passive: true });
+    return () => dom.removeEventListener('wheel', onWheel);
+  }, [camera, gl.domElement, controlsRef]);
 
   // Keyboard shortcut handler
   useEffect(() => {
@@ -433,8 +518,35 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
 
       const { center, distance } = getRoomFraming();
 
+      // F key: Fly-focus to selected object
+      if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        const selId =
+          useSceneStore.getState().selectedObjectId ??
+          useSceneStore.getState().selectedObjectIds[0];
+        if (selId) {
+          flyFocusToObject(selId);
+        } else {
+          // If nothing selected, frame the whole room
+          if (view === '2d') {
+            animateTo(
+              new THREE.Vector3(center.x, center.y + distance * 1.2, center.z + 0.0001),
+              new THREE.Vector3(center.x, 0, center.z)
+            );
+          } else {
+            animateTo(
+              new THREE.Vector3(
+                center.x + distance * 0.7,
+                center.y + distance * 0.5,
+                center.z + distance * 0.7
+              ),
+              center
+            );
+          }
+        }
+      }
       // Numpad 7: Top View
-      if (e.code === 'Numpad7' || e.key === '7') {
+      else if (e.code === 'Numpad7' || e.key === '7') {
         e.preventDefault();
         animateTo(new THREE.Vector3(center.x, center.y + distance, center.z + 0.0001), center);
       }
@@ -475,9 +587,21 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
       }
     };
 
+    const handleFlyFocusEvent = (e: Event) => {
+      const custom = e as CustomEvent<{ objectId: string }>;
+      if (custom.detail?.objectId) {
+        flyFocusToObject(custom.detail.objectId);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [getRoomFraming, view]);
+    window.addEventListener('fly-focus-object', handleFlyFocusEvent);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('fly-focus-object', handleFlyFocusEvent);
+    };
+  }, [getRoomFraming, view, animateTo, flyFocusToObject]);
 
   // Adjust camera when view mode switches between 2D and 3D
   useEffect(() => {
@@ -498,12 +622,20 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
         center
       );
     }
-  }, [getRoomFraming, view]);
+  }, [getRoomFraming, view, animateTo]);
 
-  // Per-frame smooth transition lerp
+  // Per-frame smooth transition using critically damped spring easing
   useFrame((_, delta) => {
     if (isTransitioning.current) {
-      const step = Math.min(delta * 9, 1);
+      if (prefersReducedMotion()) {
+        camera.position.copy(targetCamPos.current);
+        controlsRef.current?.target.copy(targetLookAt.current);
+        controlsRef.current?.update();
+        isTransitioning.current = false;
+        return;
+      }
+
+      const step = Math.min(delta * 12, 1);
       camera.position.lerp(targetCamPos.current, step);
 
       if (controlsRef.current) {
@@ -515,7 +647,7 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
         ? controlsRef.current.target.distanceTo(targetLookAt.current)
         : 0;
 
-      if (camera.position.distanceTo(targetCamPos.current) < 0.02 && targetDist < 0.02) {
+      if (camera.position.distanceTo(targetCamPos.current) < 0.015 && targetDist < 0.015) {
         camera.position.copy(targetCamPos.current);
         controlsRef.current?.target.copy(targetLookAt.current);
         controlsRef.current?.update();
@@ -585,6 +717,8 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
       className={`relative w-full h-full overflow-hidden select-none bg-neutral-900 ${className}`}
       onContextMenu={(e) => e.preventDefault()} // Allow right-click orbit without context menu
     >
+      {/* Global GLTF / Asset Loading Progress Bar */}
+      <GLTFLoadProgressBar />
       {/* Blender-style Numeric Input HUD */}
       {numericInputBuffer !== null && (
         <div className="absolute top-5 left-1/2 -translate-x-1/2 z-30 px-4 py-2 bg-neutral-900/95 border border-amber-500/70 rounded-lg shadow-2xl backdrop-blur-md flex items-center gap-3 text-sm text-neutral-100 font-mono pointer-events-none">
@@ -708,6 +842,23 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
           {/* 3D Room Shell (floor triangulation, wall cutouts, camera-facing fade, ceiling) */}
           <RoomShell />
+
+          {/* Soft contact shadows on the floor plane */}
+          <ContactShadows
+            position={[0, 0.001, 0]}
+            opacity={0.65}
+            scale={30}
+            blur={1.8}
+            far={3.5}
+            resolution={512}
+            color="#000000"
+          />
+
+          {/* Subtle ground-glow under selected objects */}
+          <SelectedGroundGlow />
+
+          {/* Animated drop ripple rings on object placement & snap settle */}
+          <DropRipplesVisualizer />
 
           {/* Interactive Floor Plan Editor (drawing, vertex handles, midpoint splits, live dimensions) */}
           <FloorPlanEditor />

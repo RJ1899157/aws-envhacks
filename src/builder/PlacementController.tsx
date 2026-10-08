@@ -14,6 +14,8 @@ import {
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { AssetMesh } from './AssetMesh';
+import { useDropFeedbackStore } from '../store/dropFeedbackStore';
+import { setCanvasCursor, resetCanvasCursor } from '../core/cursor';
 
 function generateId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
@@ -194,6 +196,12 @@ export const PlacementController: React.FC = () => {
           defaultAirflow: catalogDef.defaultAirflow,
         };
         addObject(object);
+        useDropFeedbackStore.getState().triggerDropFeedback(
+          object.id,
+          object.position[0],
+          object.position[2],
+          Math.max(object.size[0], object.size[2]) * 0.7
+        );
       }
 
       // Check Shift key for repeated placement
@@ -217,6 +225,18 @@ export const PlacementController: React.FC = () => {
       room,
     ]
   );
+
+  // Manage placement cursor
+  useEffect(() => {
+    if (toolMode === 'place' || toolMode === 'opening') {
+      setCanvasCursor('copy');
+    } else {
+      resetCanvasCursor();
+    }
+    return () => {
+      resetCanvasCursor();
+    };
+  }, [toolMode]);
 
   if (!catalogDef || (toolMode !== 'place' && toolMode !== 'opening')) {
     return null;

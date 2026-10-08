@@ -10,6 +10,9 @@ import { usePlacementIssuesStore } from '../store/placementIssuesStore';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { findNearestValidPosition, type PlacementIssue } from '../core/placementValidator';
+import { prefersReducedMotion } from '../core/motion';
+import { setCanvasCursor, resetCanvasCursor } from '../core/cursor';
+import { useDropFeedbackStore } from '../store/dropFeedbackStore';
 
 interface GLTFModelProps {
   url: string;
@@ -85,7 +88,7 @@ interface SelectedObjectBoundsProps {
 }
 
 /**
- * Dashed bounding box with labelled edges (Width, Height, Depth in meters)
+ * Crisp bounding box with animated marching ends on the corners and labelled edges
  * rendered whenever an object is selected.
  */
 export const SelectedObjectBounds: React.FC<SelectedObjectBoundsProps> = ({
@@ -94,37 +97,94 @@ export const SelectedObjectBounds: React.FC<SelectedObjectBoundsProps> = ({
 }) => {
   const [width, height, depth] = size;
   const outlineColor = isColliding ? '#ef4444' : '#f59e0b';
+  const marchingMatRef = useRef<THREE.LineDashedMaterial | null>(null);
 
-  const dashedLines = useMemo(() => {
-    const geom = new THREE.BoxGeometry(width * 1.01, height * 1.01, depth * 1.01);
+  // 1. Crisp full bounding box outline
+  const crispOutline = useMemo(() => {
+    const geom = new THREE.BoxGeometry(width * 1.008, height * 1.008, depth * 1.008);
     const edges = new THREE.EdgesGeometry(geom);
+    const mat = new THREE.LineBasicMaterial({
+      color: outlineColor,
+      transparent: true,
+      opacity: 0.5,
+      linewidth: 1,
+    });
+    return new THREE.LineSegments(edges, mat);
+  }, [width, height, depth, outlineColor]);
+
+  // 2. 8 Corner brackets with animated marching ends
+  const cornerLines = useMemo(() => {
+    const hw = (width * 1.01) / 2;
+    const hh = (height * 1.01) / 2;
+    const hd = (depth * 1.01) / 2;
+    const clen = Math.min(width, height, depth) * 0.22;
+
+    const points: THREE.Vector3[] = [];
+    const signs: Array<[number, number, number]> = [
+      [-1, -1, -1],
+      [1, -1, -1],
+      [-1, 1, -1],
+      [1, 1, -1],
+      [-1, -1, 1],
+      [1, -1, 1],
+      [-1, 1, 1],
+      [1, 1, 1],
+    ];
+
+    for (const [sx, sy, sz] of signs) {
+      const cx = sx * hw;
+      const cy = sy * hh;
+      const cz = sz * hd;
+      // segment along X
+      points.push(new THREE.Vector3(cx, cy, cz));
+      points.push(new THREE.Vector3(cx - sx * clen, cy, cz));
+      // segment along Y
+      points.push(new THREE.Vector3(cx, cy, cz));
+      points.push(new THREE.Vector3(cx, cy - sy * clen, cz));
+      // segment along Z
+      points.push(new THREE.Vector3(cx, cy, cz));
+      points.push(new THREE.Vector3(cx, cy, cz - sz * clen));
+    }
+
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
     const mat = new THREE.LineDashedMaterial({
       color: outlineColor,
-      dashSize: 0.08,
-      gapSize: 0.04,
-      linewidth: 2,
+      dashSize: 0.035,
+      gapSize: 0.02,
+      linewidth: 2.5,
     });
-    const lines = new THREE.LineSegments(edges, mat);
+    marchingMatRef.current = mat;
+
+    const lines = new THREE.LineSegments(geom, mat);
     lines.computeLineDistances();
     return lines;
   }, [width, height, depth, outlineColor]);
 
-  // Clean up Three.js resources to prevent memory leaks
+  // Per-frame animated marching ends on the corners
+  useFrame(() => {
+    if (marchingMatRef.current && !prefersReducedMotion()) {
+      const t = performance.now() * 0.006;
+      marchingMatRef.current.scale = 1.0 + 0.35 * Math.sin(t);
+    }
+  });
+
+  // Clean up Three.js resources
   React.useEffect(() => {
     return () => {
-      dashedLines.geometry.dispose();
-      if (Array.isArray(dashedLines.material)) {
-        dashedLines.material.forEach((m) => m.dispose());
-      } else {
-        dashedLines.material.dispose();
-      }
+      crispOutline.geometry.dispose();
+      (crispOutline.material as THREE.Material).dispose();
+      cornerLines.geometry.dispose();
+      (cornerLines.material as THREE.Material).dispose();
     };
-  }, [dashedLines]);
+  }, [crispOutline, cornerLines]);
 
   return (
     <group position={[0, height / 2, 0]}>
-      {/* Dashed bounding box wireframe */}
-      <primitive object={dashedLines} />
+      {/* Crisp bounding box line */}
+      <primitive object={crispOutline} />
+
+      {/* Animated marching ends on corners */}
+      <primitive object={cornerLines} />
 
       {/* Labelled Dimension Edges */}
       {/* 1. Width (X edge) along front bottom */}
@@ -473,12 +533,32 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
     };
   }, [redOutlineLines]);
 
+  // Placement drop scale pulse (1.0 -> 1.03 -> 1.0 over ~180 ms)
+  const pulsingTimestamp = useDropFeedbackStore((state) =>
+    object.id ? state.pulsingObjectIds[object.id] : undefined
+  );
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    if (pulsingTimestamp && !prefersReducedMotion()) {
+      const elapsed = performance.now() - pulsingTimestamp;
+      if (elapsed < 180) {
+        const p = elapsed / 180;
+        const pulse = 1.0 + 0.03 * Math.sin(p * Math.PI);
+        groupRef.current.scale.set(pulse, pulse, pulse);
+      } else {
+        groupRef.current.scale.set(1, 1, 1);
+      }
+    }
+  });
+
   // Pointer hover handlers
   const handlePointerOver = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       if (isGhost) return;
       e.stopPropagation();
       if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+      setCanvasCursor('grab');
       setIsHovered(true);
     },
     [isGhost]
@@ -486,10 +566,29 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
 
   const handlePointerOut = useCallback(() => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    resetCanvasCursor();
     hoverTimeoutRef.current = setTimeout(() => {
       setIsHovered(false);
     }, 250);
   }, []);
+
+  const handlePointerDownInternal = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      setCanvasCursor('grabbing');
+      onPointerDown?.(e);
+    },
+    [onPointerDown]
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent('fly-focus-object', { detail: { objectId: object.id } })
+      );
+    },
+    [object.id]
+  );
 
   const handleTooltipPointerEnter = useCallback(() => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
@@ -578,10 +677,43 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
       name={`asset-${object.id}`}
       position={position}
       rotation={rotation}
-      onPointerDown={onPointerDown}
+      onPointerDown={handlePointerDownInternal}
+      onDoubleClick={handleDoubleClick}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
     >
+      {/* Hover feedback: soft outline + slight emissive lift */}
+      {isHovered && !isSelected && !isGhost && (
+        <group position={[0, targetSize[1] / 2, 0]}>
+          <lineSegments>
+            <edgesGeometry
+              args={[
+                new THREE.BoxGeometry(
+                  targetSize[0] * 1.012,
+                  targetSize[1] * 1.012,
+                  targetSize[2] * 1.012
+                ),
+              ]}
+            />
+            <lineBasicMaterial color="#38bdf8" transparent opacity={0.4} linewidth={1.5} />
+          </lineSegments>
+          <mesh>
+            <boxGeometry
+              args={[
+                targetSize[0] * 1.01,
+                targetSize[1] * 1.01,
+                targetSize[2] * 1.01,
+              ]}
+            />
+            <meshBasicMaterial
+              color="#38bdf8"
+              transparent
+              opacity={0.08}
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
+      )}
       {catalogDef?.model ? (
         <Suspense fallback={<GLTFLoadingPlaceholder size={targetSize} color={color} />}>
           <GLTFModel
