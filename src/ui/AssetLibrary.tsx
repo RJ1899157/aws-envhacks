@@ -186,8 +186,17 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ className = '' }) =>
           {/* Scrollable Asset List */}
           <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 max-h-[50vh]">
             {filteredAssets.length === 0 ? (
-              <div className="text-center py-8 text-xs text-neutral-500">
-                No matching assets found
+              <div
+                data-testid="asset-library-empty-state"
+                className="text-center py-10 px-4 flex flex-col items-center gap-2"
+              >
+                <span className="text-2xl">🔍</span>
+                <span className="text-xs font-medium text-neutral-400">
+                  No matching assets found
+                </span>
+                <span className="text-[11px] text-neutral-500">
+                  Try another search query or select another category
+                </span>
               </div>
             ) : (
               filteredAssets.map((asset) => {

@@ -605,6 +605,23 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
             </button>
           </div>
 
+          {/* Empty Objects Guidance Hint */}
+          {room.objects.length === 0 && (
+            <div
+              data-testid="inspector-empty-objects-hint"
+              className="bg-sky-950/40 border border-sky-800/50 rounded-xl p-3 flex items-start gap-2.5 text-xs text-sky-200"
+            >
+              <span className="text-base">🛋️</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="font-semibold text-white">Room is empty</span>
+                <span className="text-[11px] text-sky-300/80 leading-snug">
+                  Drag real-scale furniture or appliances from the Catalog to begin furnishing your
+                  room.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Room Name */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">

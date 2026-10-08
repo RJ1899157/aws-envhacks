@@ -1,117 +1,252 @@
-# AirForce
+# AirForce Studio
 
-**AirForce** is an indoor air quality and ventilation simulation web application.
-In this phase, we build the Blender-like 3D room builder foundation. While simulation execution will follow in a subsequent phase, the entire architecture and data model are strictly simulation-ready.
+**AirForce Studio** is a high-performance, web-based 3D architectural and indoor air quality (IAQ) ventilation modeler built with **React 18**, **Three.js / React Three Fiber (R3F)**, **Zustand**, and **TypeScript**.
 
----
-
-## Tech Stack
-
-- **Framework**: Vite + React 18 + TypeScript (strict mode enabled)
-- **3D Graphics**: Three.js via `@react-three/fiber` and `@react-three/drei`
-- **State Management**: Zustand + Immer for immutable updates, Zundo for temporal undo/redo
-- **Validation**: Zod for runtime schema validation and type inference
-- **Styling**: Tailwind CSS
-- **Testing**: Vitest for unit tests
-- **Package Manager**: npm
+AirForce combines Blender-grade CAD tools (arbitrary polygon drafting, vertex manipulation, real-scale catalog placement, physical collision detection, wall-opening tagging) with CFD domain discretization (regular 3D voxelization) to produce simulation-ready room specifications.
 
 ---
 
-## Global Conventions (Never Violate)
+## Quickstart & Setup
 
-1. **Coordinate System & Units**:
-   - Units are **METERS**.
-   - **Y is UP**.
-   - Floor plane is **XZ** ($Y = 0$).
+### Prerequisites
+- Node.js 18+ (Node 20+ recommended)
+- npm 9+
 
-2. **Room Representation**:
-   - `Room = floor polygon (counter-clockwise outline, array of [x, z]) + wallHeight`.
-   - Polygons are defined as 2D coordinates on the XZ floor plane in counter-clockwise order.
+### Installation & Execution
+```bash
+# Install dependencies
+npm install
 
-3. **Catalog & Asset Sizing**:
-   - Every asset is defined in a catalog with real-world dimensions in meters ($[width, height, depth]$).
-   - Rendered 3D models and proxy boxes are scaled to fit that bounding box.
+# Start development server (port 3000)
+npm run dev
 
-4. **Airflow Roles**:
-   - Every asset has an explicit airflow role: `"solid" | "source" | "porous" | "none"`.
+# Run comprehensive test suite (Vitest)
+npm test
 
-5. **Openings (Windows & Doors)**:
-   - Windows and doors are `"openings"` attached to a specific wall segment index.
-   - Properties:
-     - `wallIndex`: integer index of the wall segment ($vertex[wallIndex] \to vertex[(wallIndex + 1) \pmod N]$).
-     - `offset`: distance in meters along the wall from the starting vertex.
-     - `width`: opening width in meters.
-     - `height`: opening height in meters.
-     - `sill`: sill height from the floor in meters.
-     - `role`: airflow opening role (`"inlet" | "outlet" | "closed"`).
-     - `openFraction`: fractional opening degree ($0.0$ to $1.0$).
+# Run linter
+npm run lint
 
-6. **Default Snapping**:
-   - Translation snap: `0.05 m` ($5\text{ cm}$).
-   - Rotation snap: `15°` ($15 \text{ degrees} = \frac{\pi}{12} \text{ radians}$).
+# Format codebase (Prettier)
+npm run format
 
-7. **State Architecture**:
-   - All scene state lives in **one Zustand store** (`useSceneStore`).
-   - Components never hold scene data in local state.
-   - Full history tracking (undo/redo) is powered by Zundo temporal middleware.
-
-8. **Code Quality**:
-   - Strict TypeScript configuration (`noImplicitAny`, `strictNullChecks`, etc.).
-   - Small, modular files.
-   - Fully typed component props.
-   - No `any` types.
-   - No dead code.
-
----
-
-## Core Data & Validation Layer (`src/core`)
-
-- **`schema.ts`**: Strict Zod schemas validating spatial coordinates, wall openings, placed objects, simulation parameters, and rooms.
-  - `Vec2` ($[x, z]$ floor plane in meters) & `Vec3` ($[x, y, z]$ with $Y$ up).
-  - `OpeningSchema`: Wall-attached openings with offset, width, height, sill, role (`'inlet' | 'outlet' | 'closed'`), and open fraction ($0 \dots 1$).
-  - `ObjectSchema`: Placed furniture/HVAC/decor with positive bounding box sizes $[w, h, d]$, rotation, airflow role, and mounting properties.
-  - `RoomSchema`: Version 1, `wallHeight` ($2.0 \dots 6.0\text{ m}$), `wallThickness` ($0.05 \dots 0.5\text{ m}$), counter-clockwise outline, openings, objects, and simulation parameters.
-- **`catalog.ts`**: 16 realistic real-world items (beds, wardrobe, desk, chairs, sofa, tables, fans with $2.4\text{ m}$ elevation, purifier, window with sill $0.9\text{ m}$, door, plant) with $O(1)$ lookup via `getCatalogAsset`.
-- **`units.ts`**: Mathematical helpers for snapping (with negative-zero normalization), angle conversions, clamping, and architectural imperial display formatting (`metersToFeetInches`).
-- **`defaultRoom.ts`**: Factory generating a standard 4m $\times$ 3m room with 2.7m wall height, a centered window on Wall 0, and a door on Wall 2.
-- **`parser.ts`**: Robust geometric validation engine (`parseRoom`) enforcing counter-clockwise winding, minimum wall lengths ($0.3\text{ m}$), area checks ($\ge 4\text{ m}^2$), simple non-self-intersecting polygons, opening boundaries, duplicate ID filtering, and cross-ventilation rules.
-
----
-
-## Project Structure
-
-```text
-├── public/
-│   └── models/               # 3D models and GLTF/GLB assets
-├── src/
-│   ├── app/                  # Application root (App, main entry, global styles)
-│   ├── builder/              # 3D room builder canvas, Three.js viewport, controls
-│   ├── core/                 # Simulation-ready schemas (Zod), types, and constants
-│   │   ├── catalog.ts        # Item catalog definitions and dimensions
-│   │   ├── constants.ts      # Snapping and dimension constants
-│   │   ├── defaultRoom.ts    # Standard 4x3m default room factory
-│   │   ├── parser.ts         # Room parser & geometric validation helpers
-│   │   ├── schema.ts         # Zod schemas for rooms, openings, objects, and params
-│   │   ├── types.ts          # Inferred TypeScript types
-│   │   └── units.ts          # Numerical snapping, clamping, and unit conversions
-│   ├── store/                # Single Zustand scene store with Immer & Zundo
-│   └── ui/                   # UI overlays, toolbars, and controls
-├── README.md
-├── package.json
-├── tsconfig.json             # Strict TypeScript configuration
-├── vite.config.ts
-├── vitest.config.ts
-├── tailwind.config.js
-└── postcss.config.js
+# Production build (TypeScript compilation + Vite bundle)
+npm run build
 ```
 
 ---
 
-## Available Scripts
+## Architectural & Engineering Conventions
 
-- `npm run dev`: Starts the Vite development server (default port: 3000)
-- `npm run build`: Type-checks with `tsc` and creates an optimized production bundle
-- `npm test`: Runs Vitest unit tests in run mode
-- `npm run test:watch`: Runs Vitest unit tests in interactive watch mode
-- `npm run lint`: Lints all TypeScript and React files with ESLint
-- `npm run format`: Formats source files with Prettier
+1. **Coordinate System & Units**:
+   - Standard SI units: **Meters** throughout.
+   - **Y is UP** ($Y = 0$ is the floor plane).
+   - Horizontal floor plane is **XZ**.
+2. **Room Representation**:
+   - `Room = floor polygon (counter-clockwise outline, array of [x, z]) + wallHeight + wallThickness`.
+   - Polygons are strictly counter-clockwise (CCW) on the XZ floor plane, yielding positive signed area via the Shoelace theorem.
+3. **Openings (Windows & Doors)**:
+   - Attached to a specific wall segment index ($vertex[i] \to vertex[i+1]$).
+   - Parameterized by `offset` along wall tangent, `width`, `height`, `sill` height, `role` (`inlet` | `outlet` | `closed`), and `openFraction` ($0.0 \dots 1.0$).
+   - Walls render with CSG-free rectangular sub-box extrusion around opening cutouts.
+4. **Asset Sizing & Roles**:
+   - Every asset is defined with realistic bounding box dimensions $[width, height, depth]$ in meters.
+   - Airflow roles: `"solid" | "source" | "porous" | "none"`.
+5. **Collision Detection**:
+   - 2D Separating Axis Theorem (SAT) for rotated object footprints on XZ.
+   - 1D vertical overlap tests along Y with elevation.
+   - Room polygon boundary containment checks prevent objects from protruding through walls.
+6. **State & History Management**:
+   - Single source of truth via Zustand (`useSceneStore` with Immer middleware).
+   - Full temporal undo/redo history (up to 100 steps) managed via Zundo with drag coalescing.
+   - Local state is strictly forbidden for room geometry data.
+   - Autosave debounces scene state to `localStorage` every 500 ms with restore prompt.
+
+---
+
+## Blender-Inspired Keyboard Shortcuts
+
+| Shortcut | Context | Action |
+| :--- | :--- | :--- |
+| **G** | Selection | Activate Move / Translation mode |
+| **R** | Selection | Activate Rotate mode (restricted to Y-axis) |
+| **Shift + D** | Selection | Duplicate selected object (offset 0.3 m) |
+| **Delete** / **X** | Selection | Delete selected object or vertex |
+| **Ctrl + Z** / **Cmd + Z** | Global | Undo last modification |
+| **Ctrl + Shift + Z** | Global | Redo last undone modification |
+| **Ctrl + A** / **Cmd + A** | Global | Select all objects in the room |
+| **Esc** | Global | Clear selection or cancel active tool |
+| **Tab** / **Numpad 5** | Viewport | Toggle between 3D Perspective and 2D Top-Down |
+| **Numpad 7** | Viewport | Top view camera angle |
+| **Numpad 1** | Viewport | Front view camera angle |
+| **Numpad 3** | Viewport | Right view camera angle |
+| **Home** / **F** | Viewport | Frame camera to room boundary / selected object |
+| **Shift (Hold)** | Placement | Repeat placement of selected catalog item |
+| **Shift (Hold)** | Draw Floor | Lock cursor to orthogonal horizontal/vertical axes |
+| **Enter** | Draw Floor | Close and complete polygon floor outline |
+| **Numeric + Enter** | Transform / Draw | Precise numeric input (e.g. `0.5` + Enter to move 0.5m) |
+| **Right-Drag** | Viewport | Orbit camera (damping enabled, clamped above floor) |
+| **Middle-Drag** | Viewport | Pan camera |
+| **Scroll Wheel** | Viewport | Zoom in / out |
+
+---
+
+## Core Data Model
+
+```typescript
+// Spatial Vectors
+type Vec2 = [x: number, z: number]; // Floor plane coordinates in meters
+type Vec3 = [x: number, y: number, z: number]; // 3D coordinates (Y up)
+
+// Wall Openings
+interface Opening {
+  id: string;
+  wallIndex: number;
+  type: 'window' | 'door';
+  offset: number;     // Distance along wall in meters
+  width: number;      // Opening width in meters
+  height: number;     // Opening height in meters
+  sill: number;       // Sill height from floor in meters
+  role: 'inlet' | 'outlet' | 'closed';
+  openFraction: number; // 0.0 (closed) to 1.0 (fully open)
+}
+
+// 3D Placed Objects
+interface SceneObject {
+  id: string;
+  assetId: string;
+  name: string;
+  position: Vec3;     // [x, y, z] in meters
+  rotation: Vec3;     // Euler angles in radians [0, rotY, 0]
+  size: Vec3;         // [width, height, depth] in meters
+  scale?: Vec3;       // Multipliers [sx, sy, sz]
+  elevation: number;  // Offset from floor in meters
+  role: 'solid' | 'source' | 'porous' | 'none';
+  wallMounted: boolean;
+  color?: string;
+  defaultAirflow?: number; // m³/h or m/s
+}
+
+// Environmental Simulation Parameters
+interface RoomParams {
+  windSpeed: number;    // m/s (>= 0)
+  windDirDeg: number;   // 0-360° (0° = North, 90° = East)
+  pressurePa: number;   // Atmospheric pressure in Pa
+  indoorTempC: number;  // °C
+  outdoorTempC: number; // °C
+  humidity: number;     // 0-100%
+  datetime: string;     // ISO 8601 string
+  pollutantSource?: {
+    type: string;
+    emissionRateMgH: number; // mg/hour
+    position?: Vec3;
+  };
+}
+
+// Room Specification
+interface Room {
+  version: 1;
+  name: string;
+  wallHeight: number;    // 2.0 to 6.0 m (default: 2.7m)
+  wallThickness: number; // 0.05 to 0.5 m (default: 0.15m)
+  outline: Vec2[];       // Minimum 3 vertices, CCW order
+  openings: Opening[];
+  objects: SceneObject[];
+  params: RoomParams;
+}
+
+// Discretized Simulation Domain
+interface VoxelGrid {
+  nx: number;
+  ny: number;
+  nz: number;
+  dx: number;            // Cell pitch in meters (default: 0.1m)
+  origin: [number, number, number];
+  cells: Uint8Array;     // Flat index: i + j*nx + k*nx*ny
+  idx: (i: number, j: number, k: number) => number;
+}
+```
+
+---
+
+## 3D Voxel Discretization Engine
+
+The `voxelize(room, dx = 0.1)` engine prepares the geometric domain for computational fluid dynamics (CFD) and indoor air quality (IAQ) calculations:
+
+- **FLUID (`0`)**: Interior room volume within the polygon boundary and $0 \le y < \text{wallHeight}$.
+- **SOLID (`1`)**: Exterior margin, exterior wall thickness, and solid furniture (wardrobes, desks, beds).
+- **INLET (`2`)**: Cells punched through the wall thickness corresponding to inlet windows/openings.
+- **OUTLET (`3`)**: Cells punched through the wall thickness corresponding to outlet doors/openings.
+- **SOURCE (`4`)**: IAQ pollutant emission points and fan airflow sources.
+- **POROUS (`5`)**: Permeable boundaries (curtains, screens, porous partitions).
+
+### Performance Features
+- Object cell filling is strictly confined to each object's 3D axis-aligned bounding box (AABB), supporting arbitrary Euler Y rotations and elevations.
+- 2D polygon membership is precomputed per vertical column ($O(nx \cdot nz)$), rendering full 3D domain voxelization in under 2 milliseconds for typical room sizes.
+- Automatic offloading to a Web Worker (`src/core/voxelWorker.ts`) with zero-copy `ArrayBuffer` transfer if domain voxelization exceeds 50 ms.
+- Interactive 3D visualizer (`VoxelDebug.tsx`) using `THREE.InstancedMesh` with real-time Y-slice isolation, opacity slider, and HUD memory tracking.
+
+---
+
+## Folder Structure
+
+```text
+airforce/
+├── public/
+│   └── models/               # 3D GLTF/GLB models
+├── src/
+│   ├── app/
+│   │   ├── App.tsx           # Top-level application layout
+│   │   ├── index.css         # Tailwind & global stylesheet
+│   │   └── main.tsx          # DOM entry point
+│   ├── builder/
+│   │   ├── AssetMesh.tsx     # 3D object instance (GLTF + procedural rounded box)
+│   │   ├── Canvas.tsx        # Viewport with OrbitControls, axes, and gizmo
+│   │   ├── CanvasErrorBoundary.tsx # WebGL context error recovery boundary
+│   │   ├── FloorPlanEditor.tsx # Interactive polygon drafting & handle editing
+│   │   ├── OpeningTaggingPanel.tsx # Floating 3D opening tag panel
+│   │   ├── PlacedObjects.tsx # Memoized object collection renderer
+│   │   ├── PlacementController.tsx # Ghost placement & raycasting controller
+│   │   ├── RoomShell.tsx     # Wall extrusion with CSG-free opening cutouts
+│   │   ├── screenshot.ts     # Crisp PNG canvas screenshot exporter
+│   │   ├── SelectionGizmo.tsx # TransformControls gizmo & collision feedback
+│   │   ├── ViewportCanvas.tsx# Viewport camera synchronizer
+│   │   └── VoxelDebug.tsx    # 3D InstancedMesh voxel grid visualizer
+│   ├── core/
+│   │   ├── catalog.ts        # 16 real-scale catalog items & definitions
+│   │   ├── collision.ts      # SAT 2D/3D physical collision detector
+│   │   ├── constants.ts      # Snapping and architectural constants
+│   │   ├── defaultRoom.ts    # Default room factory (4x3m)
+│   │   ├── migration.ts      # Schema versioning & legacy payload migrator
+│   │   ├── parser.ts         # Polygon validation & signed area engine
+│   │   ├── sampleRoom.ts     # Sample room factories
+│   │   ├── samples/          # Preconfigured studio, bedroom, living room
+│   │   ├── schema.ts         # Zod schemas for rooms, objects, and params
+│   │   ├── types.ts          # Inferred TypeScript definitions
+│   │   ├── units.ts          # Snapping, angle conversions, and formatting
+│   │   ├── voxelizer.ts      # 3D voxel grid generation engine
+│   │   └── voxelWorker.ts    # Dedicated Web Worker for background voxelization
+│   ├── store/
+│   │   ├── sceneStore.ts     # Central room state (Zustand + Immer + Zundo)
+│   │   ├── uiStore.ts        # UI state (tools, transforms, views, snapping)
+│   │   └── useAutosave.ts    # Debounced localStorage autosave & restore
+│   └── ui/
+│       ├── AssetLibrary.tsx  # Categorized asset sidebar with search
+│       ├── HeaderOverlay.tsx # Top branding overlay
+│       ├── HudOverlay.tsx    # Live coordinate, tool, snap, and voxel HUD
+│       ├── ImportIssuesModal.tsx # Validation error dialog
+│       ├── Inspector.tsx     # Contextual object & simulation params sidebar
+│       ├── OnboardingModal.tsx # 4-step interactive first-run tutorial
+│       ├── RestoreSessionModal.tsx # Session restoration prompt
+│       └── Toolbar.tsx       # Top tool controls, view toggles, and actions
+├── README.md
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── vitest.config.ts
+```
+
+---
+
+## License
+
+Private / Confidential. Built for AirForce IAQ simulation.

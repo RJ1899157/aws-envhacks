@@ -9,9 +9,10 @@ import { ImportIssuesModal } from './ImportIssuesModal';
 
 export interface ToolbarProps {
   className?: string;
+  onOpenOnboarding?: () => void;
 }
 
-export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
+export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboarding }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Modal state for import issues
@@ -237,11 +238,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
         </div>
 
         {/* Tool Mode Buttons (Select, Draw Floor, Place) */}
+        {/* Tool Mode Buttons (Select, Draw Floor, Place) */}
         <div className="flex items-center bg-neutral-800/80 p-0.5 rounded-lg border border-neutral-700/60 shadow-inner">
           <button
             type="button"
             data-testid="tool-select-btn"
             onClick={() => setToolMode('select')}
+            aria-label="Select tool (Shortcut: Esc)"
             className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
               toolMode === 'select'
                 ? 'bg-sky-600 text-white shadow-sm font-semibold'
@@ -255,12 +258,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             type="button"
             data-testid="tool-draw-floor-btn"
             onClick={() => setToolMode('draw-floor')}
+            aria-label="Draw floor (Shortcut: Shift+F)"
             className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
               toolMode === 'draw-floor'
                 ? 'bg-sky-600 text-white shadow-sm font-semibold'
                 : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700/50'
             }`}
-            title="Draw floor perimeter"
+            title="Draw floor perimeter (Shortcut: Shift+F)"
           >
             Draw Floor
           </button>
@@ -268,6 +272,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             type="button"
             data-testid="tool-place-btn"
             onClick={() => setToolMode('place')}
+            aria-label="Place asset"
             className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
               toolMode === 'place'
                 ? 'bg-sky-600 text-white shadow-sm font-semibold'
@@ -284,6 +289,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           type="button"
           data-testid="toggle-transform-mode-btn"
           onClick={() => setTransformMode(transformMode === 'translate' ? 'rotate' : 'translate')}
+          aria-label="Toggle transform mode: Move (G) or Rotate (R)"
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 font-medium border border-neutral-700/60 transition-colors shadow-sm"
           title="Toggle Move (G) / Rotate (R) gizmo"
         >
@@ -295,6 +301,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           type="button"
           data-testid="view-toggle-btn"
           onClick={() => setView(view === '3d' ? '2d' : '3d')}
+          aria-label="Toggle 2D top-down / 3D perspective view (Shortcut: Tab or Numpad 5)"
           className={`px-2.5 py-1 rounded-lg font-medium border transition-colors shadow-sm ${
             view === '2d'
               ? 'bg-indigo-600 border-indigo-400 text-white'
@@ -365,6 +372,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             type="button"
             data-testid="snap-toggle-btn"
             onClick={toggleSnap}
+            aria-label="Toggle Grid Snapping"
             className={`px-2 py-1 font-medium transition-colors ${
               snapEnabled
                 ? 'bg-emerald-600/80 text-white font-semibold'
@@ -378,6 +386,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             data-testid="grid-step-select"
             value={gridStep}
             onChange={(e) => setGridStep(parseFloat(e.target.value))}
+            aria-label="Snap grid step size"
             className="bg-neutral-800 text-neutral-300 text-xs py-1 px-1.5 border-l border-neutral-700/60 focus:outline-none cursor-pointer"
             title="Select Snap Grid Step"
           >
@@ -393,6 +402,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           type="button"
           data-testid="toggle-dimensions-btn"
           onClick={toggleDimensions}
+          aria-label="Toggle Wall Dimension Labels"
           className={`px-2 py-1 rounded-lg font-medium border transition-colors shadow-sm ${
             showDimensions
               ? 'bg-neutral-700 border-neutral-500 text-white'
@@ -408,6 +418,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           type="button"
           data-testid="toggle-ceiling-btn"
           onClick={toggleCeiling}
+          aria-label="Toggle Room Ceiling"
           className={`px-2 py-1 rounded-lg font-medium border transition-colors shadow-sm ${
             showCeiling
               ? 'bg-neutral-700 border-neutral-500 text-white'
@@ -423,6 +434,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           type="button"
           data-testid="toggle-voxels-btn"
           onClick={toggleVoxelDebug}
+          aria-label="Toggle 3D Voxel Domain Debug View"
           className={`px-2.5 py-1 rounded-lg font-medium border transition-colors shadow-sm flex items-center gap-1.5 ${
             showVoxelDebug
               ? 'bg-purple-600 border-purple-400 text-white font-semibold shadow-purple-900/30'
@@ -441,12 +453,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             data-testid="undo-btn"
             disabled={!canUndo}
             onClick={handleUndo}
+            aria-label="Undo last change (Ctrl+Z)"
             className={`p-1 rounded text-xs transition-colors ${
               canUndo
                 ? 'text-neutral-200 hover:text-white hover:bg-neutral-700 cursor-pointer'
                 : 'text-neutral-600 cursor-not-allowed'
             }`}
-            title="Undo (Ctrl+Z)"
+            title="Undo (Ctrl+Z / Cmd+Z)"
           >
             ↺
           </button>
@@ -455,12 +468,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             data-testid="redo-btn"
             disabled={!canRedo}
             onClick={handleRedo}
+            aria-label="Redo last change (Ctrl+Shift+Z)"
             className={`p-1 rounded text-xs transition-colors ${
               canRedo
                 ? 'text-neutral-200 hover:text-white hover:bg-neutral-700 cursor-pointer'
                 : 'text-neutral-600 cursor-not-allowed'
             }`}
-            title="Redo (Ctrl+Shift+Z)"
+            title="Redo (Ctrl+Shift+Z / Cmd+Shift+Z)"
           >
             ↻
           </button>
@@ -472,6 +486,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             type="button"
             data-testid="screenshot-btn"
             onClick={handleScreenshot}
+            aria-label="Export PNG Screenshot of current view"
             className="px-2 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/60 transition-colors"
             title="Export PNG Screenshot of current view"
           >
@@ -481,6 +496,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             type="button"
             data-testid="import-json-btn"
             onClick={handleImportClick}
+            aria-label="Import Room JSON"
             className="px-2 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/60 transition-colors"
             title="Import Room JSON"
           >
@@ -490,6 +506,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             type="button"
             data-testid="export-json-btn"
             onClick={handleExportJson}
+            aria-label="Export Room JSON"
             className="px-2 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/60 transition-colors"
             title="Export Room JSON (validates before download)"
           >
@@ -499,6 +516,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             type="button"
             data-testid="new-room-btn"
             onClick={handleNewRoom}
+            aria-label="Create new room"
             className="px-2 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/60 transition-colors"
             title="Reset to a blank/default room"
           >
@@ -509,6 +527,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           <select
             data-testid="sample-room-select"
             defaultValue=""
+            aria-label="Load Pre-configured Sample Rooms"
             onChange={(e) => {
               const val = e.target.value;
               if (val === 'studio') loadRoom(createStudioSample());
@@ -528,6 +547,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             <option value="living">L-Shaped Living Room</option>
             <option value="default">Master Suite</option>
           </select>
+
+          {/* Onboarding Help Guide Button */}
+          {onOpenOnboarding && (
+            <button
+              type="button"
+              data-testid="onboarding-help-btn"
+              onClick={onOpenOnboarding}
+              aria-label="Interactive Onboarding Guide and Shortcuts"
+              className="px-2 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-sky-400 font-bold border border-neutral-700/60 transition-colors shadow-sm text-xs cursor-pointer"
+              title="Interactive Onboarding Guide & Shortcuts"
+            >
+              ? Help
+            </button>
+          )}
 
           {/* Legacy button for test backwards compatibility */}
           <button

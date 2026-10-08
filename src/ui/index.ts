@@ -5,3 +5,4 @@ export * from './Inspector';
 export * from './HudOverlay';
 export * from './RestoreSessionModal';
 export * from './ImportIssuesModal';
+export * from './OnboardingModal';

@@ -635,6 +635,26 @@ export const FloorPlanEditor: React.FC = () => {
         </group>
       )}
 
+      {/* Empty State Guide for Draw Floor mode */}
+      {toolMode === 'draw-floor' && drawingPoints.length === 0 && (
+        <Html center position={[0, 0.25, 0]} className="pointer-events-none select-none">
+          <div
+            data-testid="draw-floor-empty-guide"
+            className="bg-neutral-900/90 backdrop-blur-md border border-sky-500/50 rounded-xl px-4 py-2.5 shadow-2xl text-xs text-neutral-200 flex items-center gap-2.5 font-sans"
+          >
+            <span className="text-xl">📐</span>
+            <div className="flex flex-col">
+              <span className="font-semibold text-white">
+                Click anywhere to start drawing floor
+              </span>
+              <span className="text-[11px] text-neutral-400">
+                Click corners on the grid. Click start point or press Enter to close. Esc to cancel.
+              </span>
+            </div>
+          </div>
+        </Html>
+      )}
+
       {/* =========================================
           LIVE DIMENSIONS & ROOM AREA
           ========================================= */}

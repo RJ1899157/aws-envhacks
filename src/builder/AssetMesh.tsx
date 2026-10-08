@@ -221,6 +221,37 @@ export const FanDirectionArrow: React.FC<FanDirectionArrowProps> = ({ assetId, s
   );
 };
 
+/**
+ * Loading state placeholder for GLTF models during asynchronous fetch/parse
+ */
+const GLTFLoadingPlaceholder: React.FC<{
+  size: [number, number, number];
+  color: string;
+}> = ({ size, color }) => {
+  const [width, height, depth] = size;
+  return (
+    <group position={[0, height / 2, 0]}>
+      {/* Semi-transparent bounding box with pulsing emissive glow */}
+      <mesh>
+        <boxGeometry args={[width, height, depth]} />
+        <meshStandardMaterial
+          color={color}
+          transparent
+          opacity={0.35}
+          wireframe={false}
+          emissive="#38bdf8"
+          emissiveIntensity={0.3}
+        />
+      </mesh>
+      {/* Crisp wireframe edges */}
+      <lineSegments>
+        <edgesGeometry args={[new THREE.BoxGeometry(width, height, depth)]} />
+        <lineBasicMaterial color="#38bdf8" linewidth={1.5} />
+      </lineSegments>
+    </group>
+  );
+};
+
 export interface AssetMeshProps {
   object: Partial<SceneObject> & {
     id: string;
@@ -240,8 +271,9 @@ export interface AssetMeshProps {
  * - Loads GLTF model if catalog.model is present, auto-scaled to exact dimensions
  * - Falls back to a clean rounded box placeholder with bottom-centre pivot
  * - Displays role-based cues (solid, porous, source) and fan direction arrows
+ * - Memoized with custom comparator for 60fps performance with 50+ objects
  */
-export const AssetMesh: React.FC<AssetMeshProps> = ({
+const AssetMeshComponent: React.FC<AssetMeshProps> = ({
   object,
   isSelected = false,
   isColliding = false,
@@ -264,7 +296,7 @@ export const AssetMesh: React.FC<AssetMeshProps> = ({
   const elevation = object.elevation ?? catalogDef?.elevation ?? 0;
   const position: [number, number, number] = [
     object.position[0],
-    object.position[1] + elevation,
+    (object.position[1] ?? 0) + elevation,
     object.position[2],
   ];
 
@@ -287,19 +319,7 @@ export const AssetMesh: React.FC<AssetMeshProps> = ({
       onPointerDown={onPointerDown}
     >
       {catalogDef?.model ? (
-        <Suspense
-          fallback={
-            <RoundedBoxPlaceholder
-              size={targetSize}
-              color={color}
-              role={role}
-              isGhost={isGhost}
-              isValid={isValidPlacement}
-              isSelected={isSelected}
-              isColliding={isColliding}
-            />
-          }
-        >
+        <Suspense fallback={<GLTFLoadingPlaceholder size={targetSize} color={color} />}>
           <GLTFModel
             url={catalogDef.model}
             targetSize={targetSize}
@@ -339,5 +359,31 @@ export const AssetMesh: React.FC<AssetMeshProps> = ({
     </group>
   );
 };
+
+export const AssetMesh = React.memo(AssetMeshComponent, (prev, next) => {
+  return (
+    prev.isSelected === next.isSelected &&
+    prev.isColliding === next.isColliding &&
+    prev.isGhost === next.isGhost &&
+    prev.isValidPlacement === next.isValidPlacement &&
+    prev.object.id === next.object.id &&
+    prev.object.assetId === next.object.assetId &&
+    prev.object.position?.[0] === next.object.position?.[0] &&
+    prev.object.position?.[1] === next.object.position?.[1] &&
+    prev.object.position?.[2] === next.object.position?.[2] &&
+    prev.object.rotation?.[0] === next.object.rotation?.[0] &&
+    prev.object.rotation?.[1] === next.object.rotation?.[1] &&
+    prev.object.rotation?.[2] === next.object.rotation?.[2] &&
+    prev.object.size?.[0] === next.object.size?.[0] &&
+    prev.object.size?.[1] === next.object.size?.[1] &&
+    prev.object.size?.[2] === next.object.size?.[2] &&
+    prev.object.scale?.[0] === next.object.scale?.[0] &&
+    prev.object.scale?.[1] === next.object.scale?.[1] &&
+    prev.object.scale?.[2] === next.object.scale?.[2] &&
+    prev.object.elevation === next.object.elevation &&
+    prev.object.role === next.object.role &&
+    prev.object.color === next.object.color
+  );
+});
 
 export default AssetMesh;

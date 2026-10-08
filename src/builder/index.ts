@@ -9,3 +9,4 @@ export * from './SelectionGizmo';
 export * from './OpeningTaggingPanel';
 export * from './screenshot';
 export * from './VoxelDebug';
+export * from './CanvasErrorBoundary';
