@@ -561,7 +561,10 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
             onPointerMove={(e) => {
               const x = Number(e.point.x.toFixed(2));
               const z = Number(e.point.z.toFixed(2));
-              useUiStore.getState().setCursorCoords([x, z]);
+              const current = useUiStore.getState().cursorCoords;
+              if (!current || current[0] !== x || current[1] !== z) {
+                useUiStore.getState().setCursorCoords([x, z]);
+              }
             }}
             onPointerLeave={() => {
               useUiStore.getState().setCursorCoords(null);

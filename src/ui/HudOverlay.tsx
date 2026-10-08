@@ -6,6 +6,30 @@ export interface HudOverlayProps {
   className?: string;
 }
 
+/**
+ * Dedicated sub-component for cursor coordinates so high-frequency mouse moves
+ * do not re-render the validation list or other HUD widgets.
+ */
+const HudCursorDisplay: React.FC = () => {
+  const cursorCoords = useUiStore((state) => state.cursorCoords);
+
+  return (
+    <div data-testid="hud-cursor-coords" className="flex items-center gap-1.5 font-mono">
+      <span className="text-neutral-500">📍</span>
+      <span>
+        {cursorCoords ? (
+          <>
+            <strong className="text-white">{cursorCoords[0].toFixed(2)}</strong>m,{' '}
+            <strong className="text-white">{cursorCoords[1].toFixed(2)}</strong>m
+          </>
+        ) : (
+          <span className="text-neutral-500">-- , --</span>
+        )}
+      </span>
+    </div>
+  );
+};
+
 export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
   const room = useSceneStore((state) => state.room);
   const selectedObjectId = useSceneStore((state) => state.selectedObjectId);
@@ -18,7 +42,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
   const toolMode = useUiStore((state) => state.toolMode);
   const snapEnabled = useUiStore((state) => state.snapEnabled);
   const gridStep = useUiStore((state) => state.gridStep);
-  const cursorCoords = useUiStore((state) => state.cursorCoords);
 
   const [isIssuesOpen, setIsIssuesOpen] = useState(false);
 
@@ -147,19 +170,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
         className="pointer-events-auto bg-neutral-900/85 backdrop-blur-md px-3 py-2 rounded-xl border border-neutral-700/60 shadow-xl flex items-center gap-3 text-neutral-300"
       >
         {/* Cursor Coordinates */}
-        <div data-testid="hud-cursor-coords" className="flex items-center gap-1.5 font-mono">
-          <span className="text-neutral-500">📍</span>
-          <span>
-            {cursorCoords ? (
-              <>
-                <strong className="text-white">{cursorCoords[0].toFixed(2)}</strong>m,{' '}
-                <strong className="text-white">{cursorCoords[1].toFixed(2)}</strong>m
-              </>
-            ) : (
-              <span className="text-neutral-500">-- , --</span>
-            )}
-          </span>
-        </div>
+        <HudCursorDisplay />
 
         <span className="text-neutral-700">|</span>
 
