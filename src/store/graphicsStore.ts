@@ -16,23 +16,49 @@ export interface GraphicsState {
   setFps: (fps: number) => void;
 }
 
+const getInitialTheme = (): ThemeMode => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('airforce-theme') as ThemeMode | null;
+    if (saved === 'light' || saved === 'dark') return saved;
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      return 'light';
+    }
+  }
+  return 'dark';
+};
+
+const applyThemeToDOM = (theme: ThemeMode) => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
+    }
+  }
+};
+
+const initialTheme = getInitialTheme();
+applyThemeToDOM(initialTheme);
+
 export const useGraphicsStore = create<GraphicsState>()((set) => ({
   quality: 'Medium',
   wallOpacityMode: 'Auto-fade',
-  theme: 'dark',
+  theme: initialTheme,
   fps: 60,
 
   setQuality: (quality) => set({ quality }),
   setWallOpacityMode: (wallOpacityMode) => set({ wallOpacityMode }),
   setTheme: (theme) => {
     set({ theme });
-    if (typeof document !== 'undefined') {
-      if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
+    try {
+      localStorage.setItem('airforce-theme', theme);
+    } catch {
+      // ignore
     }
+    applyThemeToDOM(theme);
   },
   setFps: (fps) => set({ fps }),
 }));

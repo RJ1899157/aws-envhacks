@@ -8,10 +8,8 @@ import {
   RestoreSessionModal,
   OnboardingModal,
   ONBOARDING_STORAGE_KEY,
-  Outliner,
   CommandPalette,
   ShortcutCheatSheet,
-  SnapshotPanel,
   ContextMenu,
 } from '../ui';
 import { useAutosave } from '../store/useAutosave';
@@ -85,9 +83,7 @@ export const App: React.FC = () => {
       {/* Left Asset Library Sidebar */}
       <AssetLibrary />
 
-      {/* Right Contextual Inspector and Outliner */}
-      <Outliner />
-      <SnapshotPanel />
+      {/* Right Contextual Inspector */}
       <Inspector />
 
       {/* Bottom Status HUD */}

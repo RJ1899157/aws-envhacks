@@ -10,3 +10,4 @@ export * from './Outliner';
 export * from './CommandPalette';
 export * from './SnapshotPanel';
 export * from './ContextMenu';
+export * from './components';
