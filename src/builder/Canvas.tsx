@@ -15,11 +15,153 @@ import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { RoomShell } from './RoomShell';
 import { FloorPlanEditor } from './FloorPlanEditor';
+import { PlacedObjects } from './PlacedObjects';
+import { PlacementController } from './PlacementController';
+import { getCatalogAsset } from '../core/catalog';
+import { wallSegment } from '../core/parser';
+import { snap } from '../core/units';
 
 /**
  * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
  */
 export const sharedOrbitControlsRef = React.createRef<OrbitControlsImpl | null>();
+
+/**
+ * Handles HTML5 drag-and-drop of catalog assets directly onto the 3D canvas
+ */
+const CanvasDropListener: React.FC = () => {
+  const { gl, camera } = useThree();
+  const room = useSceneStore((state) => state.room);
+  const addObject = useSceneStore((state) => state.addObject);
+  const addOpening = useSceneStore((state) => state.addOpening);
+  const snapEnabled = useUiStore((state) => state.snapEnabled);
+  const gridStep = useUiStore((state) => state.gridStep);
+  const setActiveAssetId = useUiStore((state) => state.setActiveAssetId);
+  const setToolMode = useUiStore((state) => state.setToolMode);
+
+  useEffect(() => {
+    const dom = gl.domElement;
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      const assetId = e.dataTransfer?.getData('text/plain');
+      if (!assetId) return;
+
+      const catalogDef = getCatalogAsset(assetId);
+      if (!catalogDef) return;
+
+      const rect = dom.getBoundingClientRect();
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const hit = new THREE.Vector3();
+      const intersects = raycaster.ray.intersectPlane(groundPlane, hit);
+
+      if (!intersects) return;
+
+      if (catalogDef.wallMounted) {
+        if (room.outline.length < 2) return;
+        let closestWallIndex = 0;
+        let minDistance = Infinity;
+        let bestT = 0;
+
+        for (let i = 0; i < room.outline.length; i++) {
+          const seg = wallSegment(room, i);
+          const toCursorX = hit.x - seg.a[0];
+          const toCursorZ = hit.z - seg.a[1];
+          const t = toCursorX * seg.dir[0] + toCursorZ * seg.dir[1];
+          const clampedT = Math.max(0, Math.min(seg.len, t));
+          const projX = seg.a[0] + clampedT * seg.dir[0];
+          const projZ = seg.a[1] + clampedT * seg.dir[1];
+          const dist = Math.hypot(hit.x - projX, hit.z - projZ);
+
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestWallIndex = i;
+            bestT = t;
+          }
+        }
+
+        const seg = wallSegment(room, closestWallIndex);
+        const w = catalogDef.size[0];
+        const maxOffset = Math.max(0, seg.len - w);
+        let offset = Math.max(0, Math.min(maxOffset, bestT - w / 2));
+        if (snapEnabled) {
+          offset = snap(offset, gridStep);
+          offset = Math.max(0, Math.min(maxOffset, offset));
+        }
+
+        addOpening({
+          id: `op-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+          wallIndex: closestWallIndex,
+          type: catalogDef.id === 'door' ? 'door' : 'window',
+          offset,
+          width: catalogDef.size[0],
+          height: catalogDef.size[1],
+          sill: catalogDef.elevation,
+          role: catalogDef.id === 'door' ? 'closed' : 'inlet',
+          openFraction: 0,
+        });
+      } else {
+        let x = hit.x;
+        let z = hit.z;
+        if (snapEnabled) {
+          x = snap(x, gridStep);
+          z = snap(z, gridStep);
+        }
+
+        addObject({
+          id: `obj-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+          assetId: catalogDef.id,
+          name: catalogDef.label,
+          position: [x, 0, z],
+          rotation: [0, 0, 0],
+          size: [...catalogDef.size],
+          scale: [1, 1, 1],
+          elevation: catalogDef.elevation,
+          role: catalogDef.role,
+          wallMounted: false,
+          color: catalogDef.color,
+          defaultAirflow: catalogDef.defaultAirflow,
+        });
+      }
+
+      setActiveAssetId(null);
+      setToolMode('select');
+    };
+
+    dom.addEventListener('dragover', handleDragOver);
+    dom.addEventListener('drop', handleDrop);
+
+    return () => {
+      dom.removeEventListener('dragover', handleDragOver);
+      dom.removeEventListener('drop', handleDrop);
+    };
+  }, [
+    gl,
+    camera,
+    room,
+    snapEnabled,
+    gridStep,
+    addOpening,
+    addObject,
+    setActiveAssetId,
+    setToolMode,
+  ]);
+
+  return null;
+};
 
 /**
  * Blender-like X (Red) and Z (Blue) axis floor lines
@@ -339,6 +481,15 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
           {/* Interactive Floor Plan Editor (drawing, vertex handles, midpoint splits, live dimensions) */}
           <FloorPlanEditor />
+
+          {/* Placed Objects in the Room */}
+          <PlacedObjects />
+
+          {/* Interactive Placement Controller (Ghost preview, snapping, wall mounting) */}
+          <PlacementController />
+
+          {/* HTML5 Drag & Drop Listener */}
+          <CanvasDropListener />
 
           {/* Camera Controller & Keyboard Shortcuts */}
           <CameraController controlsRef={controlsRef} />

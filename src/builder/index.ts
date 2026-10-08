@@ -2,3 +2,6 @@ export * from './Canvas';
 export * from './ViewportCanvas';
 export * from './RoomShell';
 export * from './FloorPlanEditor';
+export * from './AssetMesh';
+export * from './PlacedObjects';
+export * from './PlacementController';

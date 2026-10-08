@@ -14,6 +14,7 @@ export const AssetDefSchema = z.object({
   wallMounted: z.boolean().optional(),
   color: z.string(),
   defaultAirflow: z.number().optional(), // airflow rate in m³/h
+  model: z.string().optional(), // optional path to GLTF/GLB model
 });
 export type AssetDef = z.infer<typeof AssetDefSchema>;
 

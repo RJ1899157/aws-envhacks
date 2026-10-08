@@ -66,6 +66,7 @@ export const ObjectSchema = z.object({
   position: Vec3Schema, // [x, y, z] in meters
   rotation: Vec3Schema.default([0, 0, 0]), // [rx, ry, rz] Euler angles in radians
   size: PositiveVec3Schema, // [width, height, depth] in meters (all > 0)
+  scale: Vec3Schema.optional(), // optional [sx, sy, sz] multiplier
   elevation: z.number().default(0), // elevation offset from floor in meters
   role: AirflowRoleSchema.default('solid'),
   wallMounted: z.boolean().default(false),
