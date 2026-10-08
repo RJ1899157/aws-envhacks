@@ -53,6 +53,21 @@ const CanvasDropListener: React.FC = () => {
 
     const handleDrop = (e: DragEvent) => {
       e.preventDefault();
+
+      // Check if a .json room file was dropped onto the canvas
+      const file = e.dataTransfer?.files?.[0];
+      if (file && (file.name.toLowerCase().endsWith('.json') || file.type === 'application/json')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const text = event.target?.result as string;
+          if (text) {
+            window.dispatchEvent(new CustomEvent('airforce:import-json', { detail: text }));
+          }
+        };
+        reader.readAsText(file);
+        return;
+      }
+
       const assetId = e.dataTransfer?.getData('text/plain');
       if (!assetId) return;
 
@@ -499,6 +514,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
         gl={{
           antialias: true,
           alpha: false,
+          preserveDrawingBuffer: true,
           powerPreference: 'high-performance',
         }}
         className="w-full h-full"

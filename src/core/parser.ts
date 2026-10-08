@@ -1,5 +1,6 @@
 import { getCatalogAsset } from './catalog';
 import { RoomSchema, type Opening, type Room, type SceneObject, type Vec2 } from './schema';
+import { migrateRoom } from './migration';
 
 export type IssueLevel = 'error' | 'warning';
 
@@ -204,8 +205,17 @@ export function isPolygonSimple(outline: readonly Vec2[]): boolean {
 export function parseRoom(raw: unknown): ParseResult {
   const issues: ParseIssue[] = [];
 
+  // 0. Schema Migration
+  const migration = migrateRoom(raw);
+  for (const warning of migration.warnings) {
+    issues.push({
+      level: 'warning',
+      message: warning,
+    });
+  }
+
   // 1. Validate with RoomSchema
-  const schemaResult = RoomSchema.safeParse(raw);
+  const schemaResult = RoomSchema.safeParse(migration.room);
   if (!schemaResult.success) {
     for (const issue of schemaResult.error.issues) {
       issues.push({

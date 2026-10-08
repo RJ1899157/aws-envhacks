@@ -1,7 +1,11 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useSceneStore, useUiStore } from '../store';
+import { createStudioSample, createBedroomSample, createLivingRoomSample } from '../core/samples';
 import { createSampleRoom } from '../core/sampleRoom';
+import { parseRoom, type ParseIssue } from '../core/parser';
+import { captureCanvasScreenshot } from '../builder/screenshot';
+import { ImportIssuesModal } from './ImportIssuesModal';
 
 export interface ToolbarProps {
   className?: string;
@@ -10,12 +14,22 @@ export interface ToolbarProps {
 export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Modal state for import issues
+  const [importModal, setImportModal] = useState<{
+    isOpen: boolean;
+    issues: ParseIssue[];
+    hasErrors: boolean;
+  }>({
+    isOpen: false,
+    issues: [],
+    hasErrors: false,
+  });
+
   // Store state
   const room = useSceneStore((state) => state.room);
   const resetRoom = useSceneStore((state) => state.resetRoom);
   const loadRoom = useSceneStore((state) => state.loadRoom);
   const exportRoom = useSceneStore((state) => state.exportRoom);
-  const importRoom = useSceneStore((state) => state.importRoom);
 
   // UI state
   const toolMode = useUiStore((state) => state.toolMode);
@@ -73,16 +87,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
     };
   }, [room.openings]);
 
-  // Export JSON handler
+  // Export JSON handler with validation
   const handleExportJson = useCallback(() => {
     try {
+      const validation = parseRoom(room);
+      if (validation.issues.some((i) => i.level === 'error')) {
+        const confirmed = confirm(
+          'Warning: The current room contains geometry/schema errors. Do you still wish to export room.json?'
+        );
+        if (!confirmed) return;
+      }
+
       const json = exportRoom();
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const safeName = (room.name || 'room').toLowerCase().replace(/[^a-z0-9]+/g, '_');
-      a.download = `${safeName}.json`;
+      a.download = 'room.json';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -90,7 +111,67 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
     } catch (err) {
       console.error('Failed to export room JSON:', err);
     }
-  }, [exportRoom, room.name]);
+  }, [exportRoom, room]);
+
+  // Unified JSON import processing logic (used by file picker and canvas drop)
+  const processImportContent = useCallback(
+    (content: string) => {
+      try {
+        const parsed = JSON.parse(content);
+        const result = parseRoom(parsed);
+        const hasErrors = result.issues.some((i) => i.level === 'error');
+
+        if (hasErrors) {
+          // Block loading, show errors in modal
+          setImportModal({
+            isOpen: true,
+            issues: result.issues,
+            hasErrors: true,
+          });
+          return;
+        }
+
+        // Only load when no errors exist
+        if (result.room) {
+          loadRoom(result.room);
+          if (result.issues.length > 0) {
+            // Show warnings notice
+            setImportModal({
+              isOpen: true,
+              issues: result.issues,
+              hasErrors: false,
+            });
+          }
+        }
+      } catch (err) {
+        setImportModal({
+          isOpen: true,
+          issues: [
+            {
+              level: 'error',
+              message: `Invalid JSON syntax: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          hasErrors: true,
+        });
+      }
+    },
+    [loadRoom]
+  );
+
+  // Listen to drag-and-drop JSON event from Canvas
+  useEffect(() => {
+    const handleDropJson = (e: Event) => {
+      const custom = e as CustomEvent<string>;
+      if (custom.detail) {
+        processImportContent(custom.detail);
+      }
+    };
+    window.addEventListener('airforce:import-json', handleDropJson);
+    return () => {
+      window.removeEventListener('airforce:import-json', handleDropJson);
+    };
+  }, [processImportContent]);
 
   // Import JSON handler
   const handleImportClick = useCallback(() => {
@@ -104,26 +185,21 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
 
       const reader = new FileReader();
       reader.onload = (event) => {
-        try {
-          const content = event.target?.result as string;
-          const result = importRoom(content);
-          if (!result.success) {
-            const errorMsgs = result.issues
-              .filter((i) => i.level === 'error')
-              .map((i) => i.message)
-              .join('\n');
-            alert(`Failed to import room:\n${errorMsgs}`);
-          }
-        } catch (err) {
-          alert(`Invalid JSON file: ${err instanceof Error ? err.message : String(err)}`);
+        const content = event.target?.result as string;
+        if (content) {
+          processImportContent(content);
         }
       };
       reader.readAsText(file);
-      // Reset input value so re-selecting same file triggers change
       e.target.value = '';
     },
-    [importRoom]
+    [processImportContent]
   );
+
+  // PNG Screenshot handler
+  const handleScreenshot = useCallback(() => {
+    captureCanvasScreenshot(room.name);
+  }, [room.name]);
 
   // New room & sample room handlers
   const handleNewRoom = useCallback(() => {
@@ -372,8 +448,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           </button>
         </div>
 
-        {/* File Actions: Import, Export, New Room, Load Sample */}
+        {/* File Actions: Screenshot, Import, Export, New Room, Load Samples */}
         <div className="flex items-center gap-1 pl-1 border-l border-neutral-800">
+          <button
+            type="button"
+            data-testid="screenshot-btn"
+            onClick={handleScreenshot}
+            className="px-2 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/60 transition-colors"
+            title="Export PNG Screenshot of current view"
+          >
+            📷 Screenshot
+          </button>
           <button
             type="button"
             data-testid="import-json-btn"
@@ -388,7 +473,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
             data-testid="export-json-btn"
             onClick={handleExportJson}
             className="px-2 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/60 transition-colors"
-            title="Export Room JSON"
+            title="Export Room JSON (validates before download)"
           >
             Export
           </button>
@@ -401,17 +486,51 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           >
             New
           </button>
+
+          {/* Sample Rooms Selector Dropdown */}
+          <select
+            data-testid="sample-room-select"
+            defaultValue=""
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === 'studio') loadRoom(createStudioSample());
+              else if (val === 'bedroom') loadRoom(createBedroomSample());
+              else if (val === 'living') loadRoom(createLivingRoomSample());
+              else if (val === 'default') handleLoadSampleRoom();
+              e.target.value = '';
+            }}
+            className="px-2 py-1 rounded-lg bg-sky-700/80 hover:bg-sky-600 text-white font-medium border border-sky-500/60 transition-colors shadow-sm text-xs cursor-pointer focus:outline-none"
+            title="Load Pre-configured Sample Rooms"
+          >
+            <option value="" disabled>
+              Samples ▾
+            </option>
+            <option value="studio">Studio (3.5x4m)</option>
+            <option value="bedroom">Bedroom (4x3.5m)</option>
+            <option value="living">L-Shaped Living Room</option>
+            <option value="default">Master Suite</option>
+          </select>
+
+          {/* Legacy button for test backwards compatibility */}
           <button
             type="button"
             data-testid="load-sample-room-btn"
             onClick={handleLoadSampleRoom}
-            className="px-2 py-1 rounded-lg bg-sky-700/80 hover:bg-sky-600 text-white font-medium border border-sky-500/60 transition-colors shadow-sm"
-            title="Load furnished sample master suite"
+            className="hidden"
+            aria-hidden="true"
           >
             Sample Room
           </button>
         </div>
       </div>
+
+      {/* Import Issues Modal */}
+      <ImportIssuesModal
+        isOpen={importModal.isOpen}
+        issues={importModal.issues}
+        hasErrors={importModal.hasErrors}
+        onClose={() => setImportModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </header>
   );
 };

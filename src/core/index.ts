@@ -7,3 +7,5 @@ export * from './parser';
 export * from './types';
 export * from './collision';
 export * from './sampleRoom';
+export * from './migration';
+export * from './samples';
