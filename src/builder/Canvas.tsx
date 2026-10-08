@@ -21,6 +21,7 @@ import { getCatalogAsset } from '../core/catalog';
 import { wallSegment } from '../core/parser';
 import { snap } from '../core/units';
 import { SelectionGizmo } from './SelectionGizmo';
+import { DirectObjectManipulator } from './DirectObjectManipulator';
 import { OpeningTaggingPanel } from './OpeningTaggingPanel';
 import { VoxelDebugMesh, VoxelDebugControls } from './VoxelDebug';
 import { ScaleReference } from './ScaleReference';
@@ -626,8 +627,11 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {/* Interactive Scale Reference (1.7m human & 1.0m³ cube) */}
           <ScaleReference />
 
-          {/* Interactive Selection & Transform Gizmo */}
+          {/* Interactive Selection & Transform Gizmo (Precision Mode) */}
           <SelectionGizmo />
+
+          {/* Direct Object Manipulation (Direct Drag, Smart Snap, Alignment Guides, Rotation Handle) */}
+          <DirectObjectManipulator />
 
           {/* Floating Opening Tagging Panel (Role buttons, open-fraction, dimensions) */}
           <OpeningTaggingPanel />

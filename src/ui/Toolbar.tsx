@@ -51,6 +51,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
   const toggleVoxelDebug = useUiStore((state) => state.toggleVoxelDebug);
   const showScaleReference = useUiStore((state) => state.showScaleReference);
   const toggleScaleReference = useUiStore((state) => state.toggleScaleReference);
+  const showPrecisionGizmo = useUiStore((state) => state.showPrecisionGizmo);
+  const togglePrecisionGizmo = useUiStore((state) => state.togglePrecisionGizmo);
+  const autoOrientToWall = useUiStore((state) => state.autoOrientToWall);
+  const toggleAutoOrientToWall = useUiStore((state) => state.toggleAutoOrientToWall);
 
   // Zundo temporal undo/redo reactive bindings via useStore
   const pastStates = useStore(useSceneStore.temporal, (state) => state.pastStates);
@@ -293,9 +297,25 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
           onClick={() => setTransformMode(transformMode === 'translate' ? 'rotate' : 'translate')}
           aria-label="Toggle transform mode: Move (G) or Rotate (R)"
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 font-medium border border-neutral-700/60 transition-colors shadow-sm"
-          title="Toggle Move (G) / Rotate (R) gizmo"
+          title="Toggle Move (G) / Rotate (R) mode"
         >
           <span>{transformMode === 'translate' ? '↔ Move' : '↻ Rotate'}</span>
+        </button>
+
+        {/* Optional Precision Mode Gizmo Toggle (Default: OFF) */}
+        <button
+          type="button"
+          data-testid="toggle-gizmo-btn"
+          onClick={togglePrecisionGizmo}
+          aria-label="Toggle Precision Transform Gizmo Arrows (Default: Off)"
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium border transition-colors shadow-sm ${
+            showPrecisionGizmo
+              ? 'bg-amber-600/80 border-amber-400 text-white font-semibold'
+              : 'bg-neutral-800/80 hover:bg-neutral-700 border-neutral-700/60 text-neutral-400'
+          }`}
+          title="Toggle 3D Precision Gizmo Arrows (Default: Off, Direct Drag active)"
+        >
+          <span>🎯 Gizmo: {showPrecisionGizmo ? 'On' : 'Off'}</span>
         </button>
 
         {/* 2D / 3D Toggle */}
@@ -398,6 +418,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
             <option value="0.25">0.25 m (25 cm)</option>
           </select>
         </div>
+
+        {/* Auto-orient to Wall Toggle */}
+        <button
+          type="button"
+          data-testid="toggle-auto-orient-btn"
+          onClick={toggleAutoOrientToWall}
+          aria-label="Toggle Auto-orient to wall"
+          className={`px-2 py-1 rounded-lg font-medium border transition-colors shadow-sm ${
+            autoOrientToWall
+              ? 'bg-sky-600/80 border-sky-400 text-white font-semibold'
+              : 'bg-neutral-800/80 hover:bg-neutral-700 border-neutral-700/60 text-neutral-400'
+          }`}
+          title="Auto-orient objects near a wall to face into the room"
+        >
+          Auto-orient: {autoOrientToWall ? 'On' : 'Off'}
+        </button>
 
         {/* Dimension Labels Toggle */}
         <button

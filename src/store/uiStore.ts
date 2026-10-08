@@ -29,6 +29,8 @@ export interface UiState {
   showSolidVoxels: boolean;
   voxelStats: import('../core/voxelizer').VoxelStats | null;
   showScaleReference: boolean;
+  showPrecisionGizmo: boolean;
+  autoOrientToWall: boolean;
 
   // Actions
   setToolMode: (mode: ToolMode) => void;
@@ -40,6 +42,10 @@ export interface UiState {
   setRotationSnapDeg: (deg: number) => void;
   setTransformY: (enabled: boolean) => void;
   toggleTransformY: () => void;
+  setShowPrecisionGizmo: (show: boolean) => void;
+  togglePrecisionGizmo: () => void;
+  setAutoOrientToWall: (autoOrient: boolean) => void;
+  toggleAutoOrientToWall: () => void;
   setNumericInputBuffer: (buffer: string | null) => void;
   setIsCollisionWarning: (warning: boolean) => void;
   setShowDimensions: (show: boolean) => void;
@@ -85,6 +91,8 @@ export const initialUiState = {
   showSolidVoxels: true,
   voxelStats: null as import('../core/voxelizer').VoxelStats | null,
   showScaleReference: false,
+  showPrecisionGizmo: false, // Default OFF as requested
+  autoOrientToWall: false, // Opt-in toggle as requested
 };
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -99,6 +107,10 @@ export const useUiStore = create<UiState>()((set) => ({
   setRotationSnapDeg: (rotationSnapDeg) => set({ rotationSnapDeg }),
   setTransformY: (transformY) => set({ transformY }),
   toggleTransformY: () => set((state) => ({ transformY: !state.transformY })),
+  setShowPrecisionGizmo: (showPrecisionGizmo) => set({ showPrecisionGizmo }),
+  togglePrecisionGizmo: () => set((state) => ({ showPrecisionGizmo: !state.showPrecisionGizmo })),
+  setAutoOrientToWall: (autoOrientToWall) => set({ autoOrientToWall }),
+  toggleAutoOrientToWall: () => set((state) => ({ autoOrientToWall: !state.autoOrientToWall })),
   setNumericInputBuffer: (numericInputBuffer) => set({ numericInputBuffer }),
   setIsCollisionWarning: (isCollisionWarning) => set({ isCollisionWarning }),
   setShowDimensions: (showDimensions) => set({ showDimensions }),

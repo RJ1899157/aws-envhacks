@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { getCatalogAsset, type FitMode, type SourceUnit } from '../core/catalog';
 import { normalizeModel } from '../core/modelNormalizer';
 import type { AirflowRole, SceneObject } from '../core/schema';
+import { registerObjectGroup, unregisterObjectGroup } from './objectRegistry';
 
 interface GLTFModelProps {
   url: string;
@@ -335,6 +336,17 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
   isValidPlacement = true,
   onPointerDown,
 }) => {
+  const groupRef = React.useRef<THREE.Group>(null);
+
+  React.useEffect(() => {
+    if (groupRef.current && object.id && !isGhost) {
+      registerObjectGroup(object.id, groupRef.current);
+      return () => {
+        unregisterObjectGroup(object.id);
+      };
+    }
+  }, [object.id, isGhost]);
+
   const catalogDef = getCatalogAsset(object.assetId);
 
   const role = object.role ?? catalogDef?.role ?? 'solid';
@@ -365,6 +377,7 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
 
   return (
     <group
+      ref={groupRef}
       name={`asset-${object.id}`}
       position={position}
       rotation={rotation}

@@ -52,6 +52,7 @@ export const SelectionGizmo: React.FC = () => {
   const gridStep = useUiStore((state) => state.gridStep);
   const rotationSnapDeg = useUiStore((state) => state.rotationSnapDeg);
   const transformY = useUiStore((state) => state.transformY);
+  const showPrecisionGizmo = useUiStore((state) => state.showPrecisionGizmo);
   const numericInputBuffer = useUiStore((state) => state.numericInputBuffer);
   const setNumericInputBuffer = useUiStore((state) => state.setNumericInputBuffer);
   const setIsCollisionWarning = useUiStore((state) => state.setIsCollisionWarning);
@@ -543,7 +544,7 @@ export const SelectionGizmo: React.FC = () => {
     updateOpening,
   ]);
 
-  if (!hasSelection || toolMode !== 'select') {
+  if (!hasSelection || toolMode !== 'select' || !showPrecisionGizmo) {
     return null;
   }
 

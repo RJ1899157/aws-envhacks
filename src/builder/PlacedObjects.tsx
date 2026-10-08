@@ -4,6 +4,7 @@ import { useSceneStore } from '../store/sceneStore';
 import { useUiStore, type ToolMode } from '../store/uiStore';
 import { AssetMesh } from './AssetMesh';
 import type { SceneObject } from '../core/schema';
+import { startDirectObjectDrag } from './DirectObjectManipulator';
 
 interface PlacedObjectItemProps {
   object: SceneObject;
@@ -25,6 +26,7 @@ const PlacedObjectItem = React.memo<PlacedObjectItemProps>(
         if (toolMode === 'select' && e.button === 0) {
           e.stopPropagation();
           onSelect(object.id, e.shiftKey);
+          startDirectObjectDrag(object.id, e);
         }
       },
       [toolMode, onSelect, object.id]
