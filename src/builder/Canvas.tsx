@@ -1,0 +1,374 @@
+import React, { Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
+import { Canvas as R3FCanvas, useFrame, useThree } from '@react-three/fiber';
+import {
+  GizmoHelper,
+  GizmoViewport,
+  Grid,
+  OrbitControls,
+  OrthographicCamera,
+  PerspectiveCamera,
+} from '@react-three/drei';
+import * as THREE from 'three';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { polygonBounds } from '../core/parser';
+import { useSceneStore } from '../store/sceneStore';
+import { useUiStore } from '../store/uiStore';
+
+/**
+ * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
+ */
+export const sharedOrbitControlsRef = React.createRef<OrbitControlsImpl | null>();
+
+/**
+ * Blender-like X (Red) and Z (Blue) axis floor lines
+ */
+export const BlenderAxisLines: React.FC = () => {
+  const xLine = useMemo(() => {
+    const geom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-500, 0.001, 0),
+      new THREE.Vector3(500, 0.001, 0),
+    ]);
+    const mat = new THREE.LineBasicMaterial({ color: 0xef4444, depthTest: true });
+    return new THREE.Line(geom, mat);
+  }, []);
+
+  const zLine = useMemo(() => {
+    const geom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0.001, -500),
+      new THREE.Vector3(0, 0.001, 500),
+    ]);
+    const mat = new THREE.LineBasicMaterial({ color: 0x3b82f6, depthTest: true });
+    return new THREE.Line(geom, mat);
+  }, []);
+
+  return (
+    <group name="blender-axes">
+      {/* X Axis (Red) */}
+      <primitive object={xLine} />
+      {/* Z Axis on XZ floor (Blue) */}
+      <primitive object={zLine} />
+    </group>
+  );
+};
+
+/**
+ * Floor outline visualization for the active room
+ */
+export const RoomFloorPreview: React.FC = () => {
+  const room = useSceneStore((state) => state.room);
+
+  const { floorShape, outlineLine } = useMemo(() => {
+    const shape = new THREE.Shape();
+    const points: THREE.Vector3[] = [];
+
+    if (room.outline.length >= 3) {
+      shape.moveTo(room.outline[0]![0], -room.outline[0]![1]);
+      points.push(new THREE.Vector3(room.outline[0]![0], 0.002, room.outline[0]![1]));
+
+      for (let i = 1; i < room.outline.length; i++) {
+        const pt = room.outline[i]!;
+        shape.lineTo(pt[0], -pt[1]);
+        points.push(new THREE.Vector3(pt[0], 0.002, pt[1]));
+      }
+      shape.closePath();
+      // Close loop
+      points.push(new THREE.Vector3(room.outline[0]![0], 0.002, room.outline[0]![1]));
+    }
+
+    const outlineGeom = new THREE.BufferGeometry().setFromPoints(points);
+    const outlineMat = new THREE.LineBasicMaterial({ color: 0x38bdf8 });
+    const lineObj = new THREE.Line(outlineGeom, outlineMat);
+
+    return { floorShape: shape, outlineLine: lineObj };
+  }, [room.outline]);
+
+  if (room.outline.length < 3) return null;
+
+  return (
+    <group name="room-floor-preview">
+      {/* Floor surface polygon */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0005, 0]} receiveShadow>
+        <shapeGeometry args={[floorShape]} />
+        <meshStandardMaterial
+          color="#27272a"
+          roughness={0.8}
+          polygonOffset
+          polygonOffsetFactor={1}
+          polygonOffsetUnits={1}
+        />
+      </mesh>
+
+      {/* Perimeter boundary line */}
+      <primitive object={outlineLine} />
+    </group>
+  );
+};
+
+interface CameraControllerProps {
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+}
+
+/**
+ * Handles smooth camera transitions, mode switching (2D/3D), and Blender keyboard shortcuts
+ */
+export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef }) => {
+  const { camera } = useThree();
+  const view = useUiStore((state) => state.view);
+  const room = useSceneStore((state) => state.room);
+
+  // Target animation state
+  const targetCamPos = useRef<THREE.Vector3>(new THREE.Vector3(8, 6, 8));
+  const targetLookAt = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.35, 0));
+  const isTransitioning = useRef<boolean>(false);
+
+  // Calculates room center and framing distance
+  const getRoomFraming = useCallback(() => {
+    const bounds = polygonBounds(room.outline);
+    const centerX = (bounds.min[0] + bounds.max[0]) / 2;
+    const centerZ = (bounds.min[1] + bounds.max[1]) / 2;
+    const centerY = room.wallHeight / 2;
+    const maxDim = Math.max(bounds.width, bounds.depth, room.wallHeight, 4);
+    const distance = maxDim * 1.6;
+
+    return {
+      center: new THREE.Vector3(centerX, centerY, centerZ),
+      floorCenter: new THREE.Vector3(centerX, 0, centerZ),
+      distance,
+    };
+  }, [room.outline, room.wallHeight]);
+
+  // Animate camera to specific preset views
+  const animateTo = (pos: THREE.Vector3, target: THREE.Vector3) => {
+    targetCamPos.current.copy(pos);
+    targetLookAt.current.copy(target);
+    isTransitioning.current = true;
+  };
+
+  // Keyboard shortcut handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore keystrokes when typing into input / textarea fields
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const { center, distance } = getRoomFraming();
+
+      // Numpad 7: Top View
+      if (e.code === 'Numpad7' || e.key === '7') {
+        e.preventDefault();
+        animateTo(new THREE.Vector3(center.x, center.y + distance, center.z + 0.0001), center);
+      }
+      // Numpad 1: Front View (along +Z looking towards -Z)
+      else if (e.code === 'Numpad1' || e.key === '1') {
+        e.preventDefault();
+        animateTo(new THREE.Vector3(center.x, center.y, center.z + distance), center);
+      }
+      // Numpad 3: Right View (along +X looking towards -X)
+      else if (e.code === 'Numpad3' || e.key === '3') {
+        e.preventDefault();
+        animateTo(new THREE.Vector3(center.x + distance, center.y, center.z), center);
+      }
+      // Numpad 5: Toggle 2D / 3D
+      else if (e.code === 'Numpad5' || e.key === '5') {
+        e.preventDefault();
+        const currentView = useUiStore.getState().view;
+        useUiStore.getState().setView(currentView === '3d' ? '2d' : '3d');
+      }
+      // Home: Frame the room
+      else if (e.code === 'Home' || e.key === 'Home') {
+        e.preventDefault();
+        if (view === '2d') {
+          animateTo(
+            new THREE.Vector3(center.x, center.y + distance * 1.2, center.z + 0.0001),
+            new THREE.Vector3(center.x, 0, center.z)
+          );
+        } else {
+          animateTo(
+            new THREE.Vector3(
+              center.x + distance * 0.7,
+              center.y + distance * 0.5,
+              center.z + distance * 0.7
+            ),
+            center
+          );
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [getRoomFraming, view]);
+
+  // Adjust camera when view mode switches between 2D and 3D
+  useEffect(() => {
+    const { center, distance } = getRoomFraming();
+
+    if (view === '2d') {
+      animateTo(
+        new THREE.Vector3(center.x, center.y + distance * 1.2, center.z + 0.0001),
+        new THREE.Vector3(center.x, 0, center.z)
+      );
+    } else {
+      animateTo(
+        new THREE.Vector3(
+          center.x + distance * 0.7,
+          center.y + distance * 0.5,
+          center.z + distance * 0.7
+        ),
+        center
+      );
+    }
+  }, [getRoomFraming, view]);
+
+  // Per-frame smooth transition lerp
+  useFrame((_, delta) => {
+    if (isTransitioning.current) {
+      const step = Math.min(delta * 9, 1);
+      camera.position.lerp(targetCamPos.current, step);
+
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(targetLookAt.current, step);
+        controlsRef.current.update();
+      }
+
+      const targetDist = controlsRef.current
+        ? controlsRef.current.target.distanceTo(targetLookAt.current)
+        : 0;
+
+      if (camera.position.distanceTo(targetCamPos.current) < 0.02 && targetDist < 0.02) {
+        camera.position.copy(targetCamPos.current);
+        controlsRef.current?.target.copy(targetLookAt.current);
+        controlsRef.current?.update();
+        isTransitioning.current = false;
+      }
+    }
+  });
+
+  return null;
+};
+
+export interface CanvasProps {
+  className?: string;
+}
+
+export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const isDragging = useSceneStore((state) => state.isDragging);
+  const view = useUiStore((state) => state.view);
+
+  // Sync ref to shared ref
+  useEffect(() => {
+    (sharedOrbitControlsRef as React.MutableRefObject<OrbitControlsImpl | null>).current =
+      controlsRef.current;
+  });
+
+  return (
+    <div
+      className={`relative w-full h-full overflow-hidden select-none bg-neutral-900 ${className}`}
+      onContextMenu={(e) => e.preventDefault()} // Allow right-click orbit without context menu
+    >
+      <R3FCanvas
+        shadows
+        gl={{
+          antialias: true,
+          alpha: false,
+          powerPreference: 'high-performance',
+        }}
+        className="w-full h-full"
+      >
+        <color attach="background" args={['#18181b']} />
+
+        {/* Dual camera setup with makeDefault toggle */}
+        {view === '3d' ? (
+          <PerspectiveCamera makeDefault position={[7, 5, 7]} fov={45} near={0.1} far={1000} />
+        ) : (
+          <OrthographicCamera
+            makeDefault
+            position={[0, 20, 0]}
+            zoom={55}
+            near={0.1}
+            far={1000}
+            up={[0, 0, -1]} // Top-down view looking at XZ plane with -Z up
+          />
+        )}
+
+        <Suspense fallback={null}>
+          {/* Lighting */}
+          <ambientLight intensity={0.65} />
+          <directionalLight
+            position={[12, 20, 10]}
+            intensity={1.2}
+            castShadow
+            shadow-mapSize={[2048, 2048]}
+            shadow-camera-left={-12}
+            shadow-camera-right={12}
+            shadow-camera-top={12}
+            shadow-camera-bottom={-12}
+            shadow-camera-near={0.5}
+            shadow-camera-far={50}
+            shadow-bias={-0.0003}
+          />
+          <directionalLight position={[-12, 10, -10]} intensity={0.35} />
+
+          {/* Infinite Snap Grid: 1.0m major lines, 0.1m minor lines */}
+          <Grid
+            position={[0, 0, 0]}
+            infiniteGrid
+            cellSize={0.1}
+            cellThickness={0.6}
+            cellColor="#2e3039"
+            sectionSize={1.0}
+            sectionThickness={1.2}
+            sectionColor="#52525e"
+            fadeDistance={50}
+            fadeStrength={1.2}
+          />
+
+          {/* Blender X (Red) and Z (Blue) floor axis lines */}
+          <BlenderAxisLines />
+
+          {/* Room Floor Preview */}
+          <RoomFloorPreview />
+
+          {/* Camera Controller & Keyboard Shortcuts */}
+          <CameraController controlsRef={controlsRef} />
+
+          {/* Blender-like OrbitControls */}
+          <OrbitControls
+            ref={controlsRef}
+            makeDefault
+            enabled={!isDragging}
+            enableDamping
+            dampingFactor={0.05}
+            minDistance={0.5}
+            maxDistance={120}
+            minPolarAngle={0}
+            maxPolarAngle={view === '2d' ? 0 : Math.PI / 2 - 0.01} // Clamped above floor plane in 3D
+            enableRotate={view === '3d'} // Locked rotation in 2D mode
+            mouseButtons={{
+              LEFT: -1 as unknown as THREE.MOUSE, // Left click/drag reserved for object interaction
+              MIDDLE: THREE.MOUSE.PAN, // Middle-drag pan
+              RIGHT: THREE.MOUSE.ROTATE, // Right-drag orbit
+            }}
+          />
+
+          {/* Top-Right Axis Gizmo Viewport */}
+          <GizmoHelper alignment="top-right" margin={[70, 70]}>
+            <GizmoViewport
+              axisColors={['#ef4444', '#22c55e', '#3b82f6']}
+              labelColor="#ffffff"
+              labels={['X', 'Y', 'Z']}
+            />
+          </GizmoHelper>
+        </Suspense>
+      </R3FCanvas>
+    </div>
+  );
+};
+
+export default Canvas;
