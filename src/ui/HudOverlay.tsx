@@ -42,6 +42,8 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
   const toolMode = useUiStore((state) => state.toolMode);
   const snapEnabled = useUiStore((state) => state.snapEnabled);
   const gridStep = useUiStore((state) => state.gridStep);
+  const showVoxelDebug = useUiStore((state) => state.showVoxelDebug);
+  const voxelStats = useUiStore((state) => state.voxelStats);
 
   const [isIssuesOpen, setIsIssuesOpen] = useState(false);
 
@@ -197,6 +199,26 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
           <span className="text-neutral-400">Selected:</span>
           <span className="font-semibold text-neutral-200">{selectionLabel}</span>
         </div>
+
+        {/* Voxel Grid Memory / Time Stats */}
+        {showVoxelDebug && voxelStats && (
+          <>
+            <span className="text-neutral-700">|</span>
+            <div
+              data-testid="hud-voxel-stats"
+              className="flex items-center gap-1.5 font-mono text-purple-300"
+            >
+              <span className="text-xs">🧊</span>
+              <span>
+                <strong>{(voxelStats.cellCount / 1000).toFixed(0)}k</strong> cells (
+                <strong className="text-neutral-200">
+                  {(voxelStats.memoryBytes / 1024).toFixed(1)} KB
+                </strong>
+                , <strong className="text-emerald-400">{voxelStats.computeTimeMs}ms</strong>)
+              </span>
+            </div>
+          </>
+        )}
 
         <span className="text-neutral-700">|</span>
 

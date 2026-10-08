@@ -9,3 +9,4 @@ export * from './collision';
 export * from './sampleRoom';
 export * from './migration';
 export * from './samples';
+export * from './voxelizer';

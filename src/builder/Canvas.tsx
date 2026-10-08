@@ -22,6 +22,7 @@ import { wallSegment } from '../core/parser';
 import { snap } from '../core/units';
 import { SelectionGizmo } from './SelectionGizmo';
 import { OpeningTaggingPanel } from './OpeningTaggingPanel';
+import { VoxelDebugMesh, VoxelDebugControls } from './VoxelDebug';
 
 /**
  * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
@@ -658,6 +659,9 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
             }}
           />
 
+          {/* Voxel Domain Debug Visualizer (non-fluid InstancedMesh cubes) */}
+          <VoxelDebugMesh />
+
           {/* Top-Right Axis Gizmo Viewport */}
           <GizmoHelper alignment="top-right" margin={[70, 70]}>
             <GizmoViewport
@@ -668,6 +672,9 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           </GizmoHelper>
         </Suspense>
       </R3FCanvas>
+
+      {/* Floating Voxel Debug Controls (Y-slice slider, opacity, solid toggle, legend) */}
+      <VoxelDebugControls />
     </div>
   );
 };

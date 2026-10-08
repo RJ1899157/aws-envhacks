@@ -46,6 +46,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
   const toggleDimensions = useUiStore((state) => state.toggleDimensions);
   const showCeiling = useUiStore((state) => state.showCeiling);
   const toggleCeiling = useUiStore((state) => state.toggleCeiling);
+  const showVoxelDebug = useUiStore((state) => state.showVoxelDebug);
+  const toggleVoxelDebug = useUiStore((state) => state.toggleVoxelDebug);
 
   // Zundo temporal undo/redo reactive bindings via useStore
   const pastStates = useStore(useSceneStore.temporal, (state) => state.pastStates);
@@ -414,6 +416,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '' }) => {
           title="Toggle Room Ceiling"
         >
           Ceiling: {showCeiling ? 'On' : 'Off'}
+        </button>
+
+        {/* Voxel Domain Debug Toggle */}
+        <button
+          type="button"
+          data-testid="toggle-voxels-btn"
+          onClick={toggleVoxelDebug}
+          className={`px-2.5 py-1 rounded-lg font-medium border transition-colors shadow-sm flex items-center gap-1.5 ${
+            showVoxelDebug
+              ? 'bg-purple-600 border-purple-400 text-white font-semibold shadow-purple-900/30'
+              : 'bg-neutral-800/80 hover:bg-neutral-700 border-neutral-700/60 text-neutral-300'
+          }`}
+          title="Toggle Voxel Domain Debug View"
+        >
+          <span>🧊</span>
+          <span>Voxels: {showVoxelDebug ? 'On' : 'Off'}</span>
         </button>
 
         {/* Undo / Redo */}

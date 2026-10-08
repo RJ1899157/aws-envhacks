@@ -8,3 +8,4 @@ export * from './PlacementController';
 export * from './SelectionGizmo';
 export * from './OpeningTaggingPanel';
 export * from './screenshot';
+export * from './VoxelDebug';

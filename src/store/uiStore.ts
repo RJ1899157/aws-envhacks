@@ -23,6 +23,11 @@ export interface UiState {
   isCollisionWarning: boolean;
   cursorCoords: [number, number] | null;
   isPlacingPollutantSource: boolean;
+  showVoxelDebug: boolean;
+  voxelSliceY: number | null;
+  voxelOpacity: number;
+  showSolidVoxels: boolean;
+  voxelStats: import('../core/voxelizer').VoxelStats | null;
 
   // Actions
   setToolMode: (mode: ToolMode) => void;
@@ -45,6 +50,12 @@ export interface UiState {
   setGhostPosition: (pos: Vec3 | null) => void;
   setCursorCoords: (coords: [number, number] | null) => void;
   setIsPlacingPollutantSource: (placing: boolean) => void;
+  setShowVoxelDebug: (show: boolean) => void;
+  toggleVoxelDebug: () => void;
+  setVoxelSliceY: (slice: number | null) => void;
+  setVoxelOpacity: (opacity: number) => void;
+  setShowSolidVoxels: (show: boolean) => void;
+  setVoxelStats: (stats: import('../core/voxelizer').VoxelStats | null) => void;
   resetUi: () => void;
 }
 
@@ -65,6 +76,11 @@ export const initialUiState = {
   ghostPosition: null as Vec3 | null,
   cursorCoords: null as [number, number] | null,
   isPlacingPollutantSource: false,
+  showVoxelDebug: false,
+  voxelSliceY: null as number | null,
+  voxelOpacity: 0.65,
+  showSolidVoxels: true,
+  voxelStats: null as import('../core/voxelizer').VoxelStats | null,
 };
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -90,5 +106,11 @@ export const useUiStore = create<UiState>()((set) => ({
   setGhostPosition: (ghostPosition) => set({ ghostPosition }),
   setCursorCoords: (cursorCoords) => set({ cursorCoords }),
   setIsPlacingPollutantSource: (isPlacingPollutantSource) => set({ isPlacingPollutantSource }),
+  setShowVoxelDebug: (showVoxelDebug) => set({ showVoxelDebug }),
+  toggleVoxelDebug: () => set((state) => ({ showVoxelDebug: !state.showVoxelDebug })),
+  setVoxelSliceY: (voxelSliceY) => set({ voxelSliceY }),
+  setVoxelOpacity: (voxelOpacity) => set({ voxelOpacity }),
+  setShowSolidVoxels: (showSolidVoxels) => set({ showSolidVoxels }),
+  setVoxelStats: (voxelStats) => set({ voxelStats }),
   resetUi: () => set(initialUiState),
 }));
