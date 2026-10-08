@@ -41,18 +41,36 @@ export const OpeningTypeSchema = z.enum(['window', 'door']);
 export type OpeningType = z.infer<typeof OpeningTypeSchema>;
 
 /**
+ * Architectural opening specific subtype presets
+ */
+export const OpeningSubTypeSchema = z.enum([
+  'single-door',
+  'double-door',
+  'sliding-door',
+  'archway',
+  'window',
+  'wide-window',
+  'french-window',
+  'vent',
+]);
+export type OpeningSubType = z.infer<typeof OpeningSubTypeSchema>;
+
+/**
  * Wall opening schema (windows and doors)
  */
 export const OpeningSchema = z.object({
   id: z.string().min(1),
   wallIndex: z.number().int().nonnegative('Wall index must be a non-negative integer'),
   type: OpeningTypeSchema,
+  subType: OpeningSubTypeSchema.optional(),
   offset: z.number().nonnegative('Opening offset must be non-negative'),
   width: z.number().positive('Opening width must be positive'),
   height: z.number().positive('Opening height must be positive'),
   sill: z.number().nonnegative('Sill height must be non-negative'),
   role: OpeningRoleSchema.default('closed'),
   openFraction: z.number().min(0).max(1).default(0),
+  flipHinge: z.boolean().optional(),
+  flipSwing: z.boolean().optional(),
 });
 export type Opening = z.infer<typeof OpeningSchema>;
 

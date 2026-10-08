@@ -3,7 +3,12 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { isPolygonSimple, polygonBounds, signedArea, wallSegment } from '../core/parser';
-import type { Vec2 } from '../core/schema';
+import type { OpeningSubType, Vec2 } from '../core/schema';
+import {
+  createOpeningFromPreset,
+  OPENING_PRESETS,
+  resolveOpeningOverlapOnWall,
+} from '../core/openingPresets';
 import { snap } from '../core/units';
 import {
   moveWallPerpendicular,
@@ -15,6 +20,7 @@ import { useUiStore } from '../store/uiStore';
 import { sharedOrbitControlsRef } from './Canvas';
 
 export const FloorPlanEditor: React.FC = () => {
+  const room = useSceneStore((state) => state.room);
   const outline = useSceneStore((state) => state.room.outline);
   const moveVertex = useSceneStore((state) => state.moveVertex);
   const setOutline = useSceneStore((state) => state.setOutline);
@@ -23,6 +29,8 @@ export const FloorPlanEditor: React.FC = () => {
   const extrudeWall = useSceneStore((state) => state.extrudeWall);
   const setWallLength = useSceneStore((state) => state.setWallLength);
   const splitWall = useSceneStore((state) => state.splitWall);
+  const addOpening = useSceneStore((state) => state.addOpening);
+  const updateOpening = useSceneStore((state) => state.updateOpening);
   const mergeCorner = useSceneStore((state) => state.mergeCorner);
   const moveRoom = useSceneStore((state) => state.moveRoom);
   const scaleRoom = useSceneStore((state) => state.scaleRoom);
@@ -92,6 +100,15 @@ export const FloorPlanEditor: React.FC = () => {
   const [popoverWallIndex, setPopoverWallIndex] = useState<number | null>(null);
   const [popoverLength, setPopoverLength] = useState<string>('');
   const [popoverAnchor, setPopoverAnchor] = useState<LengthAnchor>('center');
+
+  // -------------------------------------------------------------
+  // WALL OPENING QUICK MENU (Double-click wall body)
+  // -------------------------------------------------------------
+  const [wallQuickMenu, setWallQuickMenu] = useState<{
+    wallIndex: number;
+    position: [number, number, number];
+    clickOffset: number;
+  } | null>(null);
 
   // Blender-style numeric input while dragging or editing vertex
   const [numericInput, setNumericInput] = useState<string>('');
@@ -549,15 +566,54 @@ export const FloorPlanEditor: React.FC = () => {
     [toolMode, outline, setSelectedWallIndex, setSelectedVertexIndex, setIsDragging]
   );
 
-  // Double-click wall body to split wall at cursor
+  // Double-click wall body to open opening quick menu at cursor
   const handleWallDoubleClick = useCallback(
     (index: number, e: ThreeEvent<MouseEvent>) => {
       if (toolMode !== 'select') return;
       e.stopPropagation();
-      splitWall(index, [e.point.x, e.point.z]);
-      setSelectedWallIndex(null);
+      const seg = wallSegment(room, index);
+      const toCursorX = e.point.x - seg.a[0];
+      const toCursorZ = e.point.z - seg.a[1];
+      const cursorT = toCursorX * seg.dir[0] + toCursorZ * seg.dir[1];
+      setWallQuickMenu({
+        wallIndex: index,
+        position: [e.point.x, 0.25, e.point.z],
+        clickOffset: Math.max(0, Math.min(seg.len, cursorT)),
+      });
+      setSelectedWallIndex(index);
     },
-    [toolMode, splitWall, setSelectedWallIndex]
+    [toolMode, room, setSelectedWallIndex]
+  );
+
+  const handleAddOpeningFromMenu = useCallback(
+    (subType: OpeningSubType) => {
+      if (!wallQuickMenu) return;
+      const preset = OPENING_PRESETS[subType];
+      const targetWall = wallQuickMenu.wallIndex;
+      const seg = wallSegment(room, targetWall);
+      const maxOffset = Math.max(0, seg.len - preset.width);
+      let targetOffset = wallQuickMenu.clickOffset - preset.width / 2;
+      targetOffset = Math.max(0, Math.min(maxOffset, targetOffset));
+
+      const resolution = resolveOpeningOverlapOnWall(
+        room,
+        targetWall,
+        targetOffset,
+        preset.width
+      );
+
+      if (!resolution.canPlace) {
+        setToastMessage(resolution.errorMessage ?? 'Openings cannot overlap on the same wall');
+      } else {
+        const opening = createOpeningFromPreset(subType, targetWall, resolution.finalOffset);
+        addOpening(opening);
+        for (const pushed of resolution.pushedOpenings) {
+          updateOpening(pushed.id, { offset: pushed.offset });
+        }
+      }
+      setWallQuickMenu(null);
+    },
+    [wallQuickMenu, room, addOpening, updateOpening, setToastMessage]
   );
 
   // End dragging any element
@@ -974,6 +1030,119 @@ export const FloorPlanEditor: React.FC = () => {
               </Html>
             );
           })}
+
+          {/* Wall Opening Quick Menu (Triggered on Double-Clicking any wall) */}
+          {wallQuickMenu && (
+            <Html
+              center
+              position={wallQuickMenu.position}
+              zIndexRange={[160, 0]}
+              className="select-none pointer-events-auto"
+            >
+              <div
+                data-testid="wall-quick-menu"
+                className="bg-neutral-900/95 backdrop-blur-md border border-neutral-700/80 shadow-2xl rounded-xl p-2.5 text-neutral-200 w-52 flex flex-col gap-1.5 text-xs font-sans"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between pb-1.5 border-b border-neutral-800">
+                  <span className="font-semibold text-white text-[11px] uppercase tracking-wider">
+                    Add on Wall #{wallQuickMenu.wallIndex + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setWallQuickMenu(null)}
+                    className="text-neutral-400 hover:text-white p-0.5 rounded hover:bg-neutral-800 text-xs"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    data-testid="quick-add-door"
+                    onClick={() => handleAddOpeningFromMenu('single-door')}
+                    className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-sky-600/30 hover:border-sky-500/50 border border-transparent text-left transition-all group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-400">🚪</span>
+                      <span className="font-medium text-white group-hover:text-sky-300">Add Door</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 font-mono">0.9 m</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="quick-add-window"
+                    onClick={() => handleAddOpeningFromMenu('window')}
+                    className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-sky-600/30 hover:border-sky-500/50 border border-transparent text-left transition-all group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sky-400">🪟</span>
+                      <span className="font-medium text-white group-hover:text-sky-300">Add Window</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 font-mono">1.2 m</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="quick-add-wide-window"
+                    onClick={() => handleAddOpeningFromMenu('wide-window')}
+                    className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-sky-600/30 hover:border-sky-500/50 border border-transparent text-left transition-all group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sky-400">🪟</span>
+                      <span className="font-medium text-white group-hover:text-sky-300">Add Wide Window</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 font-mono">1.8 m</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="quick-add-archway"
+                    onClick={() => handleAddOpeningFromMenu('archway')}
+                    className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-sky-600/30 hover:border-sky-500/50 border border-transparent text-left transition-all group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-stone-300">🏛</span>
+                      <span className="font-medium text-white group-hover:text-sky-300">Add Archway</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 font-mono">1.0 m</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="quick-add-sliding-door"
+                    onClick={() => handleAddOpeningFromMenu('sliding-door')}
+                    className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-sky-600/30 hover:border-sky-500/50 border border-transparent text-left transition-all group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-400">↔</span>
+                      <span className="font-medium text-white group-hover:text-sky-300">Add Sliding Door</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 font-mono">1.8 m</span>
+                  </button>
+                </div>
+
+                <div className="border-t border-neutral-800 pt-1 mt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (wallQuickMenu) {
+                        splitWall(wallQuickMenu.wallIndex, [wallQuickMenu.position[0], wallQuickMenu.position[2]]);
+                        setWallQuickMenu(null);
+                      }
+                    }}
+                    className="w-full text-center py-1 text-[10px] text-neutral-400 hover:text-white hover:bg-neutral-800/80 rounded transition-colors cursor-pointer"
+                  >
+                    Split wall at this point
+                  </button>
+                </div>
+              </div>
+            </Html>
+          )}
 
           {/* 4. Live Degree Readout during Corner Angle Snapping */}
           {draggingVertexIndex !== null && cornerAngleDeg !== null && (

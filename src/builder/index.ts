@@ -7,6 +7,7 @@ export * from './PlacedObjects';
 export * from './PlacementController';
 export * from './SelectionGizmo';
 export * from './OpeningTaggingPanel';
+export * from './OpeningVisual';
 export * from './screenshot';
 export * from './VoxelDebug';
 export * from './CanvasErrorBoundary';

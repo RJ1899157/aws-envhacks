@@ -73,6 +73,8 @@ export interface SceneState {
   ) => void;
   updateOpening: (id: string, updates: Partial<Omit<Opening, 'id'>>) => void;
   removeOpening: (id: string) => void;
+  duplicateOpening: (id: string) => Opening | null;
+  flipOpening: (id: string, target?: 'hinge' | 'swing') => void;
   setOpeningRole: (id: string, role: OpeningRole) => void;
   setOpeningsRole: (ids: string[], role: OpeningRole) => void;
   setOpeningsOpenFraction: (ids: string[], fraction: number) => void;
@@ -464,6 +466,44 @@ export const useSceneStore = create<SceneState>()(
           state.room.openings = state.room.openings.filter((o) => o.id !== id);
           state.selectedOpeningIds = state.selectedOpeningIds.filter((oId) => oId !== id);
           state.selectedOpeningId = state.selectedOpeningIds[0] ?? null;
+        }),
+
+      duplicateOpening: (id) => {
+        let duplicated: Opening | null = null;
+        set((state) => {
+          const original = state.room.openings.find((o) => o.id === id);
+          if (!original) return;
+          const seg = wallSegment(state.room, original.wallIndex);
+          const maxOffset = Math.max(0, seg.len - original.width);
+          let newOffset = original.offset + original.width + 0.15;
+          if (newOffset > maxOffset) {
+            newOffset = Math.max(0, original.offset - original.width - 0.15);
+          }
+          const newId = `op-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+          duplicated = {
+            ...original,
+            id: newId,
+            offset: Number(newOffset.toFixed(4)),
+          };
+          state.room.openings.push(duplicated);
+          state.selectedOpeningId = newId;
+          state.selectedOpeningIds = [newId];
+          state.selectedObjectId = null;
+          state.selectedObjectIds = [];
+        });
+        return duplicated;
+      },
+
+      flipOpening: (id, target = 'hinge') =>
+        set((state) => {
+          const op = state.room.openings.find((o) => o.id === id);
+          if (op) {
+            if (target === 'hinge') {
+              op.flipHinge = !op.flipHinge;
+            } else {
+              op.flipSwing = !op.flipSwing;
+            }
+          }
         }),
 
       setOpeningRole: (id, role) =>

@@ -4,6 +4,7 @@ import {
   GizmoHelper,
   GizmoViewport,
   Grid,
+  Html,
   OrbitControls,
   OrthographicCamera,
   PerspectiveCamera,
@@ -20,6 +21,14 @@ import { PlacementController } from './PlacementController';
 import { getCatalogAsset } from '../core/catalog';
 import { wallSegment } from '../core/parser';
 import { snap } from '../core/units';
+import {
+  computeOpeningSnapGuides,
+  createOpeningFromPreset,
+  findNearestWallForPoint,
+  OPENING_PRESETS,
+  resolveOpeningOverlapOnWall,
+} from '../core/openingPresets';
+import type { OpeningSubType } from '../core/schema';
 import { SelectionGizmo } from './SelectionGizmo';
 import { DirectObjectManipulator } from './DirectObjectManipulator';
 import { OpeningTaggingPanel } from './OpeningTaggingPanel';
@@ -53,10 +62,55 @@ const CanvasDropListener: React.FC = () => {
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'copy';
       }
+
+      const activeAssetId = useUiStore.getState().activeAssetId;
+      if (!activeAssetId) return;
+      const catalogDef = getCatalogAsset(activeAssetId);
+      if (!catalogDef || !catalogDef.wallMounted) return;
+
+      const rect = dom.getBoundingClientRect();
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const hit = new THREE.Vector3();
+      if (!raycaster.ray.intersectPlane(groundPlane, hit)) return;
+
+      const nearest = findNearestWallForPoint(hit.x, hit.z, room);
+      if (nearest) {
+        const w = catalogDef.size[0];
+        const rawOffset = nearest.t - w / 2;
+        const snapRes = computeOpeningSnapGuides(
+          room,
+          nearest.wallIndex,
+          w,
+          rawOffset,
+          undefined,
+          gridStep
+        );
+        useUiStore.getState().setDraggedOpeningPreview({
+          wallIndex: nearest.wallIndex,
+          offset: snapEnabled ? snapRes.snappedOffset : Math.max(0, Math.min(nearest.seg.len - w, rawOffset)),
+          width: w,
+          height: catalogDef.size[1],
+          sill: catalogDef.elevation,
+          type: catalogDef.category === 'openings' && catalogDef.id.includes('door') ? 'door' : 'window',
+          subType: catalogDef.id,
+          snapLabel: snapRes.guideLabel,
+        });
+      }
+    };
+
+    const handleDragLeave = () => {
+      useUiStore.getState().setDraggedOpeningPreview(null);
     };
 
     const handleDrop = (e: DragEvent) => {
       e.preventDefault();
+      useUiStore.getState().setDraggedOpeningPreview(null);
 
       // Check if a .json room file was dropped onto the canvas
       const file = e.dataTransfer?.files?.[0];
@@ -93,47 +147,43 @@ const CanvasDropListener: React.FC = () => {
 
       if (catalogDef.wallMounted) {
         if (room.outline.length < 2) return;
-        let closestWallIndex = 0;
-        let minDistance = Infinity;
-        let bestT = 0;
+        const nearest = findNearestWallForPoint(hit.x, hit.z, room);
+        if (!nearest) return;
 
-        for (let i = 0; i < room.outline.length; i++) {
-          const seg = wallSegment(room, i);
-          const toCursorX = hit.x - seg.a[0];
-          const toCursorZ = hit.z - seg.a[1];
-          const t = toCursorX * seg.dir[0] + toCursorZ * seg.dir[1];
-          const clampedT = Math.max(0, Math.min(seg.len, t));
-          const projX = seg.a[0] + clampedT * seg.dir[0];
-          const projZ = seg.a[1] + clampedT * seg.dir[1];
-          const dist = Math.hypot(hit.x - projX, hit.z - projZ);
-
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestWallIndex = i;
-            bestT = t;
-          }
-        }
-
-        const seg = wallSegment(room, closestWallIndex);
         const w = catalogDef.size[0];
-        const maxOffset = Math.max(0, seg.len - w);
-        let offset = Math.max(0, Math.min(maxOffset, bestT - w / 2));
-        if (snapEnabled) {
-          offset = snap(offset, gridStep);
-          offset = Math.max(0, Math.min(maxOffset, offset));
+        const rawOffset = nearest.t - w / 2;
+        const snapRes = computeOpeningSnapGuides(
+          room,
+          nearest.wallIndex,
+          w,
+          rawOffset,
+          undefined,
+          gridStep
+        );
+        const offset = snapEnabled
+          ? snapRes.snappedOffset
+          : Math.max(0, Math.min(nearest.seg.len - w, rawOffset));
+
+        const resolution = resolveOpeningOverlapOnWall(
+          room,
+          nearest.wallIndex,
+          offset,
+          w
+        );
+
+        if (!resolution.canPlace) {
+          useUiStore.getState().setToastMessage(resolution.errorMessage ?? 'Openings cannot overlap on the same wall');
+          return;
         }
 
-        addOpening({
-          id: `op-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
-          wallIndex: closestWallIndex,
-          type: catalogDef.id === 'door' ? 'door' : 'window',
-          offset,
-          width: catalogDef.size[0],
-          height: catalogDef.size[1],
-          sill: catalogDef.elevation,
-          role: catalogDef.id === 'door' ? 'closed' : 'inlet',
-          openFraction: 0,
-        });
+        const subTypeCandidate = catalogDef.id as OpeningSubType;
+        const subType = subTypeCandidate in OPENING_PRESETS ? subTypeCandidate : (catalogDef.category === 'openings' && catalogDef.id.includes('door') ? 'single-door' : 'window');
+        const opening = createOpeningFromPreset(subType, nearest.wallIndex, resolution.finalOffset);
+        addOpening(opening);
+
+        for (const pushed of resolution.pushedOpenings) {
+          useSceneStore.getState().updateOpening(pushed.id, { offset: pushed.offset });
+        }
       } else {
         let x = hit.x;
         let z = hit.z;
@@ -163,10 +213,12 @@ const CanvasDropListener: React.FC = () => {
     };
 
     dom.addEventListener('dragover', handleDragOver);
+    dom.addEventListener('dragleave', handleDragLeave);
     dom.addEventListener('drop', handleDrop);
 
     return () => {
       dom.removeEventListener('dragover', handleDragOver);
+      dom.removeEventListener('dragleave', handleDragLeave);
       dom.removeEventListener('drop', handleDrop);
     };
   }, [
@@ -182,6 +234,64 @@ const CanvasDropListener: React.FC = () => {
   ]);
 
   return null;
+};
+
+/**
+ * Renders the live translucent preview of a window/door being dragged from the library onto any wall
+ */
+const DraggedOpeningPreviewMesh: React.FC = () => {
+  const preview = useUiStore((state) => state.draggedOpeningPreview);
+  const room = useSceneStore((state) => state.room);
+
+  const previewData = useMemo(() => {
+    if (!preview || room.outline.length < 2) return null;
+    const seg = wallSegment(room, preview.wallIndex);
+    const uMid = preview.offset + preview.width / 2;
+    const vMid = preview.sill + preview.height / 2;
+    const tMid = room.wallThickness / 2;
+
+    const posX = seg.a[0] + uMid * seg.dir[0] + tMid * seg.normal[0];
+    const posY = vMid;
+    const posZ = seg.a[1] + uMid * seg.dir[1] + tMid * seg.normal[1];
+
+    const xAxis = new THREE.Vector3(seg.dir[0], 0, seg.dir[1]).normalize();
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    const zAxis = new THREE.Vector3(seg.normal[0], 0, seg.normal[1]).normalize();
+    const rotMatrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+    const rot = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+
+    return {
+      position: [posX, posY, posZ] as [number, number, number],
+      quaternion: rot,
+      width: preview.width,
+      height: preview.height,
+      snapLabel: preview.snapLabel,
+    };
+  }, [preview, room]);
+
+  if (!previewData) return null;
+
+  return (
+    <group position={previewData.position} quaternion={previewData.quaternion}>
+      <mesh>
+        <boxGeometry args={[previewData.width, previewData.height, room.wallThickness * 1.15]} />
+        <meshStandardMaterial
+          color="#38bdf8"
+          transparent
+          opacity={0.65}
+          emissive="#0284c7"
+          emissiveIntensity={0.6}
+        />
+      </mesh>
+      {previewData.snapLabel && (
+        <Html center position={[0, previewData.height / 2 + 0.25, 0]} className="pointer-events-none select-none">
+          <div className="bg-cyan-950/90 border border-cyan-400 text-cyan-200 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap animate-pulse">
+            🧲 {previewData.snapLabel}
+          </div>
+        </Html>
+      )}
+    </group>
+  );
 };
 
 /**
@@ -623,8 +733,9 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {/* Pollutant Source 3D Visual Marker */}
           <PollutantSourceMarker />
 
-          {/* HTML5 Drag & Drop Listener */}
+          {/* HTML5 Drag & Drop Listener & Live Opening Preview */}
           <CanvasDropListener />
+          <DraggedOpeningPreviewMesh />
 
           {/* Camera Controller & Keyboard Shortcuts */}
           <CameraController controlsRef={controlsRef} />

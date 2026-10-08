@@ -6,6 +6,17 @@ export type ToolMode = 'select' | 'draw-floor' | 'place' | 'opening';
 export type TransformMode = 'translate' | 'rotate';
 export type ViewMode = '3d' | '2d';
 
+export interface DraggedOpeningPreview {
+  wallIndex: number;
+  offset: number;
+  width: number;
+  height: number;
+  sill: number;
+  type: 'window' | 'door';
+  subType?: string;
+  snapLabel?: string;
+}
+
 export interface UiState {
   toolMode: ToolMode;
   transformMode: TransformMode;
@@ -20,6 +31,7 @@ export interface UiState {
   toastMessage: string | null;
   activeAssetId: string | null;
   ghostPosition: Vec3 | null;
+  draggedOpeningPreview: DraggedOpeningPreview | null;
   rotationSnapDeg: number;
   transformY: boolean;
   numericInputBuffer: string | null;
@@ -63,6 +75,7 @@ export interface UiState {
   setToastMessage: (msg: string | null) => void;
   setActiveAssetId: (id: string | null) => void;
   setGhostPosition: (pos: Vec3 | null) => void;
+  setDraggedOpeningPreview: (preview: DraggedOpeningPreview | null) => void;
   setCursorCoords: (coords: [number, number] | null) => void;
   setIsPlacingPollutantSource: (placing: boolean) => void;
   setShowVoxelDebug: (show: boolean) => void;
@@ -92,6 +105,7 @@ export const initialUiState = {
   toastMessage: null as string | null,
   activeAssetId: null as string | null,
   ghostPosition: null as Vec3 | null,
+  draggedOpeningPreview: null as DraggedOpeningPreview | null,
   cursorCoords: null as [number, number] | null,
   isPlacingPollutantSource: false,
   showVoxelDebug: false,
@@ -134,6 +148,7 @@ export const useUiStore = create<UiState>()((set) => ({
   setToastMessage: (toastMessage) => set({ toastMessage }),
   setActiveAssetId: (activeAssetId) => set({ activeAssetId }),
   setGhostPosition: (ghostPosition) => set({ ghostPosition }),
+  setDraggedOpeningPreview: (draggedOpeningPreview) => set({ draggedOpeningPreview }),
   setCursorCoords: (cursorCoords) => set({ cursorCoords }),
   setIsPlacingPollutantSource: (isPlacingPollutantSource) => set({ isPlacingPollutantSource }),
   setShowVoxelDebug: (showVoxelDebug) => set({ showVoxelDebug }),

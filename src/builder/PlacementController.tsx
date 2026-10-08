@@ -2,9 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getCatalogAsset } from '../core/catalog';
-import { wallSegment } from '../core/parser';
-import type { Opening, SceneObject } from '../core/schema';
+import type { OpeningSubType, SceneObject } from '../core/schema';
 import { snap } from '../core/units';
+import {
+  computeOpeningSnapGuides,
+  createOpeningFromPreset,
+  findNearestWallForPoint,
+  OPENING_PRESETS,
+  resolveOpeningOverlapOnWall,
+} from '../core/openingPresets';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { AssetMesh } from './AssetMesh';
@@ -82,41 +88,23 @@ export const PlacementController: React.FC = () => {
 
       if (isWallMounted) {
         // --- WALL-MOUNTED PLACEMENT (Windows & Doors) ---
-        if (room.outline.length < 2) return;
+        const nearest = findNearestWallForPoint(rawX, rawZ, room);
+        if (!nearest) return;
 
-        let closestWallIndex = 0;
-        let minDistance = Infinity;
-        let bestT = 0;
-
-        // Find closest wall segment to cursor
-        for (let i = 0; i < room.outline.length; i++) {
-          const seg = wallSegment(room, i);
-          const toCursorX = rawX - seg.a[0];
-          const toCursorZ = rawZ - seg.a[1];
-          const t = toCursorX * seg.dir[0] + toCursorZ * seg.dir[1];
-          const clampedT = Math.max(0, Math.min(seg.len, t));
-          const projX = seg.a[0] + clampedT * seg.dir[0];
-          const projZ = seg.a[1] + clampedT * seg.dir[1];
-          const dist = Math.hypot(rawX - projX, rawZ - projZ);
-
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestWallIndex = i;
-            bestT = t;
-          }
-        }
-
-        const seg = wallSegment(room, closestWallIndex);
+        const seg = nearest.seg;
         const w = catalogDef.size[0];
         const h = catalogDef.size[1];
-        const maxOffset = Math.max(0, seg.len - w);
+        const rawOffset = nearest.t - w / 2;
 
-        let offset = bestT - w / 2;
-        offset = Math.max(0, Math.min(maxOffset, offset));
-        if (snapEnabled) {
-          offset = snap(offset, gridStep);
-          offset = Math.max(0, Math.min(maxOffset, offset));
-        }
+        const snapRes = computeOpeningSnapGuides(
+          room,
+          nearest.wallIndex,
+          w,
+          rawOffset,
+          undefined,
+          gridStep
+        );
+        const offset = snapEnabled ? snapRes.snappedOffset : Math.max(0, Math.min(seg.len - w, rawOffset));
 
         const uMid = offset + w / 2;
         const vMid = catalogDef.elevation + h / 2;
@@ -134,7 +122,7 @@ export const PlacementController: React.FC = () => {
         const quaternion = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
 
         setWallOpeningData({
-          wallIndex: closestWallIndex,
+          wallIndex: nearest.wallIndex,
           offset,
           position: [posX, posY, posZ],
           quaternion,
@@ -168,19 +156,27 @@ export const PlacementController: React.FC = () => {
       e.stopPropagation();
 
       if (isWallMounted && wallOpeningData) {
-        // Add wall opening
-        const opening: Opening = {
-          id: generateId('op'),
-          wallIndex: wallOpeningData.wallIndex,
-          type: catalogDef.id === 'door' ? 'door' : 'window',
-          offset: wallOpeningData.offset,
-          width: wallOpeningData.width,
-          height: wallOpeningData.height,
-          sill: catalogDef.elevation,
-          role: catalogDef.id === 'door' ? 'closed' : 'inlet',
-          openFraction: 0,
-        };
+        // Non-overlapping check and push
+        const resolution = resolveOpeningOverlapOnWall(
+          room,
+          wallOpeningData.wallIndex,
+          wallOpeningData.offset,
+          wallOpeningData.width
+        );
+
+        if (!resolution.canPlace) {
+          useUiStore.getState().setToastMessage(resolution.errorMessage ?? 'Openings cannot overlap on the same wall');
+          return;
+        }
+
+        const subTypeCandidate = catalogDef.id as OpeningSubType;
+        const subType = subTypeCandidate in OPENING_PRESETS ? subTypeCandidate : (catalogDef.category === 'openings' && catalogDef.id.includes('door') ? 'single-door' : 'window');
+        const opening = createOpeningFromPreset(subType, wallOpeningData.wallIndex, resolution.finalOffset);
         addOpening(opening);
+
+        for (const pushed of resolution.pushedOpenings) {
+          useSceneStore.getState().updateOpening(pushed.id, { offset: pushed.offset });
+        }
       } else if (!isWallMounted && ghostPos) {
         // Add floor object
         const object: SceneObject = {
@@ -218,6 +214,7 @@ export const PlacementController: React.FC = () => {
       addObject,
       setActiveAssetId,
       setToolMode,
+      room,
     ]
   );
 
