@@ -109,6 +109,18 @@ export const SelectedObjectBounds: React.FC<SelectedObjectBoundsProps> = ({
     return lines;
   }, [width, height, depth, outlineColor]);
 
+  // Clean up Three.js resources to prevent memory leaks
+  React.useEffect(() => {
+    return () => {
+      dashedLines.geometry.dispose();
+      if (Array.isArray(dashedLines.material)) {
+        dashedLines.material.forEach((m) => m.dispose());
+      } else {
+        dashedLines.material.dispose();
+      }
+    };
+  }, [dashedLines]);
+
   return (
     <group position={[0, height / 2, 0]}>
       {/* Dashed bounding box wireframe */}
@@ -446,6 +458,20 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
     });
     return new THREE.LineSegments(edges, mat);
   }, [hasIssues, targetSize]);
+
+  // Clean up Three.js red outline resources
+  React.useEffect(() => {
+    return () => {
+      if (redOutlineLines) {
+        redOutlineLines.geometry.dispose();
+        if (Array.isArray(redOutlineLines.material)) {
+          redOutlineLines.material.forEach((m) => m.dispose());
+        } else {
+          redOutlineLines.material.dispose();
+        }
+      }
+    };
+  }, [redOutlineLines]);
 
   // Pointer hover handlers
   const handlePointerOver = useCallback(
