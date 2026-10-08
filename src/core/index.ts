@@ -5,3 +5,4 @@ export * from './catalog';
 export * from './defaultRoom';
 export * from './parser';
 export * from './types';
+export * from './collision';

@@ -1,6 +1,6 @@
 import React, { Suspense, useMemo } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import { RoundedBox, useGLTF } from '@react-three/drei';
+import { Outlines, RoundedBox, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { getCatalogAsset } from '../core/catalog';
 import type { AirflowRole, SceneObject } from '../core/schema';
@@ -91,6 +91,7 @@ interface PlaceholderProps {
   isGhost?: boolean;
   isValid?: boolean;
   isSelected?: boolean;
+  isColliding?: boolean;
 }
 
 /**
@@ -104,9 +105,11 @@ export const RoundedBoxPlaceholder: React.FC<PlaceholderProps> = ({
   isGhost = false,
   isValid = true,
   isSelected = false,
+  isColliding = false,
 }) => {
   const [width, height, depth] = size;
   const radius = Math.min(Math.min(width, height, depth) * 0.06, 0.04);
+  const outlineColor = isColliding ? '#ef4444' : '#f59e0b';
 
   const material = useMemo(() => {
     if (isGhost) {
@@ -156,13 +159,15 @@ export const RoundedBoxPlaceholder: React.FC<PlaceholderProps> = ({
         material={material}
         castShadow={!isGhost}
         receiveShadow={!isGhost}
-      />
+      >
+        {isSelected && <Outlines thickness={0.03} color={outlineColor} />}
+      </RoundedBox>
       {isSelected && (
         <lineSegments>
           <edgesGeometry
             args={[new THREE.BoxGeometry(width * 1.02, height * 1.02, depth * 1.02)]}
           />
-          <lineBasicMaterial color="#f59e0b" linewidth={2} />
+          <lineBasicMaterial color={outlineColor} linewidth={2} />
         </lineSegments>
       )}
     </group>
@@ -224,6 +229,7 @@ export interface AssetMeshProps {
     size: [number, number, number];
   };
   isSelected?: boolean;
+  isColliding?: boolean;
   isGhost?: boolean;
   isValidPlacement?: boolean;
   onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
@@ -238,6 +244,7 @@ export interface AssetMeshProps {
 export const AssetMesh: React.FC<AssetMeshProps> = ({
   object,
   isSelected = false,
+  isColliding = false,
   isGhost = false,
   isValidPlacement = true,
   onPointerDown,
@@ -270,6 +277,8 @@ export const AssetMesh: React.FC<AssetMeshProps> = ({
   const hasFanArrow =
     object.assetId.includes('fan') || role === 'source' || Boolean(catalogDef?.defaultAirflow);
 
+  const outlineColor = isColliding ? '#ef4444' : '#f59e0b';
+
   return (
     <group
       name={`asset-${object.id}`}
@@ -287,6 +296,7 @@ export const AssetMesh: React.FC<AssetMeshProps> = ({
               isGhost={isGhost}
               isValid={isValidPlacement}
               isSelected={isSelected}
+              isColliding={isColliding}
             />
           }
         >
@@ -297,6 +307,20 @@ export const AssetMesh: React.FC<AssetMeshProps> = ({
             isGhost={isGhost}
             isValid={isValidPlacement}
           />
+          {isSelected && (
+            <lineSegments position={[0, targetSize[1] / 2, 0]}>
+              <edgesGeometry
+                args={[
+                  new THREE.BoxGeometry(
+                    targetSize[0] * 1.02,
+                    targetSize[1] * 1.02,
+                    targetSize[2] * 1.02
+                  ),
+                ]}
+              />
+              <lineBasicMaterial color={outlineColor} linewidth={2} />
+            </lineSegments>
+          )}
         </Suspense>
       ) : (
         <RoundedBoxPlaceholder
@@ -306,6 +330,7 @@ export const AssetMesh: React.FC<AssetMeshProps> = ({
           isGhost={isGhost}
           isValid={isValidPlacement}
           isSelected={isSelected}
+          isColliding={isColliding}
         />
       )}
 

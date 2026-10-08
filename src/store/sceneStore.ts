@@ -8,7 +8,9 @@ import type { Opening, OpeningRole, Room, RoomParams, SceneObject, Vec2 } from '
 export interface SceneState {
   room: Room;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
   selectedOpeningId: string | null;
+  selectedOpeningIds: string[];
   isDragging: boolean;
 
   // Actions
@@ -24,12 +26,15 @@ export interface SceneState {
   updateObject: (id: string, updates: Partial<Omit<SceneObject, 'id'>>) => void;
   removeObject: (id: string) => void;
   duplicateObject: (id: string) => SceneObject | null;
+  duplicateSelected: () => SceneObject[];
+  deleteSelected: () => void;
   addOpening: (opening: Opening) => void;
   updateOpening: (id: string, updates: Partial<Omit<Opening, 'id'>>) => void;
   removeOpening: (id: string) => void;
   setOpeningRole: (id: string, role: OpeningRole) => void;
-  selectObject: (id: string | null) => void;
-  selectOpening: (id: string | null) => void;
+  selectObject: (id: string | null, multi?: boolean) => void;
+  selectOpening: (id: string | null, multi?: boolean) => void;
+  selectAll: () => void;
   clearSelection: () => void;
   setIsDragging: (isDragging: boolean) => void;
   exportRoom: () => string;
@@ -63,7 +68,9 @@ export const useSceneStore = create<SceneState>()(
     immer((set, get) => ({
       room: createDefaultRoom(),
       selectedObjectId: null,
+      selectedObjectIds: [],
       selectedOpeningId: null,
+      selectedOpeningIds: [],
       isDragging: false,
 
       loadRoom: (room) => {
@@ -71,7 +78,9 @@ export const useSceneStore = create<SceneState>()(
         set((state) => {
           state.room = room;
           state.selectedObjectId = null;
+          state.selectedObjectIds = [];
           state.selectedOpeningId = null;
+          state.selectedOpeningIds = [];
           state.isDragging = false;
         });
       },
@@ -81,7 +90,9 @@ export const useSceneStore = create<SceneState>()(
         set((state) => {
           state.room = createDefaultRoom();
           state.selectedObjectId = null;
+          state.selectedObjectIds = [];
           state.selectedOpeningId = null;
+          state.selectedOpeningIds = [];
           state.isDragging = false;
         });
       },
@@ -134,7 +145,9 @@ export const useSceneStore = create<SceneState>()(
         set((state) => {
           state.room.objects.push(object);
           state.selectedObjectId = object.id;
+          state.selectedObjectIds = [object.id];
           state.selectedOpeningId = null;
+          state.selectedOpeningIds = [];
         }),
 
       updateObject: (id, updates) => {
@@ -155,9 +168,8 @@ export const useSceneStore = create<SceneState>()(
       removeObject: (id) =>
         set((state) => {
           state.room.objects = state.room.objects.filter((o) => o.id !== id);
-          if (state.selectedObjectId === id) {
-            state.selectedObjectId = null;
-          }
+          state.selectedObjectIds = state.selectedObjectIds.filter((oId) => oId !== id);
+          state.selectedObjectId = state.selectedObjectIds[0] ?? null;
         }),
 
       duplicateObject: (id) => {
@@ -179,16 +191,73 @@ export const useSceneStore = create<SceneState>()(
           };
           state.room.objects.push(duplicated);
           state.selectedObjectId = newId;
+          state.selectedObjectIds = [newId];
           state.selectedOpeningId = null;
+          state.selectedOpeningIds = [];
         });
         return duplicated;
       },
+
+      duplicateSelected: () => {
+        const duplicatedList: SceneObject[] = [];
+        set((state) => {
+          const idsToDuplicate = [...state.selectedObjectIds];
+          if (idsToDuplicate.length === 0) return;
+
+          const newSelectedIds: string[] = [];
+          for (const id of idsToDuplicate) {
+            const original = state.room.objects.find((o) => o.id === id);
+            if (!original) continue;
+
+            const newId = `${original.assetId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const duplicated: SceneObject = {
+              ...original,
+              id: newId,
+              name: `${original.name} (Copy)`,
+              position: [
+                Number((original.position[0] + 0.3).toFixed(4)),
+                original.position[1],
+                Number((original.position[2] + 0.3).toFixed(4)),
+              ],
+            };
+            state.room.objects.push(duplicated);
+            duplicatedList.push(duplicated);
+            newSelectedIds.push(newId);
+          }
+
+          if (newSelectedIds.length > 0) {
+            state.selectedObjectIds = newSelectedIds;
+            state.selectedObjectId = newSelectedIds[0] ?? null;
+            state.selectedOpeningId = null;
+            state.selectedOpeningIds = [];
+          }
+        });
+        return duplicatedList;
+      },
+
+      deleteSelected: () =>
+        set((state) => {
+          if (state.selectedObjectIds.length > 0) {
+            const idsToRemove = new Set(state.selectedObjectIds);
+            state.room.objects = state.room.objects.filter((o) => !idsToRemove.has(o.id));
+            state.selectedObjectIds = [];
+            state.selectedObjectId = null;
+          }
+          if (state.selectedOpeningIds.length > 0) {
+            const idsToRemove = new Set(state.selectedOpeningIds);
+            state.room.openings = state.room.openings.filter((op) => !idsToRemove.has(op.id));
+            state.selectedOpeningIds = [];
+            state.selectedOpeningId = null;
+          }
+        }),
 
       addOpening: (opening) =>
         set((state) => {
           state.room.openings.push(opening);
           state.selectedOpeningId = opening.id;
+          state.selectedOpeningIds = [opening.id];
           state.selectedObjectId = null;
+          state.selectedObjectIds = [];
         }),
 
       updateOpening: (id, updates) =>
@@ -205,9 +274,8 @@ export const useSceneStore = create<SceneState>()(
       removeOpening: (id) =>
         set((state) => {
           state.room.openings = state.room.openings.filter((o) => o.id !== id);
-          if (state.selectedOpeningId === id) {
-            state.selectedOpeningId = null;
-          }
+          state.selectedOpeningIds = state.selectedOpeningIds.filter((oId) => oId !== id);
+          state.selectedOpeningId = state.selectedOpeningIds[0] ?? null;
         }),
 
       setOpeningRole: (id, role) =>
@@ -218,22 +286,70 @@ export const useSceneStore = create<SceneState>()(
           }
         }),
 
-      selectObject: (id) =>
+      selectObject: (id, multi = false) =>
         set((state) => {
-          state.selectedObjectId = id;
           state.selectedOpeningId = null;
+          state.selectedOpeningIds = [];
+
+          if (id === null) {
+            state.selectedObjectId = null;
+            state.selectedObjectIds = [];
+            return;
+          }
+
+          if (multi) {
+            const idx = state.selectedObjectIds.indexOf(id);
+            if (idx >= 0) {
+              state.selectedObjectIds.splice(idx, 1);
+            } else {
+              state.selectedObjectIds.push(id);
+            }
+            state.selectedObjectId = state.selectedObjectIds[0] ?? null;
+          } else {
+            state.selectedObjectId = id;
+            state.selectedObjectIds = [id];
+          }
         }),
 
-      selectOpening: (id) =>
+      selectOpening: (id, multi = false) =>
         set((state) => {
-          state.selectedOpeningId = id;
           state.selectedObjectId = null;
+          state.selectedObjectIds = [];
+
+          if (id === null) {
+            state.selectedOpeningId = null;
+            state.selectedOpeningIds = [];
+            return;
+          }
+
+          if (multi) {
+            const idx = state.selectedOpeningIds.indexOf(id);
+            if (idx >= 0) {
+              state.selectedOpeningIds.splice(idx, 1);
+            } else {
+              state.selectedOpeningIds.push(id);
+            }
+            state.selectedOpeningId = state.selectedOpeningIds[0] ?? null;
+          } else {
+            state.selectedOpeningId = id;
+            state.selectedOpeningIds = [id];
+          }
+        }),
+
+      selectAll: () =>
+        set((state) => {
+          state.selectedObjectIds = state.room.objects.map((o) => o.id);
+          state.selectedObjectId = state.selectedObjectIds[0] ?? null;
+          state.selectedOpeningId = null;
+          state.selectedOpeningIds = [];
         }),
 
       clearSelection: () =>
         set((state) => {
           state.selectedObjectId = null;
+          state.selectedObjectIds = [];
           state.selectedOpeningId = null;
+          state.selectedOpeningIds = [];
         }),
 
       setIsDragging: (isDragging) => {
@@ -283,7 +399,9 @@ export const useSceneStore = create<SceneState>()(
           set((state) => {
             state.room = parseResult.room!;
             state.selectedObjectId = null;
+            state.selectedObjectIds = [];
             state.selectedOpeningId = null;
+            state.selectedOpeningIds = [];
             state.isDragging = false;
           });
           return { success: true, issues: parseResult.issues };

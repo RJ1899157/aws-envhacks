@@ -17,6 +17,10 @@ export interface UiState {
   selectedVertexIndex: number | null;
   activeAssetId: string | null;
   ghostPosition: Vec3 | null;
+  rotationSnapDeg: number;
+  transformY: boolean;
+  numericInputBuffer: string | null;
+  isCollisionWarning: boolean;
 
   // Actions
   setToolMode: (mode: ToolMode) => void;
@@ -25,6 +29,11 @@ export interface UiState {
   setSnapEnabled: (enabled: boolean) => void;
   toggleSnap: () => void;
   setGridStep: (step: number) => void;
+  setRotationSnapDeg: (deg: number) => void;
+  setTransformY: (enabled: boolean) => void;
+  toggleTransformY: () => void;
+  setNumericInputBuffer: (buffer: string | null) => void;
+  setIsCollisionWarning: (warning: boolean) => void;
   setShowDimensions: (show: boolean) => void;
   toggleDimensions: () => void;
   setShowCeiling: (show: boolean) => void;
@@ -41,6 +50,10 @@ export const initialUiState = {
   view: '3d' as ViewMode,
   snapEnabled: true,
   gridStep: DEFAULT_TRANSLATION_SNAP_METERS, // 0.05m
+  rotationSnapDeg: 15, // 15 degrees
+  transformY: false,
+  numericInputBuffer: null as string | null,
+  isCollisionWarning: false,
   showDimensions: true,
   showCeiling: false,
   selectedVertexIndex: null as number | null,
@@ -57,6 +70,11 @@ export const useUiStore = create<UiState>()((set) => ({
   setSnapEnabled: (snapEnabled) => set({ snapEnabled }),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
   setGridStep: (gridStep) => set({ gridStep }),
+  setRotationSnapDeg: (rotationSnapDeg) => set({ rotationSnapDeg }),
+  setTransformY: (transformY) => set({ transformY }),
+  toggleTransformY: () => set((state) => ({ transformY: !state.transformY })),
+  setNumericInputBuffer: (numericInputBuffer) => set({ numericInputBuffer }),
+  setIsCollisionWarning: (isCollisionWarning) => set({ isCollisionWarning }),
   setShowDimensions: (showDimensions) => set({ showDimensions }),
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
   setShowCeiling: (showCeiling) => set({ showCeiling }),

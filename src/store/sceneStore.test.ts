@@ -330,4 +330,82 @@ describe('useSceneStore (Zustand + Immer + Zundo)', () => {
       expect(useSceneStore.getState().room.outline).toHaveLength(4);
     });
   });
+
+  describe('Multi-Selection & Batch Operations', () => {
+    const chairA: SceneObject = {
+      id: 'chair-a',
+      assetId: 'office-chair',
+      name: 'Chair A',
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      size: [0.65, 0.95, 0.65],
+      elevation: 0,
+      role: 'solid',
+      wallMounted: false,
+    };
+    const chairB: SceneObject = {
+      id: 'chair-b',
+      assetId: 'office-chair',
+      name: 'Chair B',
+      position: [1, 0, 0],
+      rotation: [0, 0, 0],
+      size: [0.65, 0.95, 0.65],
+      elevation: 0,
+      role: 'solid',
+      wallMounted: false,
+    };
+
+    it('handles single and multi-selection of objects', () => {
+      useSceneStore.getState().addObject(chairA);
+      useSceneStore.getState().addObject(chairB);
+
+      // Single select chair-a
+      useSceneStore.getState().selectObject('chair-a');
+      expect(useSceneStore.getState().selectedObjectId).toBe('chair-a');
+      expect(useSceneStore.getState().selectedObjectIds).toEqual(['chair-a']);
+
+      // Shift+select chair-b (multi=true)
+      useSceneStore.getState().selectObject('chair-b', true);
+      expect(useSceneStore.getState().selectedObjectIds).toEqual(['chair-a', 'chair-b']);
+
+      // Toggle off chair-a
+      useSceneStore.getState().selectObject('chair-a', true);
+      expect(useSceneStore.getState().selectedObjectIds).toEqual(['chair-b']);
+      expect(useSceneStore.getState().selectedObjectId).toBe('chair-b');
+    });
+
+    it('selectAll selects all objects in the room', () => {
+      useSceneStore.getState().addObject(chairA);
+      useSceneStore.getState().addObject(chairB);
+
+      useSceneStore.getState().selectAll();
+      expect(useSceneStore.getState().selectedObjectIds).toEqual(['chair-a', 'chair-b']);
+    });
+
+    it('duplicateSelected duplicates all selected objects and selects the new copies', () => {
+      useSceneStore.getState().addObject(chairA);
+      useSceneStore.getState().addObject(chairB);
+      useSceneStore.getState().selectAll();
+
+      const duplicated = useSceneStore.getState().duplicateSelected();
+      expect(duplicated).toHaveLength(2);
+      expect(useSceneStore.getState().room.objects).toHaveLength(4);
+      expect(useSceneStore.getState().selectedObjectIds).toEqual(duplicated.map((d) => d.id));
+    });
+
+    it('deleteSelected removes all selected objects with undo support', () => {
+      useSceneStore.getState().addObject(chairA);
+      useSceneStore.getState().addObject(chairB);
+      useSceneStore.getState().selectAll();
+
+      useSceneStore.getState().deleteSelected();
+      expect(useSceneStore.getState().room.objects).toHaveLength(0);
+      expect(useSceneStore.getState().selectedObjectIds).toEqual([]);
+      expect(useSceneStore.getState().selectedObjectId).toBeNull();
+
+      // Undo brings back both objects
+      useSceneStore.temporal.getState().undo();
+      expect(useSceneStore.getState().room.objects).toHaveLength(2);
+    });
+  });
 });

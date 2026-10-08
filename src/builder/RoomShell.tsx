@@ -288,6 +288,16 @@ interface OpeningVisualProps {
  * Visual representation of an opening (window glass / door panel) inside the cutout
  */
 const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, wallThickness }) => {
+  const selectedOpeningId = useSceneStore((state) => state.selectedOpeningId);
+  const selectedOpeningIds = useSceneStore((state) => state.selectedOpeningIds);
+  const selectOpening = useSceneStore((state) => state.selectOpening);
+  const toolMode = useUiStore((state) => state.toolMode);
+  const isCollisionWarning = useUiStore((state) => state.isCollisionWarning);
+
+  const isSelected = selectedOpeningIds.includes(opening.id) || selectedOpeningId === opening.id;
+  const isColliding = isSelected && isCollisionWarning;
+  const outlineColor = isColliding ? '#ef4444' : '#f59e0b';
+
   const { position, quaternion, dimensions, color } = useMemo(() => {
     const uMid = opening.offset + opening.width / 2;
     const vMid = opening.sill + opening.height / 2;
@@ -320,7 +330,16 @@ const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, wallThi
   }, [opening, segment, wallThickness]);
 
   return (
-    <mesh position={position} quaternion={quaternion}>
+    <mesh
+      position={position}
+      quaternion={quaternion}
+      onPointerDown={(e) => {
+        if (toolMode === 'select' && e.button === 0) {
+          e.stopPropagation();
+          selectOpening(opening.id, e.shiftKey);
+        }
+      }}
+    >
       <boxGeometry args={dimensions} />
       <meshStandardMaterial
         color={color}
@@ -328,6 +347,20 @@ const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, wallThi
         opacity={opening.role === 'closed' ? 0.25 : 0.45}
         roughness={0.2}
       />
+      {isSelected && (
+        <lineSegments>
+          <edgesGeometry
+            args={[
+              new THREE.BoxGeometry(
+                dimensions[0] * 1.04,
+                dimensions[1] * 1.04,
+                dimensions[2] * 1.04
+              ),
+            ]}
+          />
+          <lineBasicMaterial color={outlineColor} linewidth={2} />
+        </lineSegments>
+      )}
     </mesh>
   );
 };

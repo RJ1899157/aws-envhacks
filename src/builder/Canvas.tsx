@@ -20,6 +20,7 @@ import { PlacementController } from './PlacementController';
 import { getCatalogAsset } from '../core/catalog';
 import { wallSegment } from '../core/parser';
 import { snap } from '../core/units';
+import { SelectionGizmo } from './SelectionGizmo';
 
 /**
  * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
@@ -404,6 +405,10 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const isDragging = useSceneStore((state) => state.isDragging);
   const view = useUiStore((state) => state.view);
+  const toolMode = useUiStore((state) => state.toolMode);
+  const transformMode = useUiStore((state) => state.transformMode);
+  const numericInputBuffer = useUiStore((state) => state.numericInputBuffer);
+  const isCollisionWarning = useUiStore((state) => state.isCollisionWarning);
 
   // Sync ref to shared ref
   useEffect(() => {
@@ -416,6 +421,46 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
       className={`relative w-full h-full overflow-hidden select-none bg-neutral-900 ${className}`}
       onContextMenu={(e) => e.preventDefault()} // Allow right-click orbit without context menu
     >
+      {/* Blender-style Numeric Input HUD */}
+      {numericInputBuffer !== null && (
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 z-30 px-4 py-2 bg-neutral-900/95 border border-amber-500/70 rounded-lg shadow-2xl backdrop-blur-md flex items-center gap-3 text-sm text-neutral-100 font-mono pointer-events-none">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+          <span>
+            {transformMode === 'rotate' ? 'Rotate Angle: ' : 'Translate Distance: '}
+            <strong className="text-amber-400 font-bold">{numericInputBuffer}</strong>
+            {transformMode === 'rotate' ? '°' : ' m'}
+          </span>
+          <span className="text-xs text-neutral-400 border-l border-neutral-700 pl-3">
+            Press <kbd className="px-1.5 py-0.5 bg-neutral-800 rounded text-neutral-200">Enter</kbd>{' '}
+            to apply,{' '}
+            <kbd className="px-1.5 py-0.5 bg-neutral-800 rounded text-neutral-200">Esc</kbd> to
+            cancel
+          </span>
+        </div>
+      )}
+
+      {/* Real-time Collision Alert HUD */}
+      {isCollisionWarning && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-2 bg-red-950/95 border border-red-500/80 rounded-lg shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs font-semibold text-red-200 animate-bounce pointer-events-none">
+          <svg
+            className="w-4 h-4 text-red-400 shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          <span>
+            Collision detected! Object penetrates wall or overlaps solid asset. Reverts on release.
+          </span>
+        </div>
+      )}
+
       <R3FCanvas
         shadows
         gl={{
@@ -476,6 +521,20 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {/* Blender X (Red) and Z (Blue) floor axis lines */}
           <BlenderAxisLines />
 
+          {/* Ground click detector to clear selection on empty space */}
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, -0.0001, 0]}
+            onPointerDown={(e) => {
+              if (e.button === 0 && toolMode === 'select') {
+                useSceneStore.getState().clearSelection();
+              }
+            }}
+          >
+            <planeGeometry args={[2000, 2000]} />
+            <meshBasicMaterial visible={false} />
+          </mesh>
+
           {/* 3D Room Shell (floor triangulation, wall cutouts, camera-facing fade, ceiling) */}
           <RoomShell />
 
@@ -484,6 +543,9 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
           {/* Placed Objects in the Room */}
           <PlacedObjects />
+
+          {/* Interactive Selection & Transform Gizmo */}
+          <SelectionGizmo />
 
           {/* Interactive Placement Controller (Ghost preview, snapping, wall mounting) */}
           <PlacementController />

@@ -66,4 +66,21 @@ describe('useUiStore', () => {
     useUiStore.getState().resetUi();
     expect(useUiStore.getState()).toEqual(expect.objectContaining(initialUiState));
   });
+
+  it('manages rotationSnapDeg, transformY, numericInputBuffer, and isCollisionWarning', () => {
+    useUiStore.getState().setRotationSnapDeg(30);
+    expect(useUiStore.getState().rotationSnapDeg).toBe(30);
+
+    useUiStore.getState().toggleTransformY();
+    expect(useUiStore.getState().transformY).toBe(true);
+
+    useUiStore.getState().setTransformY(false);
+    expect(useUiStore.getState().transformY).toBe(false);
+
+    useUiStore.getState().setNumericInputBuffer('1.25');
+    expect(useUiStore.getState().numericInputBuffer).toBe('1.25');
+
+    useUiStore.getState().setIsCollisionWarning(true);
+    expect(useUiStore.getState().isCollisionWarning).toBe(true);
+  });
 });

@@ -5,3 +5,4 @@ export * from './FloorPlanEditor';
 export * from './AssetMesh';
 export * from './PlacedObjects';
 export * from './PlacementController';
+export * from './SelectionGizmo';
