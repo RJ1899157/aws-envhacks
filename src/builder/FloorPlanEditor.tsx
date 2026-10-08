@@ -10,7 +10,7 @@ import { useUiStore } from '../store/uiStore';
 import { sharedOrbitControlsRef } from './Canvas';
 
 export const FloorPlanEditor: React.FC = () => {
-  const room = useSceneStore((state) => state.room);
+  const outline = useSceneStore((state) => state.room.outline);
   const moveVertex = useSceneStore((state) => state.moveVertex);
   const insertVertex = useSceneStore((state) => state.insertVertex);
   const removeVertex = useSceneStore((state) => state.removeVertex);
@@ -111,8 +111,8 @@ export const FloorPlanEditor: React.FC = () => {
         // Delete or Backspace to remove selected vertex (min 3)
         if ((e.key === 'Delete' || e.key === 'Backspace') && selectedVertexIndex !== null) {
           e.preventDefault();
-          if (room.outline.length > 3) {
-            const candidate = room.outline.filter((_, idx) => idx !== selectedVertexIndex);
+          if (outline.length > 3) {
+            const candidate = outline.filter((_, idx) => idx !== selectedVertexIndex);
             if (isPolygonSimple(candidate)) {
               removeVertex(selectedVertexIndex);
               setSelectedVertexIndex(null);
@@ -144,10 +144,10 @@ export const FloorPlanEditor: React.FC = () => {
             e.preventDefault();
             const targetLen = parseFloat(numericInput);
             if (Number.isFinite(targetLen) && targetLen > 0.1) {
-              const n = room.outline.length;
+              const n = outline.length;
               const prevIdx = (activeIdx - 1 + n) % n;
-              const prevPt = room.outline[prevIdx]!;
-              const currPt = room.outline[activeIdx]!;
+              const prevPt = outline[prevIdx]!;
+              const currPt = outline[activeIdx]!;
 
               const dx = currPt[0] - prevPt[0];
               const dz = currPt[1] - prevPt[1];
@@ -164,7 +164,7 @@ export const FloorPlanEditor: React.FC = () => {
                   newZ = snap(newZ, gridStep);
                 }
 
-                const candidate = [...room.outline];
+                const candidate = [...outline];
                 candidate[activeIdx] = [newX, newZ];
 
                 if (isPolygonSimple(candidate)) {
@@ -188,7 +188,7 @@ export const FloorPlanEditor: React.FC = () => {
     drawingPoints,
     selectedVertexIndex,
     draggingIndex,
-    room.outline,
+    outline,
     numericInput,
     snapEnabled,
     gridStep,
@@ -250,7 +250,7 @@ export const FloorPlanEditor: React.FC = () => {
           setIsCloseHovered(false);
         }
       } else if (toolMode === 'select' && draggingIndex !== null) {
-        const candidateOutline = [...room.outline];
+        const candidateOutline = [...outline];
         candidateOutline[draggingIndex] = processed;
 
         const isSimple = isPolygonSimple(candidateOutline);
@@ -262,7 +262,7 @@ export const FloorPlanEditor: React.FC = () => {
         }
       }
     },
-    [toolMode, drawingPoints, draggingIndex, room.outline, processPoint, moveVertex]
+    [toolMode, drawingPoints, draggingIndex, outline, processPoint, moveVertex]
   );
 
   // Ground plane click for adding points in 'draw-floor' mode
@@ -321,8 +321,8 @@ export const FloorPlanEditor: React.FC = () => {
 
       setSelectedVertexIndex(index);
       setDraggingIndex(index);
-      dragStartPos.current = [...room.outline[index]!];
-      originalOutline.current = room.outline.map((pt) => [...pt]);
+      dragStartPos.current = [...outline[index]!];
+      originalOutline.current = outline.map((pt) => [...pt]);
       setIsDragging(true);
       setHasSelfIntersection(false);
       setNumericInput('');
@@ -331,7 +331,7 @@ export const FloorPlanEditor: React.FC = () => {
         sharedOrbitControlsRef.current.enabled = false;
       }
     },
-    [toolMode, room.outline, setSelectedVertexIndex, setIsDragging]
+    [toolMode, outline, setSelectedVertexIndex, setIsDragging]
   );
 
   // End dragging vertex
@@ -367,32 +367,32 @@ export const FloorPlanEditor: React.FC = () => {
       if (e.button !== 0 || toolMode !== 'select') return;
       e.stopPropagation();
 
-      const seg = wallSegment(room, index);
+      const seg = wallSegment({ outline }, index);
       const midX = (seg.a[0] + seg.b[0]) / 2;
       const midZ = (seg.a[1] + seg.b[1]) / 2;
 
       insertVertex(index, [midX, midZ]);
       setSelectedVertexIndex(index + 1);
     },
-    [toolMode, room, insertVertex, setSelectedVertexIndex]
+    [toolMode, outline, insertVertex, setSelectedVertexIndex]
   );
 
   // Dimensions & bounds for HUD room area
   const roomArea = useMemo(() => {
-    return Math.abs(signedArea(room.outline));
-  }, [room.outline]);
+    return Math.abs(signedArea(outline));
+  }, [outline]);
 
   const bounds = useMemo(() => {
-    return polygonBounds(room.outline);
-  }, [room.outline]);
+    return polygonBounds(outline);
+  }, [outline]);
 
   // Wall segments geometry for dimension labels & midpoint handles
   const wallData = useMemo(() => {
-    if (room.outline.length < 2) return [];
-    return room.outline
+    if (outline.length < 2) return [];
+    return outline
       .map((_, i) => {
         try {
-          const seg = wallSegment(room, i);
+          const seg = wallSegment({ outline }, i);
           const midX = (seg.a[0] + seg.b[0]) / 2;
           const midZ = (seg.a[1] + seg.b[1]) / 2;
           return {
@@ -415,7 +415,7 @@ export const FloorPlanEditor: React.FC = () => {
       normalX: number;
       normalZ: number;
     }[];
-  }, [room]);
+  }, [outline]);
 
   // Memoized line connecting placed drawing points
   const connectedLine = useMemo(() => {
@@ -563,7 +563,7 @@ export const FloorPlanEditor: React.FC = () => {
       {toolMode === 'select' && (
         <group name="select-mode-handles">
           {/* 1. Draggable Corner Vertex Handles */}
-          {room.outline.map((pt, index) => {
+          {outline.map((pt, index) => {
             const isSelected = selectedVertexIndex === index;
             const isDraggingThis = draggingIndex === index;
             const isError = (hasSelfIntersection && isDraggingThis) || flashRedEdge;
@@ -617,9 +617,9 @@ export const FloorPlanEditor: React.FC = () => {
             <Html
               center
               position={[
-                room.outline[draggingIndex ?? selectedVertexIndex!]![0],
+                outline[draggingIndex ?? selectedVertexIndex!]![0],
                 0.45,
-                room.outline[draggingIndex ?? selectedVertexIndex!]![1],
+                outline[draggingIndex ?? selectedVertexIndex!]![1],
               ]}
               className="pointer-events-none select-none"
             >

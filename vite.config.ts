@@ -14,4 +14,27 @@ export default defineConfig({
     port: 3000,
     open: false,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/three') || id.includes('node_modules/@react-three')) {
+            return 'vendor-three';
+          }
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'vendor-react';
+          }
+          if (
+            id.includes('node_modules/zod') ||
+            id.includes('node_modules/zustand') ||
+            id.includes('node_modules/immer') ||
+            id.includes('node_modules/zundo')
+          ) {
+            return 'vendor-core';
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
+  },
 });

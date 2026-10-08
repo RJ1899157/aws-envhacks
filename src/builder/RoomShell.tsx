@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { wallSegment } from '../core/parser';
-import type { Opening, Room } from '../core/schema';
+import type { Opening, Vec2 } from '../core/schema';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore, type ViewMode } from '../store/uiStore';
 
@@ -135,148 +135,182 @@ export function computeWallPieces(
 
 interface WallSegmentMeshProps {
   wallIndex: number;
-  room: Room;
+  outline: readonly Vec2[];
+  wallHeight: number;
+  wallThickness: number;
+  wallOpenings: readonly Opening[];
   view: ViewMode;
 }
 
 /**
  * Renders an extruded wall segment with CSG-free cutouts for openings.
  * Automatically fades opacity when camera faces the exterior of the wall.
+ * Memoized so changes to other objects/walls do NOT cause re-renders.
  */
-const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({ wallIndex, room, view }) => {
-  const wallMaterial = useMemo(() => {
-    return new THREE.MeshStandardMaterial({
-      color: '#3f3f46',
-      roughness: 0.7,
-      metalness: 0.05,
-      transparent: true,
-      opacity: 0.85,
-    });
-  }, []);
+const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
+  ({ wallIndex, outline, wallHeight, wallThickness, wallOpenings, view }) => {
+    const wallMaterial = useMemo(() => {
+      return new THREE.MeshStandardMaterial({
+        color: '#3f3f46',
+        roughness: 0.7,
+        metalness: 0.05,
+        transparent: true,
+        opacity: 0.85,
+      });
+    }, []);
 
-  useEffect(() => {
-    return () => {
-      wallMaterial.dispose();
-    };
-  }, [wallMaterial]);
-
-  const segment = useMemo(() => {
-    try {
-      return wallSegment(room, wallIndex);
-    } catch {
-      return null;
-    }
-  }, [room, wallIndex]);
-
-  const wallOpenings = useMemo(() => {
-    return room.openings.filter((op) => op.wallIndex === wallIndex);
-  }, [room.openings, wallIndex]);
-
-  // Compute sub-boxes for wall around openings
-  const wallBoxes = useMemo(() => {
-    if (!segment) return [];
-
-    const pieces = computeWallPieces(segment.len, room.wallHeight, wallOpenings);
-    const thickness = room.wallThickness;
-
-    // Basis quaternion for the wall orientation
-    const xAxis = new THREE.Vector3(segment.dir[0], 0, segment.dir[1]).normalize();
-    const yAxis = new THREE.Vector3(0, 1, 0);
-    const zAxis = new THREE.Vector3(segment.normal[0], 0, segment.normal[1]).normalize();
-    const rotMatrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
-    const quaternion = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
-
-    return pieces.map((piece) => {
-      const uMid = (piece.uStart + piece.uEnd) / 2;
-      const vMid = (piece.vStart + piece.vEnd) / 2;
-      const tMid = thickness / 2;
-
-      const posX = segment.a[0] + uMid * segment.dir[0] + tMid * segment.normal[0];
-      const posY = vMid;
-      const posZ = segment.a[1] + uMid * segment.dir[1] + tMid * segment.normal[1];
-
-      return {
-        id: `${wallIndex}-${piece.type}-${piece.uStart.toFixed(2)}`,
-        position: [posX, posY, posZ] as [number, number, number],
-        dimensions: [piece.width, piece.height, thickness] as [number, number, number],
-        quaternion,
+    useEffect(() => {
+      return () => {
+        wallMaterial.dispose();
       };
+    }, [wallMaterial]);
+
+    const segment = useMemo(() => {
+      try {
+        return wallSegment({ outline }, wallIndex);
+      } catch {
+        return null;
+      }
+    }, [outline, wallIndex]);
+
+    // Compute sub-boxes for wall around openings
+    const wallBoxes = useMemo(() => {
+      if (!segment) return [];
+
+      const pieces = computeWallPieces(segment.len, wallHeight, wallOpenings);
+      const thickness = wallThickness;
+
+      // Basis quaternion for the wall orientation
+      const xAxis = new THREE.Vector3(segment.dir[0], 0, segment.dir[1]).normalize();
+      const yAxis = new THREE.Vector3(0, 1, 0);
+      const zAxis = new THREE.Vector3(segment.normal[0], 0, segment.normal[1]).normalize();
+      const rotMatrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+      const quaternion = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+
+      return pieces.map((piece) => {
+        const uMid = (piece.uStart + piece.uEnd) / 2;
+        const vMid = (piece.vStart + piece.vEnd) / 2;
+        const tMid = thickness / 2;
+
+        const posX = segment.a[0] + uMid * segment.dir[0] + tMid * segment.normal[0];
+        const posY = vMid;
+        const posZ = segment.a[1] + uMid * segment.dir[1] + tMid * segment.normal[1];
+
+        return {
+          id: `${wallIndex}-${piece.type}-${piece.uStart.toFixed(2)}`,
+          position: [posX, posY, posZ] as [number, number, number],
+          dimensions: [piece.width, piece.height, thickness] as [number, number, number],
+          quaternion,
+        };
+      });
+    }, [segment, wallHeight, wallThickness, wallOpenings, wallIndex]);
+
+    // Wall center point on floor for camera orientation tests
+    const wallCenter = useMemo(() => {
+      if (!segment) return new THREE.Vector3();
+      const thickness = wallThickness;
+      const uMid = segment.len / 2;
+      const tMid = thickness / 2;
+      return new THREE.Vector3(
+        segment.a[0] + uMid * segment.dir[0] + tMid * segment.normal[0],
+        wallHeight / 2,
+        segment.a[1] + uMid * segment.dir[1] + tMid * segment.normal[1]
+      );
+    }, [segment, wallHeight, wallThickness]);
+
+    // Dynamic Camera-Facing Fade
+    useFrame(({ camera }, delta) => {
+      if (!segment) return;
+
+      if (view === '2d') {
+        // In 2D top-down mode, keep walls crisp and solid
+        wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, 0.85, delta * 10);
+        wallMaterial.depthWrite = true;
+      } else {
+        // Vector from wall center to camera
+        const toCamX = camera.position.x - wallCenter.x;
+        const toCamZ = camera.position.z - wallCenter.z;
+        const dist = Math.hypot(toCamX, toCamZ);
+
+        if (dist > 1e-4) {
+          const vCamX = toCamX / dist;
+          const vCamZ = toCamZ / dist;
+
+          // Dot product with outward normal
+          const cosTheta = vCamX * segment.normal[0] + vCamZ * segment.normal[1];
+
+          // Fade wall when camera looks from outside towards interior (cosTheta > 0.05)
+          const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
+          const targetOpacity = THREE.MathUtils.lerp(0.85, 0.2, fadeFactor);
+
+          wallMaterial.opacity = THREE.MathUtils.lerp(
+            wallMaterial.opacity,
+            targetOpacity,
+            delta * 8
+          );
+          wallMaterial.depthWrite = wallMaterial.opacity > 0.45;
+        }
+      }
     });
-  }, [segment, room.wallHeight, room.wallThickness, wallOpenings, wallIndex]);
 
-  // Wall center point on floor for camera orientation tests
-  const wallCenter = useMemo(() => {
-    if (!segment) return new THREE.Vector3();
-    const thickness = room.wallThickness;
-    const uMid = segment.len / 2;
-    const tMid = thickness / 2;
-    return new THREE.Vector3(
-      segment.a[0] + uMid * segment.dir[0] + tMid * segment.normal[0],
-      room.wallHeight / 2,
-      segment.a[1] + uMid * segment.dir[1] + tMid * segment.normal[1]
+    if (!segment || wallBoxes.length === 0) return null;
+
+    return (
+      <group name={`wall-segment-${wallIndex}`}>
+        {wallBoxes.map((box) => (
+          <mesh
+            key={box.id}
+            position={box.position}
+            quaternion={box.quaternion}
+            material={wallMaterial}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={box.dimensions} />
+          </mesh>
+        ))}
+
+        {/* Render Opening Visuals in the cutouts */}
+        {wallOpenings.map((opening) => (
+          <OpeningVisual
+            key={opening.id}
+            opening={opening}
+            segment={segment}
+            wallThickness={wallThickness}
+          />
+        ))}
+      </group>
     );
-  }, [segment, room.wallHeight, room.wallThickness]);
-
-  // Dynamic Camera-Facing Fade
-  useFrame(({ camera }, delta) => {
-    if (!segment) return;
-
-    if (view === '2d') {
-      // In 2D top-down mode, keep walls crisp and solid
-      wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, 0.85, delta * 10);
-      wallMaterial.depthWrite = true;
-    } else {
-      // Vector from wall center to camera
-      const toCamX = camera.position.x - wallCenter.x;
-      const toCamZ = camera.position.z - wallCenter.z;
-      const dist = Math.hypot(toCamX, toCamZ);
-
-      if (dist > 1e-4) {
-        const vCamX = toCamX / dist;
-        const vCamZ = toCamZ / dist;
-
-        // Dot product with outward normal
-        const cosTheta = vCamX * segment.normal[0] + vCamZ * segment.normal[1];
-
-        // Fade wall when camera looks from outside towards interior (cosTheta > 0.05)
-        const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
-        const targetOpacity = THREE.MathUtils.lerp(0.85, 0.2, fadeFactor);
-
-        wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, targetOpacity, delta * 8);
-        wallMaterial.depthWrite = wallMaterial.opacity > 0.45;
+  },
+  (prev, next) => {
+    if (
+      prev.wallIndex !== next.wallIndex ||
+      prev.wallHeight !== next.wallHeight ||
+      prev.wallThickness !== next.wallThickness ||
+      prev.view !== next.view ||
+      prev.outline !== next.outline ||
+      prev.wallOpenings.length !== next.wallOpenings.length
+    ) {
+      return false;
+    }
+    for (let i = 0; i < prev.wallOpenings.length; i++) {
+      const p = prev.wallOpenings[i]!;
+      const n = next.wallOpenings[i]!;
+      if (
+        p.id !== n.id ||
+        p.offset !== n.offset ||
+        p.width !== n.width ||
+        p.height !== n.height ||
+        p.sill !== n.sill ||
+        p.role !== n.role ||
+        p.openFraction !== n.openFraction
+      ) {
+        return false;
       }
     }
-  });
-
-  if (!segment || wallBoxes.length === 0) return null;
-
-  return (
-    <group name={`wall-segment-${wallIndex}`}>
-      {wallBoxes.map((box) => (
-        <mesh
-          key={box.id}
-          position={box.position}
-          quaternion={box.quaternion}
-          material={wallMaterial}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={box.dimensions} />
-        </mesh>
-      ))}
-
-      {/* Render Opening Visuals in the cutouts */}
-      {wallOpenings.map((opening) => (
-        <OpeningVisual
-          key={opening.id}
-          opening={opening}
-          segment={segment}
-          wallThickness={room.wallThickness}
-        />
-      ))}
-    </group>
-  );
-};
+    return true;
+  }
+);
 
 interface OpeningVisualProps {
   opening: Opening;
@@ -433,7 +467,10 @@ export interface RoomShellProps {
  * - Optional ceiling mesh toggled via uiStore
  */
 export const RoomShell: React.FC<RoomShellProps> = () => {
-  const room = useSceneStore((state) => state.room);
+  const outline = useSceneStore((state) => state.room.outline);
+  const wallHeight = useSceneStore((state) => state.room.wallHeight);
+  const wallThickness = useSceneStore((state) => state.room.wallThickness);
+  const openings = useSceneStore((state) => state.room.openings);
   const view = useUiStore((state) => state.view);
   const showCeiling = useUiStore((state) => state.showCeiling);
 
@@ -442,21 +479,21 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
     const shape = new THREE.Shape();
     const points: THREE.Vector3[] = [];
 
-    if (room.outline.length >= 3) {
-      shape.moveTo(room.outline[0]![0], -room.outline[0]![1]);
-      points.push(new THREE.Vector3(room.outline[0]![0], 0.002, room.outline[0]![1]));
+    if (outline.length >= 3) {
+      shape.moveTo(outline[0]![0], -outline[0]![1]);
+      points.push(new THREE.Vector3(outline[0]![0], 0.002, outline[0]![1]));
 
-      for (let i = 1; i < room.outline.length; i++) {
-        const pt = room.outline[i]!;
+      for (let i = 1; i < outline.length; i++) {
+        const pt = outline[i]!;
         shape.lineTo(pt[0], -pt[1]);
         points.push(new THREE.Vector3(pt[0], 0.002, pt[1]));
       }
       shape.closePath();
-      points.push(new THREE.Vector3(room.outline[0]![0], 0.002, room.outline[0]![1]));
+      points.push(new THREE.Vector3(outline[0]![0], 0.002, outline[0]![1]));
     }
 
     return { floorShape: shape, outlinePoints: points };
-  }, [room.outline]);
+  }, [outline]);
 
   const outlineLine = useMemo(() => {
     const geom = new THREE.BufferGeometry().setFromPoints(outlinePoints);
@@ -471,7 +508,7 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
     };
   }, [outlineLine]);
 
-  if (room.outline.length < 3) return null;
+  if (outline.length < 3) return null;
 
   return (
     <group name="room-shell">
@@ -492,13 +529,24 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
       <primitive object={outlineLine} />
 
       {/* 2. Wall Segments with Cutouts & Camera-Facing Fade */}
-      {room.outline.map((_, index) => (
-        <WallSegmentMesh key={`wall-${index}`} wallIndex={index} room={room} view={view} />
-      ))}
+      {outline.map((_, index) => {
+        const wallOpenings = openings.filter((op) => op.wallIndex === index);
+        return (
+          <WallSegmentMesh
+            key={`wall-${index}`}
+            wallIndex={index}
+            outline={outline}
+            wallHeight={wallHeight}
+            wallThickness={wallThickness}
+            wallOpenings={wallOpenings}
+            view={view}
+          />
+        );
+      })}
 
       {/* 3. Optional Ceiling Mesh */}
       {showCeiling && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, room.wallHeight, 0]} receiveShadow>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, wallHeight, 0]} receiveShadow>
           <shapeGeometry args={[floorShape]} />
           <meshStandardMaterial
             color="#52525b"
