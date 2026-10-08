@@ -284,6 +284,56 @@ interface OpeningVisualProps {
   wallThickness: number;
 }
 
+interface OpeningAirflowArrowProps {
+  position: [number, number, number];
+  normal: [number, number];
+  role: 'inlet' | 'outlet';
+}
+
+/**
+ * 3D Airflow direction arrow oriented along wall normal:
+ * - Inlet: blue arrow pointing into the room (-normal)
+ * - Outlet: orange arrow pointing out of the room (+normal)
+ */
+const OpeningAirflowArrow: React.FC<OpeningAirflowArrowProps> = ({ position, normal, role }) => {
+  const { arrowQuat, arrowColor } = useMemo(() => {
+    // normal is outward (pointing out of room)
+    // Inlet arrows point into the room (-normal)
+    // Outlet arrows point out of the room (+normal)
+    const factor = role === 'inlet' ? -1 : 1;
+    const dir = new THREE.Vector3(normal[0] * factor, 0, normal[1] * factor).normalize();
+    const up = new THREE.Vector3(0, 1, 0);
+    const quat = new THREE.Quaternion().setFromUnitVectors(up, dir);
+    const color = role === 'inlet' ? '#38bdf8' : '#f97316';
+    return { arrowQuat: quat, arrowColor: color };
+  }, [normal, role]);
+
+  return (
+    <group position={position} quaternion={arrowQuat}>
+      {/* Arrow Shaft */}
+      <mesh position={[0, 0.16, 0]}>
+        <cylinderGeometry args={[0.02, 0.02, 0.32, 12]} />
+        <meshStandardMaterial
+          color={arrowColor}
+          emissive={arrowColor}
+          emissiveIntensity={0.8}
+          roughness={0.3}
+        />
+      </mesh>
+      {/* Arrow Cone Head */}
+      <mesh position={[0, 0.32 + 0.08, 0]}>
+        <coneGeometry args={[0.065, 0.16, 12]} />
+        <meshStandardMaterial
+          color={arrowColor}
+          emissive={arrowColor}
+          emissiveIntensity={0.8}
+          roughness={0.3}
+        />
+      </mesh>
+    </group>
+  );
+};
+
 /**
  * Visual representation of an opening (window glass / door panel) inside the cutout
  */
@@ -313,9 +363,9 @@ const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, wallThi
     const rotMatrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
     const rot = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
 
-    let roleColor = '#94a3b8'; // neutral
-    if (opening.role === 'inlet') roleColor = '#38bdf8'; // sky blue
-    if (opening.role === 'outlet') roleColor = '#f97316'; // amber
+    let roleColor = '#71717a'; // closed = grey
+    if (opening.role === 'inlet') roleColor = '#38bdf8'; // inlet = blue
+    if (opening.role === 'outlet') roleColor = '#f97316'; // outlet = orange
 
     return {
       position: [posX, posY, posZ] as [number, number, number],
@@ -330,38 +380,45 @@ const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, wallThi
   }, [opening, segment, wallThickness]);
 
   return (
-    <mesh
-      position={position}
-      quaternion={quaternion}
-      onPointerDown={(e) => {
-        if (toolMode === 'select' && e.button === 0) {
-          e.stopPropagation();
-          selectOpening(opening.id, e.shiftKey);
-        }
-      }}
-    >
-      <boxGeometry args={dimensions} />
-      <meshStandardMaterial
-        color={color}
-        transparent
-        opacity={opening.role === 'closed' ? 0.25 : 0.45}
-        roughness={0.2}
-      />
-      {isSelected && (
-        <lineSegments>
-          <edgesGeometry
-            args={[
-              new THREE.BoxGeometry(
-                dimensions[0] * 1.04,
-                dimensions[1] * 1.04,
-                dimensions[2] * 1.04
-              ),
-            ]}
-          />
-          <lineBasicMaterial color={outlineColor} linewidth={2} />
-        </lineSegments>
+    <group name={`opening-${opening.id}`}>
+      <mesh
+        position={position}
+        quaternion={quaternion}
+        onPointerDown={(e) => {
+          if (toolMode === 'select' && e.button === 0) {
+            e.stopPropagation();
+            selectOpening(opening.id, e.shiftKey);
+          }
+        }}
+      >
+        <boxGeometry args={dimensions} />
+        <meshStandardMaterial
+          color={color}
+          transparent
+          opacity={opening.role === 'closed' ? 0.3 : Math.max(0.35, opening.openFraction * 0.65)}
+          roughness={0.2}
+        />
+        {isSelected && (
+          <lineSegments>
+            <edgesGeometry
+              args={[
+                new THREE.BoxGeometry(
+                  dimensions[0] * 1.04,
+                  dimensions[1] * 1.04,
+                  dimensions[2] * 1.04
+                ),
+              ]}
+            />
+            <lineBasicMaterial color={outlineColor} linewidth={2} />
+          </lineSegments>
+        )}
+      </mesh>
+
+      {/* 3D Airflow Direction Arrow: inlet = blue inward, outlet = orange outward, closed = none */}
+      {opening.role !== 'closed' && (opening.openFraction ?? 0) > 0 && (
+        <OpeningAirflowArrow position={position} normal={segment.normal} role={opening.role} />
       )}
-    </mesh>
+    </group>
   );
 };
 

@@ -21,6 +21,7 @@ import { getCatalogAsset } from '../core/catalog';
 import { wallSegment } from '../core/parser';
 import { snap } from '../core/units';
 import { SelectionGizmo } from './SelectionGizmo';
+import { OpeningTaggingPanel } from './OpeningTaggingPanel';
 
 /**
  * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
@@ -546,6 +547,9 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
           {/* Interactive Selection & Transform Gizmo */}
           <SelectionGizmo />
+
+          {/* Floating Opening Tagging Panel (Role buttons, open-fraction, dimensions) */}
+          <OpeningTaggingPanel />
 
           {/* Interactive Placement Controller (Ghost preview, snapping, wall mounting) */}
           <PlacementController />

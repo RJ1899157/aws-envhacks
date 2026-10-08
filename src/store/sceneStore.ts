@@ -28,10 +28,15 @@ export interface SceneState {
   duplicateObject: (id: string) => SceneObject | null;
   duplicateSelected: () => SceneObject[];
   deleteSelected: () => void;
-  addOpening: (opening: Opening) => void;
+  addOpening: (
+    opening: Omit<Opening, 'role' | 'openFraction'> &
+      Partial<Pick<Opening, 'role' | 'openFraction'>>
+  ) => void;
   updateOpening: (id: string, updates: Partial<Omit<Opening, 'id'>>) => void;
   removeOpening: (id: string) => void;
   setOpeningRole: (id: string, role: OpeningRole) => void;
+  setOpeningsRole: (ids: string[], role: OpeningRole) => void;
+  setOpeningsOpenFraction: (ids: string[], fraction: number) => void;
   selectObject: (id: string | null, multi?: boolean) => void;
   selectOpening: (id: string | null, multi?: boolean) => void;
   selectAll: () => void;
@@ -253,9 +258,15 @@ export const useSceneStore = create<SceneState>()(
 
       addOpening: (opening) =>
         set((state) => {
-          state.room.openings.push(opening);
-          state.selectedOpeningId = opening.id;
-          state.selectedOpeningIds = [opening.id];
+          const defaultRole: OpeningRole = opening.type === 'door' ? 'closed' : 'inlet';
+          const finalOpening: Opening = {
+            ...opening,
+            role: opening.role ?? defaultRole,
+            openFraction: opening.openFraction ?? (defaultRole === 'closed' ? 0 : 0.5),
+          };
+          state.room.openings.push(finalOpening);
+          state.selectedOpeningId = finalOpening.id;
+          state.selectedOpeningIds = [finalOpening.id];
           state.selectedObjectId = null;
           state.selectedObjectIds = [];
         }),
@@ -283,6 +294,40 @@ export const useSceneStore = create<SceneState>()(
           const op = state.room.openings.find((o) => o.id === id);
           if (op) {
             op.role = role;
+            if (role === 'closed') {
+              op.openFraction = 0;
+            } else if (op.openFraction === 0) {
+              op.openFraction = 0.5;
+            }
+          }
+        }),
+
+      setOpeningsRole: (ids, role) =>
+        set((state) => {
+          const idSet = new Set(ids);
+          for (const op of state.room.openings) {
+            if (idSet.has(op.id)) {
+              op.role = role;
+              if (role === 'closed') {
+                op.openFraction = 0;
+              } else if (op.openFraction === 0) {
+                op.openFraction = 0.5;
+              }
+            }
+          }
+        }),
+
+      setOpeningsOpenFraction: (ids, fraction) =>
+        set((state) => {
+          const idSet = new Set(ids);
+          const clamped = Math.max(0, Math.min(1, fraction));
+          for (const op of state.room.openings) {
+            if (idSet.has(op.id)) {
+              op.openFraction = clamped;
+              if (clamped > 0 && op.role === 'closed') {
+                op.role = op.type === 'door' ? 'outlet' : 'inlet';
+              }
+            }
           }
         }),
 

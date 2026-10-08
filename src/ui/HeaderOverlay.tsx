@@ -22,6 +22,36 @@ export const HeaderOverlay: React.FC<HeaderOverlayProps> = ({ className = '' }) 
     return Math.abs(signedArea(room.outline));
   }, [room.outline]);
 
+  // Ventilation Summary calculations
+  const ventilationStats = useMemo(() => {
+    let inletCount = 0;
+    let outletCount = 0;
+    let closedCount = 0;
+    let totalOpenArea = 0;
+
+    for (const op of room.openings) {
+      if (op.role === 'inlet') {
+        inletCount++;
+        totalOpenArea += op.width * op.height * op.openFraction;
+      } else if (op.role === 'outlet') {
+        outletCount++;
+        totalOpenArea += op.width * op.height * op.openFraction;
+      } else {
+        closedCount++;
+      }
+    }
+
+    const hasCrossVentilation = inletCount > 0 && outletCount > 0;
+
+    return {
+      inletCount,
+      outletCount,
+      closedCount,
+      totalOpenArea: Number(totalOpenArea.toFixed(2)),
+      hasCrossVentilation,
+    };
+  }, [room.openings]);
+
   return (
     <header
       className={`pointer-events-none absolute top-0 left-0 right-0 p-4 flex flex-wrap items-center justify-between gap-3 text-neutral-300 ${className}`}
@@ -35,6 +65,57 @@ export const HeaderOverlay: React.FC<HeaderOverlayProps> = ({ className = '' }) 
         <span className="text-neutral-300 font-mono">
           Area: <strong className="text-emerald-400 font-semibold">{roomArea.toFixed(2)} m²</strong>
         </span>
+      </div>
+
+      {/* Global Ventilation Summary Chip */}
+      <div
+        data-testid="ventilation-summary-chip"
+        className="pointer-events-auto flex items-center gap-2.5 bg-neutral-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-neutral-700/60 shadow-lg text-xs"
+      >
+        <span className="text-neutral-400 font-medium">Ventilation:</span>
+
+        {/* Inlets count */}
+        <span className="flex items-center gap-1 font-semibold text-sky-400">
+          <span className="w-2 h-2 rounded-full bg-sky-400" />
+          {ventilationStats.inletCount} Inlet{ventilationStats.inletCount !== 1 ? 's' : ''}
+        </span>
+
+        <span className="text-neutral-600">/</span>
+
+        {/* Outlets count */}
+        <span className="flex items-center gap-1 font-semibold text-orange-400">
+          <span className="w-2 h-2 rounded-full bg-orange-400" />
+          {ventilationStats.outletCount} Outlet{ventilationStats.outletCount !== 1 ? 's' : ''}
+        </span>
+
+        <span className="text-neutral-700">|</span>
+
+        {/* Total open area in m2 */}
+        <span className="text-neutral-300 font-mono">
+          Open Area:{' '}
+          <strong className="text-emerald-400 font-semibold">
+            {ventilationStats.totalOpenArea} m²
+          </strong>
+        </span>
+
+        {/* Warning badge if cross-ventilation is impossible */}
+        {!ventilationStats.hasCrossVentilation ? (
+          <div
+            data-testid="cross-ventilation-warning"
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/60 text-amber-300 font-medium text-[11px] animate-pulse"
+          >
+            <span>⚠️</span>
+            <span>No cross-ventilation (needs inlet & outlet pair)</span>
+          </div>
+        ) : (
+          <div
+            data-testid="cross-ventilation-active"
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/60 text-emerald-300 font-medium text-[11px]"
+          >
+            <span>✓</span>
+            <span>Cross-ventilation active</span>
+          </div>
+        )}
       </div>
 
       {/* Tool & View Controls */}

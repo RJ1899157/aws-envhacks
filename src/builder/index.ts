@@ -6,3 +6,4 @@ export * from './AssetMesh';
 export * from './PlacedObjects';
 export * from './PlacementController';
 export * from './SelectionGizmo';
+export * from './OpeningTaggingPanel';
