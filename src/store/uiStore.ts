@@ -15,6 +15,9 @@ export interface UiState {
   showDimensions: boolean;
   showCeiling: boolean;
   selectedVertexIndex: number | null;
+  selectedWallIndex: number | null;
+  hoveredWallIndex: number | null;
+  toastMessage: string | null;
   activeAssetId: string | null;
   ghostPosition: Vec3 | null;
   rotationSnapDeg: number;
@@ -55,6 +58,9 @@ export interface UiState {
   setShowScaleReference: (show: boolean) => void;
   toggleScaleReference: () => void;
   setSelectedVertexIndex: (index: number | null) => void;
+  setSelectedWallIndex: (index: number | null) => void;
+  setHoveredWallIndex: (index: number | null) => void;
+  setToastMessage: (msg: string | null) => void;
   setActiveAssetId: (id: string | null) => void;
   setGhostPosition: (pos: Vec3 | null) => void;
   setCursorCoords: (coords: [number, number] | null) => void;
@@ -81,6 +87,9 @@ export const initialUiState = {
   showDimensions: true,
   showCeiling: false,
   selectedVertexIndex: null as number | null,
+  selectedWallIndex: null as number | null,
+  hoveredWallIndex: null as number | null,
+  toastMessage: null as string | null,
   activeAssetId: null as string | null,
   ghostPosition: null as Vec3 | null,
   cursorCoords: null as [number, number] | null,
@@ -120,6 +129,9 @@ export const useUiStore = create<UiState>()((set) => ({
   setShowScaleReference: (showScaleReference) => set({ showScaleReference }),
   toggleScaleReference: () => set((state) => ({ showScaleReference: !state.showScaleReference })),
   setSelectedVertexIndex: (selectedVertexIndex) => set({ selectedVertexIndex }),
+  setSelectedWallIndex: (selectedWallIndex) => set({ selectedWallIndex }),
+  setHoveredWallIndex: (hoveredWallIndex) => set({ hoveredWallIndex }),
+  setToastMessage: (toastMessage) => set({ toastMessage }),
   setActiveAssetId: (activeAssetId) => set({ activeAssetId }),
   setGhostPosition: (ghostPosition) => set({ ghostPosition }),
   setCursorCoords: (cursorCoords) => set({ cursorCoords }),

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { parseRoom } from '../core/parser';
 import { useSceneStore, useUiStore } from '../store';
@@ -48,6 +48,16 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
   const gridStep = useUiStore((state) => state.gridStep);
   const showVoxelDebug = useUiStore((state) => state.showVoxelDebug);
   const voxelStats = useUiStore((state) => state.voxelStats);
+  const toastMessage = useUiStore((state) => state.toastMessage);
+  const setToastMessage = useUiStore((state) => state.setToastMessage);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [toastMessage, setToastMessage]);
 
   const [isIssuesOpen, setIsIssuesOpen] = useState(false);
   const [isPlacementDrawerOpen, setIsPlacementDrawerOpen] = useState(false);
@@ -361,6 +371,27 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
           </span>
         </button>
       </div>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+          <div
+            data-testid="hud-toast-message"
+            className="bg-neutral-900/95 border border-amber-500/70 text-amber-200 px-4 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-3 text-xs font-medium animate-bounce"
+          >
+            <span>ℹ️</span>
+            <span>{toastMessage}</span>
+            <button
+              type="button"
+              onClick={() => setToastMessage(null)}
+              className="ml-2 text-neutral-400 hover:text-white"
+              aria-label="Dismiss notification"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,8 +2,32 @@ import { create } from 'zustand';
 import { temporal } from 'zundo';
 import { immer } from 'zustand/middleware/immer';
 import { createDefaultRoom } from '../core/defaultRoom';
-import { parseRoom, type ParseIssue } from '../core/parser';
-import type { Opening, OpeningRole, Room, RoomParams, SceneObject, Vec2 } from '../core/types';
+import { parseRoom, type ParseIssue, wallSegment } from '../core/parser';
+import type {
+  Opening,
+  OpeningRole,
+  Room,
+  RoomParams,
+  SceneObject,
+  Vec2,
+  WallOverride,
+} from '../core/schema';
+import {
+  moveWallPerpendicular,
+  extrudeWallAlcove,
+  setWallLengthWithAnchor,
+  adjustOpeningsForWallLength,
+  adjustOpeningsForWallSplit,
+  adjustOpeningsForWallMerge,
+  moveRoomAndObjects,
+  scaleRoomAndObjects,
+  type LengthAnchor,
+} from '../core/wallOperations';
+import {
+  generateQuickShape,
+  type QuickShapeType,
+  type QuickShapeDimensions,
+} from '../core/quickShapes';
 
 export interface SceneState {
   room: Room;
@@ -20,6 +44,19 @@ export interface SceneState {
   moveVertex: (index: number, position: Vec2) => void;
   insertVertex: (index: number, position: Vec2) => void;
   removeVertex: (index: number) => void;
+  moveWall: (wallIndex: number, delta: number) => void;
+  extrudeWall: (wallIndex: number, offset: number) => void;
+  setWallLength: (
+    wallIndex: number,
+    newLength: number,
+    anchor?: LengthAnchor
+  ) => { removedOpenings: Opening[] };
+  splitWall: (wallIndex: number, point?: Vec2) => void;
+  mergeCorner: (cornerIndex: number) => void;
+  setWallOverride: (wallIndex: number, override: Partial<WallOverride>) => void;
+  moveRoom: (delta: Vec2) => void;
+  scaleRoom: (targetWidth: number, targetDepth: number) => void;
+  setQuickShape: (type: QuickShapeType, dimensions: QuickShapeDimensions) => void;
   setWallHeight: (height: number) => void;
   setWallThickness: (thickness: number) => void;
   setRoomName: (name: string) => void;
@@ -137,6 +174,134 @@ export const useSceneStore = create<SceneState>()(
           const safeIndex = ((index % n) + n) % n;
           state.room.outline.splice(safeIndex, 1);
         }),
+
+      moveWall: (wallIndex, delta) => {
+        markDragMutation();
+        set((state) => {
+          state.room.outline = moveWallPerpendicular(state.room.outline, wallIndex, delta);
+        });
+      },
+
+      extrudeWall: (wallIndex, offset) => {
+        set((state) => {
+          const nextOutline = extrudeWallAlcove(state.room.outline, wallIndex, offset);
+          state.room.outline = nextOutline;
+          // Offset openings on subsequent walls
+          state.room.openings = state.room.openings.map((op) => {
+            if (op.wallIndex > wallIndex) {
+              return { ...op, wallIndex: op.wallIndex + 4 };
+            }
+            return op;
+          });
+        });
+      },
+
+      setWallLength: (wallIndex, newLength, anchor = 'center') => {
+        let removed: Opening[] = [];
+        set((state) => {
+          const seg = wallSegment({ outline: state.room.outline }, wallIndex);
+          const nextOutline = setWallLengthWithAnchor(
+            state.room.outline,
+            wallIndex,
+            newLength,
+            anchor
+          );
+          const { updatedOpenings, removedOpenings } = adjustOpeningsForWallLength(
+            state.room.openings,
+            wallIndex,
+            seg.len,
+            newLength
+          );
+          state.room.outline = nextOutline;
+          state.room.openings = updatedOpenings;
+          removed = removedOpenings;
+        });
+        return { removedOpenings: removed };
+      },
+
+      splitWall: (wallIndex, point) => {
+        set((state) => {
+          const n = state.room.outline.length;
+          const safeIndex = ((wallIndex % n) + n) % n;
+          const seg = wallSegment({ outline: state.room.outline }, safeIndex);
+          const splitPt = point || [(seg.a[0] + seg.b[0]) / 2, (seg.a[1] + seg.b[1]) / 2];
+          const splitDist = Math.hypot(splitPt[0] - seg.a[0], splitPt[1] - seg.a[1]);
+
+          const nextOutline = [...state.room.outline];
+          nextOutline.splice(safeIndex + 1, 0, splitPt);
+          state.room.outline = nextOutline;
+          state.room.openings = adjustOpeningsForWallSplit(
+            state.room.openings,
+            safeIndex,
+            splitDist
+          );
+        });
+      },
+
+      mergeCorner: (cornerIndex) => {
+        set((state) => {
+          if (state.room.outline.length <= 3) return;
+          const n = state.room.outline.length;
+          const safeIndex = ((cornerIndex % n) + n) % n;
+          const prevWallIndex = (safeIndex - 1 + n) % n;
+          const prevSeg = wallSegment({ outline: state.room.outline }, prevWallIndex);
+
+          const nextOutline = state.room.outline.filter((_, idx) => idx !== safeIndex);
+          state.room.outline = nextOutline;
+          state.room.openings = adjustOpeningsForWallMerge(
+            state.room.openings,
+            safeIndex,
+            prevSeg.len
+          );
+        });
+      },
+
+      setWallOverride: (wallIndex, override) => {
+        set((state) => {
+          state.room.wallOverrides = state.room.wallOverrides || {};
+          state.room.wallOverrides[wallIndex] = {
+            ...state.room.wallOverrides[wallIndex],
+            ...override,
+          };
+        });
+      },
+
+      moveRoom: (delta) => {
+        markDragMutation();
+        set((state) => {
+          const { outline, objects } = moveRoomAndObjects(
+            state.room.outline,
+            state.room.objects,
+            delta
+          );
+          state.room.outline = outline;
+          state.room.objects = objects;
+        });
+      },
+
+      scaleRoom: (targetWidth, targetDepth) => {
+        set((state) => {
+          const { outline, objects } = scaleRoomAndObjects(
+            state.room.outline,
+            state.room.objects,
+            targetWidth,
+            targetDepth
+          );
+          state.room.outline = outline;
+          state.room.objects = objects;
+        });
+      },
+
+      setQuickShape: (type, dimensions) => {
+        set((state) => {
+          state.room.outline = generateQuickShape(type, dimensions);
+          // Clamp openings to valid wall indices
+          state.room.openings = state.room.openings.filter(
+            (op) => op.wallIndex < state.room.outline.length
+          );
+          state.room.wallOverrides = {};
+        });
+      },
 
       setWallHeight: (height) =>
         set((state) => {

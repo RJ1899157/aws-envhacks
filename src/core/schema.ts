@@ -101,6 +101,16 @@ export const RoomParamsSchema = z.object({
 export type RoomParams = z.infer<typeof RoomParamsSchema>;
 
 /**
+ * Per-wall override attributes for custom height, thickness, and material colour
+ */
+export const WallOverrideSchema = z.object({
+  height: z.number().min(1.0).max(10.0).optional(),
+  thickness: z.number().min(0.05).max(1.0).optional(),
+  color: z.string().optional(),
+});
+export type WallOverride = z.infer<typeof WallOverrideSchema>;
+
+/**
  * Complete Room specification for 3D modeling and IAQ simulation
  */
 export const RoomSchema = z.object({
@@ -120,5 +130,6 @@ export const RoomSchema = z.object({
   openings: z.array(OpeningSchema).default([]),
   objects: z.array(ObjectSchema).default([]),
   params: RoomParamsSchema.default(() => RoomParamsSchema.parse({})),
+  wallOverrides: z.record(z.coerce.number(), WallOverrideSchema).optional(),
 });
 export type Room = z.infer<typeof RoomSchema>;

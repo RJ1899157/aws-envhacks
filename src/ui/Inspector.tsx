@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSceneStore, useUiStore } from '../store';
 import { RoomParamsSchema } from '../core/schema';
-import { signedArea } from '../core/parser';
+import { signedArea, polygonBounds, wallSegment } from '../core/parser';
 import { radToDeg, degToRad } from '../core/units';
 import { getCatalogAsset } from '../core/catalog';
+import type { LengthAnchor } from '../core/wallOperations';
+import type { QuickShapeType, QuickShapeDimensions } from '../core/quickShapes';
 import { z } from 'zod';
 import type { RoomParams } from '../core/types';
 
@@ -116,6 +118,21 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
   const setWallHeight = useSceneStore((state) => state.setWallHeight);
   const setWallThickness = useSceneStore((state) => state.setWallThickness);
   const setParams = useSceneStore((state) => state.setParams);
+  const setWallOverride = useSceneStore((state) => state.setWallOverride);
+  const setWallLength = useSceneStore((state) => state.setWallLength);
+  const splitWall = useSceneStore((state) => state.splitWall);
+  const extrudeWall = useSceneStore((state) => state.extrudeWall);
+  const mergeCorner = useSceneStore((state) => state.mergeCorner);
+  const moveRoom = useSceneStore((state) => state.moveRoom);
+  const scaleRoom = useSceneStore((state) => state.scaleRoom);
+  const setQuickShape = useSceneStore((state) => state.setQuickShape);
+  const selectOpening = useSceneStore((state) => state.selectOpening);
+
+  const selectedWallIndex = useUiStore((state) => state.selectedWallIndex);
+  const setSelectedWallIndex = useUiStore((state) => state.setSelectedWallIndex);
+  const selectedVertexIndex = useUiStore((state) => state.selectedVertexIndex);
+  const setSelectedVertexIndex = useUiStore((state) => state.setSelectedVertexIndex);
+  const setToastMessage = useUiStore((state) => state.setToastMessage);
 
   const isPlacingPollutantSource = useUiStore((state) => state.isPlacingPollutantSource);
   const setIsPlacingPollutantSource = useUiStore((state) => state.setIsPlacingPollutantSource);
@@ -385,6 +402,206 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
       updateObject(selectedObject.id, { scale: nextScale });
     }
   };
+
+  // -------------------------------------------------------------
+  // SELECTED WALL DRAFT STATE & HANDLERS
+  // -------------------------------------------------------------
+  const outline = room.outline;
+
+  const selectedWallSegment = useMemo(() => {
+    if (selectedWallIndex === null || selectedWallIndex >= outline.length) return null;
+    try {
+      return wallSegment({ outline }, selectedWallIndex);
+    } catch {
+      return null;
+    }
+  }, [outline, selectedWallIndex]);
+
+  const selectedWallOverride = useMemo(() => {
+    if (selectedWallIndex === null) return undefined;
+    return room.wallOverrides?.[selectedWallIndex];
+  }, [room.wallOverrides, selectedWallIndex]);
+
+  const selectedWallOpenings = useMemo(() => {
+    if (selectedWallIndex === null) return [];
+    return room.openings.filter((op) => op.wallIndex === selectedWallIndex);
+  }, [room.openings, selectedWallIndex]);
+
+  const [draftWallLength, setDraftWallLength] = useState<string>('3.0');
+  const [draftWallAnchor, setDraftWallAnchor] = useState<LengthAnchor>('center');
+  const [draftWallThicknessOverride, setDraftWallThicknessOverride] = useState<number>(
+    room.wallThickness
+  );
+  const [hasThicknessOverride, setHasThicknessOverride] = useState<boolean>(false);
+  const [draftWallHeightOverride, setDraftWallHeightOverride] = useState<number>(room.wallHeight);
+  const [hasHeightOverride, setHasHeightOverride] = useState<boolean>(false);
+  const [draftWallColor, setDraftWallColor] = useState<string>('#3f3f46');
+
+  useEffect(() => {
+    if (selectedWallSegment) {
+      setDraftWallLength(selectedWallSegment.len.toFixed(2));
+    }
+    if (selectedWallOverride) {
+      if (selectedWallOverride.thickness !== undefined) {
+        setHasThicknessOverride(true);
+        setDraftWallThicknessOverride(selectedWallOverride.thickness);
+      } else {
+        setHasThicknessOverride(false);
+        setDraftWallThicknessOverride(room.wallThickness);
+      }
+      if (selectedWallOverride.height !== undefined) {
+        setHasHeightOverride(true);
+        setDraftWallHeightOverride(selectedWallOverride.height);
+      } else {
+        setHasHeightOverride(false);
+        setDraftWallHeightOverride(room.wallHeight);
+      }
+      if (selectedWallOverride.color !== undefined) {
+        setDraftWallColor(selectedWallOverride.color);
+      } else {
+        setDraftWallColor('#3f3f46');
+      }
+    } else {
+      setHasThicknessOverride(false);
+      setDraftWallThicknessOverride(room.wallThickness);
+      setHasHeightOverride(false);
+      setDraftWallHeightOverride(room.wallHeight);
+      setDraftWallColor('#3f3f46');
+    }
+  }, [selectedWallSegment, selectedWallOverride, room.wallThickness, room.wallHeight]);
+
+  const handleWallLengthApply = useCallback(() => {
+    if (selectedWallIndex === null) return;
+    const targetLen = parseFloat(draftWallLength);
+    if (!Number.isFinite(targetLen) || targetLen <= 0.1) return;
+    const res = setWallLength(selectedWallIndex, targetLen, draftWallAnchor);
+    if (res.removedOpenings.length > 0) {
+      setToastMessage(
+        `${res.removedOpenings.length} opening(s) removed (wall too short) — press Ctrl+Z to undo`
+      );
+    }
+  }, [selectedWallIndex, draftWallLength, draftWallAnchor, setWallLength, setToastMessage]);
+
+  const handleThicknessToggle = useCallback(
+    (enable: boolean) => {
+      if (selectedWallIndex === null) return;
+      setHasThicknessOverride(enable);
+      if (enable) {
+        setWallOverride(selectedWallIndex, { thickness: draftWallThicknessOverride });
+      } else {
+        setWallOverride(selectedWallIndex, { thickness: undefined });
+      }
+    },
+    [selectedWallIndex, draftWallThicknessOverride, setWallOverride]
+  );
+
+  const handleThicknessChange = useCallback(
+    (val: number) => {
+      if (selectedWallIndex === null) return;
+      setDraftWallThicknessOverride(val);
+      if (hasThicknessOverride) {
+        setWallOverride(selectedWallIndex, { thickness: val });
+      }
+    },
+    [selectedWallIndex, hasThicknessOverride, setWallOverride]
+  );
+
+  const handleHeightToggle = useCallback(
+    (enable: boolean) => {
+      if (selectedWallIndex === null) return;
+      setHasHeightOverride(enable);
+      if (enable) {
+        setWallOverride(selectedWallIndex, { height: draftWallHeightOverride });
+      } else {
+        setWallOverride(selectedWallIndex, { height: undefined });
+      }
+    },
+    [selectedWallIndex, draftWallHeightOverride, setWallOverride]
+  );
+
+  const handleHeightChange = useCallback(
+    (val: number) => {
+      if (selectedWallIndex === null) return;
+      setDraftWallHeightOverride(val);
+      if (hasHeightOverride) {
+        setWallOverride(selectedWallIndex, { height: val });
+      }
+    },
+    [selectedWallIndex, hasHeightOverride, setWallOverride]
+  );
+
+  const handleColorChange = useCallback(
+    (hex: string) => {
+      if (selectedWallIndex === null) return;
+      setDraftWallColor(hex);
+      setWallOverride(selectedWallIndex, { color: hex });
+    },
+    [selectedWallIndex, setWallOverride]
+  );
+
+  const handleResetWallOverrides = useCallback(() => {
+    if (selectedWallIndex === null) return;
+    setHasThicknessOverride(false);
+    setHasHeightOverride(false);
+    setDraftWallThicknessOverride(room.wallThickness);
+    setDraftWallHeightOverride(room.wallHeight);
+    setDraftWallColor('#3f3f46');
+    setWallOverride(selectedWallIndex, {
+      thickness: undefined,
+      height: undefined,
+      color: undefined,
+    });
+  }, [selectedWallIndex, room.wallThickness, room.wallHeight, setWallOverride]);
+
+  const handleSplitWall = useCallback(() => {
+    if (selectedWallIndex === null || !selectedWallSegment) return;
+    const midX = (selectedWallSegment.a[0] + selectedWallSegment.b[0]) / 2;
+    const midZ = (selectedWallSegment.a[1] + selectedWallSegment.b[1]) / 2;
+    splitWall(selectedWallIndex, [midX, midZ]);
+    setSelectedWallIndex(null);
+  }, [selectedWallIndex, selectedWallSegment, splitWall, setSelectedWallIndex]);
+
+  const handleExtrudeAlcove = useCallback(() => {
+    if (selectedWallIndex === null) return;
+    extrudeWall(selectedWallIndex, 0.5);
+  }, [selectedWallIndex, extrudeWall]);
+
+  // -------------------------------------------------------------
+  // ROOM BOUNDS, SCALE & QUICK SHAPES DRAFT STATE
+  // -------------------------------------------------------------
+  const roomBounds = useMemo(() => {
+    return polygonBounds(outline);
+  }, [outline]);
+
+  const roomWidth = useMemo(() => {
+    return Number((roomBounds.max[0] - roomBounds.min[0]).toFixed(2));
+  }, [roomBounds]);
+
+  const roomDepth = useMemo(() => {
+    return Number((roomBounds.max[1] - roomBounds.min[1]).toFixed(2));
+  }, [roomBounds]);
+
+  const [draftRoomScaleW, setDraftRoomScaleW] = useState<string>('4.0');
+  const [draftRoomScaleD, setDraftRoomScaleD] = useState<string>('3.0');
+  const [draftMoveDx, setDraftMoveDx] = useState<string>('0');
+  const [draftMoveDz, setDraftMoveDz] = useState<string>('0');
+
+  useEffect(() => {
+    setDraftRoomScaleW(roomWidth.toFixed(2));
+    setDraftRoomScaleD(roomDepth.toFixed(2));
+  }, [roomWidth, roomDepth]);
+
+  const [selectedQuickShape, setSelectedQuickShape] = useState<QuickShapeType | null>(null);
+  const [quickShapeDims] = useState<QuickShapeDimensions>({
+    width: 4.0,
+    depth: 3.0,
+    cutWidth: 2.0,
+    cutDepth: 2.0,
+    recessWidth: 2.0,
+    recessDepth: 2.0,
+    stemWidth: 3.0,
+    stemDepth: 3.0,
+  });
 
   return (
     <aside
@@ -770,9 +987,365 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
             </button>
           </div>
         </div>
+      ) : selectedWallIndex !== null && selectedWallSegment ? (
+        /* ------------------------------------------------------------- */
+        /* CASE B: WALL SELECTED                                         */
+        /* ------------------------------------------------------------- */
+        <div
+          data-testid="wall-inspector"
+          className="flex flex-col h-full overflow-y-auto p-4 gap-4"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+              <span className="font-semibold text-white text-sm">
+                Wall #{selectedWallIndex + 1}
+              </span>
+            </div>
+            <button
+              type="button"
+              data-testid="deselect-wall-btn"
+              onClick={() => setSelectedWallIndex(null)}
+              className="text-neutral-400 hover:text-white px-2 py-0.5 rounded hover:bg-neutral-800 transition-colors"
+              title="Deselect wall"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Wall Coordinates Info */}
+          <div className="flex flex-col gap-1 bg-neutral-950/40 p-2.5 rounded-lg border border-neutral-800 text-[11px] font-mono">
+            <div className="flex justify-between text-neutral-400">
+              <span>Start (Corner {selectedWallIndex + 1}):</span>
+              <span className="text-neutral-200">
+                [{selectedWallSegment.a[0].toFixed(2)}, {selectedWallSegment.a[1].toFixed(2)}]m
+              </span>
+            </div>
+            <div className="flex justify-between text-neutral-400">
+              <span>End (Corner {((selectedWallIndex + 1) % outline.length) + 1}):</span>
+              <span className="text-neutral-200">
+                [{selectedWallSegment.b[0].toFixed(2)}, {selectedWallSegment.b[1].toFixed(2)}]m
+              </span>
+            </div>
+          </div>
+
+          {/* Wall Length & Anchored Resize */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Length (m)
+              </label>
+              <span className="font-mono text-amber-400 font-bold">
+                {selectedWallSegment.len.toFixed(2)} m
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                data-testid="wall-length-input"
+                step="0.05"
+                min="0.2"
+                value={draftWallLength}
+                onChange={(e) => setDraftWallLength(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleWallLengthApply();
+                }}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded px-2.5 py-1.5 font-mono text-white text-xs focus:border-amber-500"
+              />
+              <button
+                type="button"
+                data-testid="wall-apply-length-btn"
+                onClick={handleWallLengthApply}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded text-xs whitespace-nowrap transition-colors"
+              >
+                Set
+              </button>
+            </div>
+
+            {/* Anchor Selection Buttons */}
+            <div className="flex flex-col gap-1 pt-1">
+              <span className="text-[10px] text-neutral-400 uppercase font-semibold">
+                Fixed Anchor Point:
+              </span>
+              <div className="grid grid-cols-3 gap-1 text-[10px]">
+                {(['start', 'center', 'end'] as const).map((anchor) => (
+                  <button
+                    key={anchor}
+                    type="button"
+                    data-testid={`wall-anchor-${anchor}`}
+                    onClick={() => setDraftWallAnchor(anchor)}
+                    className={`py-1 rounded font-medium border transition-colors ${
+                      draftWallAnchor === anchor
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-semibold'
+                        : 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    {anchor === 'start'
+                      ? 'Fixed Start'
+                      : anchor === 'end'
+                        ? 'Fixed End'
+                        : 'Centered'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Wall Thickness Override */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  data-testid="wall-thickness-toggle"
+                  checked={hasThicknessOverride}
+                  onChange={(e) => handleThicknessToggle(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded accent-amber-500"
+                />
+                Thickness Override
+              </label>
+              <span className="font-mono text-sky-400">
+                {(hasThicknessOverride ? draftWallThicknessOverride : room.wallThickness).toFixed(
+                  2
+                )}{' '}
+                m
+              </span>
+            </div>
+            {hasThicknessOverride && (
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="range"
+                  min="0.05"
+                  max="0.50"
+                  step="0.01"
+                  value={draftWallThicknessOverride}
+                  onChange={(e) => handleThicknessChange(parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+                <input
+                  type="number"
+                  data-testid="wall-thickness-input"
+                  step="0.01"
+                  min="0.05"
+                  max="0.50"
+                  value={draftWallThicknessOverride}
+                  onChange={(e) => handleThicknessChange(parseFloat(e.target.value))}
+                  className="w-16 bg-neutral-800 border border-neutral-700 rounded px-1.5 py-0.5 text-right font-mono text-white text-xs"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Wall Height Override */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  data-testid="wall-height-toggle"
+                  checked={hasHeightOverride}
+                  onChange={(e) => handleHeightToggle(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded accent-amber-500"
+                />
+                Height Override
+              </label>
+              <span className="font-mono text-sky-400">
+                {(hasHeightOverride ? draftWallHeightOverride : room.wallHeight).toFixed(2)} m
+              </span>
+            </div>
+            {hasHeightOverride && (
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="range"
+                  min="2.0"
+                  max="6.0"
+                  step="0.05"
+                  value={draftWallHeightOverride}
+                  onChange={(e) => handleHeightChange(parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+                <input
+                  type="number"
+                  data-testid="wall-height-input"
+                  step="0.05"
+                  min="2.0"
+                  max="6.0"
+                  value={draftWallHeightOverride}
+                  onChange={(e) => handleHeightChange(parseFloat(e.target.value))}
+                  className="w-16 bg-neutral-800 border border-neutral-700 rounded px-1.5 py-0.5 text-right font-mono text-white text-xs"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Material Color Override */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+              Material Colour
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                data-testid="wall-color-picker"
+                value={draftWallColor}
+                onChange={(e) => handleColorChange(e.target.value)}
+                className="w-8 h-8 rounded border border-neutral-700 cursor-pointer bg-neutral-800 p-0.5"
+              />
+              <div className="flex flex-wrap gap-1.5 flex-1">
+                {[
+                  { label: 'Concrete', hex: '#3f3f46' },
+                  { label: 'Light Grey', hex: '#e4e4e7' },
+                  { label: 'Warm Stone', hex: '#d6d3d1' },
+                  { label: 'Slate', hex: '#475569' },
+                  { label: 'Midnight', hex: '#1e293b' },
+                  { label: 'Brick Red', hex: '#991b1b' },
+                ].map((preset) => (
+                  <button
+                    key={preset.hex}
+                    type="button"
+                    onClick={() => handleColorChange(preset.hex)}
+                    className="w-5 h-5 rounded-full border border-neutral-600 hover:scale-110 transition-transform"
+                    style={{ backgroundColor: preset.hex }}
+                    title={preset.label}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Openings on this Wall */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+              Openings ({selectedWallOpenings.length})
+            </label>
+            {selectedWallOpenings.length === 0 ? (
+              <span className="text-[11px] text-neutral-500 italic">No openings on this wall</span>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {selectedWallOpenings.map((op) => (
+                  <div
+                    key={op.id}
+                    onClick={() => selectOpening(op.id)}
+                    className="flex items-center justify-between p-2 rounded bg-neutral-900 border border-neutral-800 hover:border-sky-500 cursor-pointer text-[11px]"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>{op.type === 'window' ? '🪟' : '🚪'}</span>
+                      <span className="capitalize text-neutral-200 font-medium">{op.type}</span>
+                      <span
+                        className={`text-[9px] px-1.5 py-0.5 rounded font-mono uppercase ${
+                          op.role === 'inlet'
+                            ? 'bg-sky-950 border border-sky-600 text-sky-300'
+                            : op.role === 'outlet'
+                              ? 'bg-amber-950 border border-amber-600 text-amber-300'
+                              : 'bg-neutral-800 border border-neutral-700 text-neutral-400'
+                        }`}
+                      >
+                        {op.role}
+                      </span>
+                    </div>
+                    <span className="font-mono text-neutral-400 text-[10px]">
+                      {op.width}m × {op.height}m
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Wall Actions */}
+          <div className="flex flex-col gap-2 pt-2 border-t border-neutral-800 mt-auto">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                data-testid="wall-split-btn"
+                onClick={handleSplitWall}
+                className="py-1.5 px-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-medium border border-neutral-700 text-xs transition-colors"
+              >
+                Split at Midpoint
+              </button>
+              <button
+                type="button"
+                data-testid="wall-extrude-btn"
+                onClick={handleExtrudeAlcove}
+                className="py-1.5 px-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-medium border border-neutral-700 text-xs transition-colors"
+              >
+                Extrude Bump (+0.5m)
+              </button>
+            </div>
+            <button
+              type="button"
+              data-testid="wall-reset-overrides-btn"
+              onClick={handleResetWallOverrides}
+              className="w-full py-1 text-[11px] text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              Reset Wall Overrides
+            </button>
+          </div>
+        </div>
+      ) : selectedVertexIndex !== null ? (
+        /* ------------------------------------------------------------- */
+        /* CASE C: CORNER VERTEX SELECTED                                */
+        /* ------------------------------------------------------------- */
+        <div
+          data-testid="corner-inspector"
+          className="flex flex-col h-full overflow-y-auto p-4 gap-4"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
+              <span className="font-semibold text-white text-sm">
+                Corner #{selectedVertexIndex + 1}
+              </span>
+            </div>
+            <button
+              type="button"
+              data-testid="deselect-corner-btn"
+              onClick={() => setSelectedVertexIndex(null)}
+              className="text-neutral-400 hover:text-white px-2 py-0.5 rounded hover:bg-neutral-800 transition-colors"
+              title="Deselect corner"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Coordinates */}
+          <div className="flex flex-col gap-1.5 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+              Corner Position (X, Z)
+            </label>
+            <div className="flex items-center justify-between font-mono text-sky-400">
+              <span>X: {outline[selectedVertexIndex]?.[0].toFixed(2)} m</span>
+              <span>Z: {outline[selectedVertexIndex]?.[1].toFixed(2)} m</span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-2 border-t border-neutral-800 mt-auto">
+            <button
+              type="button"
+              data-testid="delete-corner-btn"
+              disabled={outline.length <= 3}
+              onClick={() => {
+                mergeCorner(selectedVertexIndex);
+                setSelectedVertexIndex(null);
+              }}
+              className={`w-full py-2 px-3 rounded-lg font-medium text-xs transition-colors ${
+                outline.length <= 3
+                  ? 'bg-neutral-800/50 text-neutral-500 cursor-not-allowed border border-neutral-800'
+                  : 'bg-red-950/60 hover:bg-red-900 border border-red-800/80 text-red-200 cursor-pointer'
+              }`}
+            >
+              {outline.length <= 3
+                ? 'Cannot Delete (Min 3 Corners)'
+                : 'Delete & Merge Corner (Del)'}
+            </button>
+          </div>
+        </div>
       ) : (
         /* ------------------------------------------------------------- */
-        /* CASE B: NOTHING SELECTED (ROOM & SIMULATION PARAMS)           */
+        /* CASE D: NOTHING SELECTED (ROOM & SIMULATION PARAMS)           */
         /* ------------------------------------------------------------- */
         <div className="flex flex-col h-full overflow-y-auto p-4 gap-4">
           {/* Header */}
@@ -807,6 +1380,140 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
               </div>
             </div>
           )}
+
+          {/* Room Quick Shapes */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+              Quick Shapes
+            </label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {[
+                { type: 'rectangle', label: '▭ Rect' },
+                { type: 'l-shape', label: '⅃ L-Shape' },
+                { type: 'u-shape', label: '⊔ U-Shape' },
+                { type: 't-shape', label: '┬ T-Shape' },
+              ].map((sh) => (
+                <button
+                  key={sh.type}
+                  type="button"
+                  data-testid={`quick-shape-${sh.type}`}
+                  onClick={() => {
+                    setSelectedQuickShape(sh.type as QuickShapeType);
+                    setQuickShape(sh.type as QuickShapeType, quickShapeDims);
+                  }}
+                  className={`py-1.5 px-1 rounded text-[11px] font-medium border text-center transition-colors cursor-pointer ${
+                    selectedQuickShape === sh.type
+                      ? 'bg-sky-600 border-sky-400 text-white font-bold'
+                      : 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:bg-neutral-700'
+                  }`}
+                >
+                  {sh.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Room Overall Dimensions & Scale */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Room Bounds (Scale)
+              </label>
+              <span className="font-mono text-neutral-400 text-[10px]">
+                {roomWidth}m × {roomDepth}m
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-[10px] text-neutral-400 block mb-0.5">Width (m):</span>
+                <input
+                  type="number"
+                  data-testid="room-scale-width"
+                  step="0.2"
+                  min="1.5"
+                  value={draftRoomScaleW}
+                  onChange={(e) => setDraftRoomScaleW(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 font-mono text-white text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-neutral-400 block mb-0.5">Depth (m):</span>
+                <input
+                  type="number"
+                  data-testid="room-scale-depth"
+                  step="0.2"
+                  min="1.5"
+                  value={draftRoomScaleD}
+                  onChange={(e) => setDraftRoomScaleD(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 font-mono text-white text-xs"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="apply-room-scale-btn"
+              onClick={() => {
+                const w = parseFloat(draftRoomScaleW);
+                const d = parseFloat(draftRoomScaleD);
+                if (Number.isFinite(w) && Number.isFinite(d) && w >= 1.5 && d >= 1.5) {
+                  scaleRoom(w, d);
+                }
+              }}
+              className="py-1 bg-neutral-800 hover:bg-neutral-700 text-sky-400 border border-neutral-700 rounded font-medium text-xs transition-colors cursor-pointer"
+            >
+              Apply Overall Size
+            </button>
+          </div>
+
+          {/* Move Room Section */}
+          <div className="flex flex-col gap-2 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Move Room
+              </label>
+              <span className="text-[10px] text-neutral-500">or drag center handle ✥</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-[10px] text-neutral-400 block mb-0.5">ΔX (m):</span>
+                <input
+                  type="number"
+                  data-testid="room-move-dx"
+                  step="0.5"
+                  value={draftMoveDx}
+                  onChange={(e) => setDraftMoveDx(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 font-mono text-white text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-neutral-400 block mb-0.5">ΔZ (m):</span>
+                <input
+                  type="number"
+                  data-testid="room-move-dz"
+                  step="0.5"
+                  value={draftMoveDz}
+                  onChange={(e) => setDraftMoveDz(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 font-mono text-white text-xs"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="apply-room-move-btn"
+              onClick={() => {
+                const dx = parseFloat(draftMoveDx) || 0;
+                const dz = parseFloat(draftMoveDz) || 0;
+                if (dx !== 0 || dz !== 0) {
+                  moveRoom([dx, dz]);
+                  setDraftMoveDx('0');
+                  setDraftMoveDz('0');
+                }
+              }}
+              className="py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded font-medium text-xs transition-colors cursor-pointer"
+            >
+              Translate Room
+            </button>
+          </div>
 
           {/* Room Name */}
           <div className="flex flex-col gap-1">

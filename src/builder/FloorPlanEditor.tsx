@@ -5,6 +5,11 @@ import * as THREE from 'three';
 import { isPolygonSimple, polygonBounds, signedArea, wallSegment } from '../core/parser';
 import type { Vec2 } from '../core/schema';
 import { snap } from '../core/units';
+import {
+  moveWallPerpendicular,
+  extrudeWallAlcove,
+  type LengthAnchor,
+} from '../core/wallOperations';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { sharedOrbitControlsRef } from './Canvas';
@@ -12,10 +17,15 @@ import { sharedOrbitControlsRef } from './Canvas';
 export const FloorPlanEditor: React.FC = () => {
   const outline = useSceneStore((state) => state.room.outline);
   const moveVertex = useSceneStore((state) => state.moveVertex);
-  const insertVertex = useSceneStore((state) => state.insertVertex);
-  const removeVertex = useSceneStore((state) => state.removeVertex);
   const setOutline = useSceneStore((state) => state.setOutline);
   const setIsDragging = useSceneStore((state) => state.setIsDragging);
+  const moveWall = useSceneStore((state) => state.moveWall);
+  const extrudeWall = useSceneStore((state) => state.extrudeWall);
+  const setWallLength = useSceneStore((state) => state.setWallLength);
+  const splitWall = useSceneStore((state) => state.splitWall);
+  const mergeCorner = useSceneStore((state) => state.mergeCorner);
+  const moveRoom = useSceneStore((state) => state.moveRoom);
+  const scaleRoom = useSceneStore((state) => state.scaleRoom);
 
   const toolMode = useUiStore((state) => state.toolMode);
   const setToolMode = useUiStore((state) => state.setToolMode);
@@ -24,31 +34,80 @@ export const FloorPlanEditor: React.FC = () => {
   const showDimensions = useUiStore((state) => state.showDimensions);
   const selectedVertexIndex = useUiStore((state) => state.selectedVertexIndex);
   const setSelectedVertexIndex = useUiStore((state) => state.setSelectedVertexIndex);
+  const selectedWallIndex = useUiStore((state) => state.selectedWallIndex);
+  const setSelectedWallIndex = useUiStore((state) => state.setSelectedWallIndex);
+  const hoveredWallIndex = useUiStore((state) => state.hoveredWallIndex);
+  const setHoveredWallIndex = useUiStore((state) => state.setHoveredWallIndex);
+  const setToastMessage = useUiStore((state) => state.setToastMessage);
 
-  // Drawing state for 'draw-floor' mode
+  // -------------------------------------------------------------
+  // DRAW-FLOOR MODE STATE
+  // -------------------------------------------------------------
   const [drawingPoints, setDrawingPoints] = useState<Vec2[]>([]);
   const [cursorPos, setCursorPos] = useState<Vec2 | null>(null);
   const [isCloseHovered, setIsCloseHovered] = useState<boolean>(false);
 
-  // Dragging vertex state in 'select' mode
-  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
-  const dragStartPos = useRef<Vec2 | null>(null);
+  // -------------------------------------------------------------
+  // SELECT MODE: CORNER VERTEX DRAG
+  // -------------------------------------------------------------
+  const [draggingVertexIndex, setDraggingVertexIndex] = useState<number | null>(null);
+  const dragVertexStartPos = useRef<Vec2 | null>(null);
   const originalOutline = useRef<Vec2[] | null>(null);
   const [hasSelfIntersection, setHasSelfIntersection] = useState<boolean>(false);
   const [flashRedEdge, setFlashRedEdge] = useState<boolean>(false);
+  const [cornerAngleDeg, setCornerAngleDeg] = useState<number | null>(null);
+
+  // -------------------------------------------------------------
+  // SELECT MODE: WALL DRAG (BODY OR ALT-EXTRUDE)
+  // -------------------------------------------------------------
+  const [draggingWallState, setDraggingWallState] = useState<{
+    index: number;
+    startPoint: Vec2;
+    isExtrude: boolean;
+    accumulatedDelta: number;
+  } | null>(null);
+
+  // -------------------------------------------------------------
+  // SELECT MODE: ROOM CENTER MOVE DRAG
+  // -------------------------------------------------------------
+  const [draggingRoomCenter, setDraggingRoomCenter] = useState<{
+    startPoint: Vec2;
+    accumulatedDelta: Vec2;
+  } | null>(null);
+
+  // -------------------------------------------------------------
+  // SELECT MODE: ROOM SCALE DRAG
+  // -------------------------------------------------------------
+  const [draggingRoomScale, setDraggingRoomScale] = useState<{
+    startPoint: Vec2;
+    startWidth: number;
+    startDepth: number;
+    accumulatedWidth: number;
+    accumulatedDepth: number;
+  } | null>(null);
+
+  // -------------------------------------------------------------
+  // WALL LENGTH POPOVER (Double-click wall length label)
+  // -------------------------------------------------------------
+  const [popoverWallIndex, setPopoverWallIndex] = useState<number | null>(null);
+  const [popoverLength, setPopoverLength] = useState<string>('');
+  const [popoverAnchor, setPopoverAnchor] = useState<LengthAnchor>('center');
 
   // Blender-style numeric input while dragging or editing vertex
   const [numericInput, setNumericInput] = useState<string>('');
 
-  // Shift key orthogonal lock tracking
+  // Shift & Alt key tracking
   const isShiftPressed = useRef<boolean>(false);
+  const isAltPressed = useRef<boolean>(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift') isShiftPressed.current = true;
+      if (e.key === 'Alt') isAltPressed.current = true;
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift') isShiftPressed.current = false;
+      if (e.key === 'Alt') isAltPressed.current = false;
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -87,7 +146,6 @@ export const FloorPlanEditor: React.FC = () => {
           e.preventDefault();
           if (drawingPoints.length >= 3) {
             const finalOutline = [...drawingPoints];
-            // Ensure Counter-Clockwise winding
             if (signedArea(finalOutline) < 0) {
               finalOutline.reverse();
             }
@@ -108,25 +166,21 @@ export const FloorPlanEditor: React.FC = () => {
 
       // Select mode shortcuts
       if (toolMode === 'select') {
-        // Delete or Backspace to remove selected vertex (min 3)
+        // Delete or Backspace to remove selected corner vertex (min 3)
         if ((e.key === 'Delete' || e.key === 'Backspace') && selectedVertexIndex !== null) {
           e.preventDefault();
           if (outline.length > 3) {
-            const candidate = outline.filter((_, idx) => idx !== selectedVertexIndex);
-            if (isPolygonSimple(candidate)) {
-              removeVertex(selectedVertexIndex);
-              setSelectedVertexIndex(null);
-            } else {
-              triggerRedFlash();
-            }
+            mergeCorner(selectedVertexIndex);
+            setSelectedVertexIndex(null);
           } else {
             triggerRedFlash();
+            setToastMessage('Room must have at least 3 corners');
           }
           return;
         }
 
         // Blender numeric input handling when dragging or vertex selected
-        const activeIdx = draggingIndex ?? selectedVertexIndex;
+        const activeIdx = draggingVertexIndex ?? selectedVertexIndex;
         if (activeIdx !== null) {
           if (e.key >= '0' && e.key <= '9') {
             e.preventDefault();
@@ -187,18 +241,19 @@ export const FloorPlanEditor: React.FC = () => {
     toolMode,
     drawingPoints,
     selectedVertexIndex,
-    draggingIndex,
+    draggingVertexIndex,
     outline,
     numericInput,
     snapEnabled,
     gridStep,
     moveVertex,
-    removeVertex,
+    mergeCorner,
     setOutline,
     setIsDragging,
     setSelectedVertexIndex,
     setToolMode,
     triggerRedFlash,
+    setToastMessage,
   ]);
 
   // Snaps 2D coordinates according to snap settings and orthogonal lock
@@ -233,14 +288,11 @@ export const FloorPlanEditor: React.FC = () => {
   const handleGroundPointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       const point = e.point;
-      const ref =
-        toolMode === 'draw-floor' && drawingPoints.length > 0
-          ? drawingPoints[drawingPoints.length - 1]
-          : (dragStartPos.current ?? undefined);
 
-      const processed = processPoint(point.x, point.z, ref);
-
+      // 1. Draw floor mode
       if (toolMode === 'draw-floor') {
+        const ref = drawingPoints.length > 0 ? drawingPoints[drawingPoints.length - 1] : undefined;
+        const processed = processPoint(point.x, point.z, ref);
         setCursorPos(processed);
         if (drawingPoints.length >= 3) {
           const first = drawingPoints[0]!;
@@ -249,20 +301,151 @@ export const FloorPlanEditor: React.FC = () => {
         } else {
           setIsCloseHovered(false);
         }
-      } else if (toolMode === 'select' && draggingIndex !== null) {
+        return;
+      }
+
+      if (toolMode !== 'select') return;
+
+      // 2. Corner vertex dragging with angle snapping & angle guide
+      if (draggingVertexIndex !== null) {
+        const ref = dragVertexStartPos.current ?? undefined;
+        const processed = processPoint(point.x, point.z, ref);
+
+        // Smart angle snapping (90° / 45°) relative to adjacent walls
+        const n = outline.length;
+        const prevIdx = (draggingVertexIndex - 1 + n) % n;
+        const nextIdx = (draggingVertexIndex + 1) % n;
+        const P = outline[prevIdx]!;
+        const Q = outline[nextIdx]!;
+
+        const v1x = P[0] - processed[0];
+        const v1z = P[1] - processed[1];
+        const v2x = Q[0] - processed[0];
+        const v2z = Q[1] - processed[1];
+        const len1 = Math.hypot(v1x, v1z);
+        const len2 = Math.hypot(v2x, v2z);
+
+        if (len1 > 1e-4 && len2 > 1e-4) {
+          const dot = (v1x * v2x + v1z * v2z) / (len1 * len2);
+          const clampedDot = Math.max(-1, Math.min(1, dot));
+          let angleDeg = (Math.acos(clampedDot) * 180) / Math.PI;
+
+          // Snap to 90° or 45° if within 3.5 degrees
+          const targetAngles = [45, 90, 135];
+          for (const target of targetAngles) {
+            if (Math.abs(angleDeg - target) < 3.5) {
+              angleDeg = target;
+              break;
+            }
+          }
+          setCornerAngleDeg(angleDeg);
+        } else {
+          setCornerAngleDeg(null);
+        }
+
         const candidateOutline = [...outline];
-        candidateOutline[draggingIndex] = processed;
+        candidateOutline[draggingVertexIndex] = processed;
 
         const isSimple = isPolygonSimple(candidateOutline);
         if (isSimple) {
-          moveVertex(draggingIndex, processed);
+          moveVertex(draggingVertexIndex, processed);
           setHasSelfIntersection(false);
         } else {
           setHasSelfIntersection(true);
         }
+        return;
+      }
+
+      // 3. Wall dragging (perpendicular or extrude)
+      if (draggingWallState !== null) {
+        if (!originalOutline.current) return;
+        const { index, startPoint, isExtrude } = draggingWallState;
+        const seg = wallSegment({ outline: originalOutline.current }, index);
+
+        const dx = point.x - startPoint[0];
+        const dz = point.z - startPoint[1];
+        let deltaNormal = dx * seg.normal[0] + dz * seg.normal[1];
+
+        if (snapEnabled) {
+          deltaNormal = snap(deltaNormal, gridStep);
+        }
+
+        const candidate = isExtrude
+          ? extrudeWallAlcove(originalOutline.current, index, deltaNormal)
+          : moveWallPerpendicular(originalOutline.current, index, deltaNormal);
+
+        const isSimple = isPolygonSimple(candidate);
+        if (isSimple) {
+          setOutline(candidate);
+          setHasSelfIntersection(false);
+        } else {
+          setHasSelfIntersection(true);
+        }
+
+        setDraggingWallState((prev) => (prev ? { ...prev, accumulatedDelta: deltaNormal } : null));
+        return;
+      }
+
+      // 4. Room center dragging (move entire room)
+      if (draggingRoomCenter !== null) {
+        if (!originalOutline.current) return;
+        const { startPoint } = draggingRoomCenter;
+        let deltaX = point.x - startPoint[0];
+        let deltaZ = point.z - startPoint[1];
+
+        if (snapEnabled) {
+          deltaX = snap(deltaX, gridStep);
+          deltaZ = snap(deltaZ, gridStep);
+        }
+
+        const candidate = originalOutline.current.map(
+          (pt) => [Number((pt[0] + deltaX).toFixed(4)), Number((pt[1] + deltaZ).toFixed(4))] as Vec2
+        );
+
+        if (isPolygonSimple(candidate)) {
+          setOutline(candidate);
+          setHasSelfIntersection(false);
+        }
+
+        setDraggingRoomCenter((prev) =>
+          prev ? { ...prev, accumulatedDelta: [deltaX, deltaZ] } : null
+        );
+        return;
+      }
+
+      // 5. Room scale dragging
+      if (draggingRoomScale !== null) {
+        const { startPoint, startWidth, startDepth } = draggingRoomScale;
+        let deltaX = (point.x - startPoint[0]) * 2;
+        let deltaZ = (point.z - startPoint[1]) * 2;
+
+        if (snapEnabled) {
+          deltaX = snap(deltaX, gridStep);
+          deltaZ = snap(deltaZ, gridStep);
+        }
+
+        const targetW = Math.max(1.5, Number((startWidth + deltaX).toFixed(2)));
+        const targetD = Math.max(1.5, Number((startDepth + deltaZ).toFixed(2)));
+
+        setDraggingRoomScale((prev) =>
+          prev ? { ...prev, accumulatedWidth: targetW, accumulatedDepth: targetD } : null
+        );
       }
     },
-    [toolMode, drawingPoints, draggingIndex, outline, processPoint, moveVertex]
+    [
+      toolMode,
+      drawingPoints,
+      draggingVertexIndex,
+      draggingWallState,
+      draggingRoomCenter,
+      draggingRoomScale,
+      outline,
+      processPoint,
+      moveVertex,
+      setOutline,
+      snapEnabled,
+      gridStep,
+    ]
   );
 
   // Ground plane click for adding points in 'draw-floor' mode
@@ -297,8 +480,10 @@ export const FloorPlanEditor: React.FC = () => {
 
         setDrawingPoints((prev) => [...prev, processed]);
       } else if (toolMode === 'select') {
-        // Deselect vertex if clicking empty ground
+        // Deselect if clicking empty ground
         setSelectedVertexIndex(null);
+        setSelectedWallIndex(null);
+        setPopoverWallIndex(null);
         setNumericInput('');
       }
     },
@@ -308,20 +493,22 @@ export const FloorPlanEditor: React.FC = () => {
       processPoint,
       setOutline,
       setSelectedVertexIndex,
+      setSelectedWallIndex,
       setToolMode,
       triggerRedFlash,
     ]
   );
 
-  // Start dragging a vertex handle
+  // Start dragging a corner vertex handle
   const handleVertexPointerDown = useCallback(
     (index: number, e: ThreeEvent<PointerEvent>) => {
       if (e.button !== 0 || toolMode !== 'select') return;
       e.stopPropagation();
 
       setSelectedVertexIndex(index);
-      setDraggingIndex(index);
-      dragStartPos.current = [...outline[index]!];
+      setSelectedWallIndex(null);
+      setDraggingVertexIndex(index);
+      dragVertexStartPos.current = [...outline[index]!];
       originalOutline.current = outline.map((pt) => [...pt]);
       setIsDragging(true);
       setHasSelfIntersection(false);
@@ -331,20 +518,85 @@ export const FloorPlanEditor: React.FC = () => {
         sharedOrbitControlsRef.current.enabled = false;
       }
     },
-    [toolMode, outline, setSelectedVertexIndex, setIsDragging]
+    [toolMode, outline, setSelectedVertexIndex, setSelectedWallIndex, setIsDragging]
   );
 
-  // End dragging vertex
+  // Start dragging a wall body (perpendicular or Alt-extrude)
+  const handleWallPointerDown = useCallback(
+    (index: number, e: ThreeEvent<PointerEvent>) => {
+      if (e.button !== 0 || toolMode !== 'select') return;
+      e.stopPropagation();
+
+      setSelectedWallIndex(index);
+      setSelectedVertexIndex(null);
+      originalOutline.current = outline.map((pt) => [...pt]);
+
+      const isExtrude = e.altKey || isAltPressed.current;
+      setDraggingWallState({
+        index,
+        startPoint: [e.point.x, e.point.z],
+        isExtrude,
+        accumulatedDelta: 0,
+      });
+
+      setIsDragging(true);
+      setHasSelfIntersection(false);
+
+      if (sharedOrbitControlsRef.current) {
+        sharedOrbitControlsRef.current.enabled = false;
+      }
+    },
+    [toolMode, outline, setSelectedWallIndex, setSelectedVertexIndex, setIsDragging]
+  );
+
+  // Double-click wall body to split wall at cursor
+  const handleWallDoubleClick = useCallback(
+    (index: number, e: ThreeEvent<MouseEvent>) => {
+      if (toolMode !== 'select') return;
+      e.stopPropagation();
+      splitWall(index, [e.point.x, e.point.z]);
+      setSelectedWallIndex(null);
+    },
+    [toolMode, splitWall, setSelectedWallIndex]
+  );
+
+  // End dragging any element
   const handlePointerUp = useCallback(() => {
-    if (draggingIndex !== null) {
+    // 1. End vertex drag
+    if (draggingVertexIndex !== null) {
       if (hasSelfIntersection && originalOutline.current) {
-        // Revert self-intersecting drag
         setOutline(originalOutline.current);
         triggerRedFlash();
       }
+      setDraggingVertexIndex(null);
+      dragVertexStartPos.current = null;
+      originalOutline.current = null;
+      setCornerAngleDeg(null);
+      setIsDragging(false);
+      setHasSelfIntersection(false);
 
-      setDraggingIndex(null);
-      dragStartPos.current = null;
+      if (sharedOrbitControlsRef.current) {
+        sharedOrbitControlsRef.current.enabled = true;
+      }
+    }
+
+    // 2. End wall drag
+    if (draggingWallState !== null) {
+      const { index, isExtrude, accumulatedDelta } = draggingWallState;
+      if (hasSelfIntersection && originalOutline.current) {
+        setOutline(originalOutline.current);
+        triggerRedFlash();
+      } else if (originalOutline.current && Math.abs(accumulatedDelta) > 1e-4) {
+        // Revert temporary outline and commit action so history/undo and openings sync properly
+        setOutline(originalOutline.current);
+        if (isExtrude) {
+          extrudeWall(index, accumulatedDelta);
+        } else {
+          moveWall(index, accumulatedDelta);
+        }
+      }
+
+      setDraggingWallState(null);
       originalOutline.current = null;
       setIsDragging(false);
       setHasSelfIntersection(false);
@@ -353,7 +605,46 @@ export const FloorPlanEditor: React.FC = () => {
         sharedOrbitControlsRef.current.enabled = true;
       }
     }
-  }, [draggingIndex, hasSelfIntersection, setOutline, setIsDragging, triggerRedFlash]);
+
+    // 3. End room center move drag
+    if (draggingRoomCenter !== null) {
+      const { accumulatedDelta } = draggingRoomCenter;
+      if (originalOutline.current && (accumulatedDelta[0] !== 0 || accumulatedDelta[1] !== 0)) {
+        setOutline(originalOutline.current);
+        moveRoom(accumulatedDelta);
+      }
+      setDraggingRoomCenter(null);
+      originalOutline.current = null;
+      setIsDragging(false);
+      if (sharedOrbitControlsRef.current) {
+        sharedOrbitControlsRef.current.enabled = true;
+      }
+    }
+
+    // 4. End room scale drag
+    if (draggingRoomScale !== null) {
+      const { accumulatedWidth, accumulatedDepth } = draggingRoomScale;
+      scaleRoom(accumulatedWidth, accumulatedDepth);
+      setDraggingRoomScale(null);
+      setIsDragging(false);
+      if (sharedOrbitControlsRef.current) {
+        sharedOrbitControlsRef.current.enabled = true;
+      }
+    }
+  }, [
+    draggingVertexIndex,
+    draggingWallState,
+    draggingRoomCenter,
+    draggingRoomScale,
+    hasSelfIntersection,
+    setOutline,
+    moveWall,
+    extrudeWall,
+    moveRoom,
+    scaleRoom,
+    setIsDragging,
+    triggerRedFlash,
+  ]);
 
   // Window pointerup safeguard
   useEffect(() => {
@@ -361,23 +652,7 @@ export const FloorPlanEditor: React.FC = () => {
     return () => window.removeEventListener('pointerup', handlePointerUp);
   }, [handlePointerUp]);
 
-  // Handle midpoint click to insert a vertex
-  const handleMidpointClick = useCallback(
-    (index: number, e: ThreeEvent<PointerEvent>) => {
-      if (e.button !== 0 || toolMode !== 'select') return;
-      e.stopPropagation();
-
-      const seg = wallSegment({ outline }, index);
-      const midX = (seg.a[0] + seg.b[0]) / 2;
-      const midZ = (seg.a[1] + seg.b[1]) / 2;
-
-      insertVertex(index, [midX, midZ]);
-      setSelectedVertexIndex(index + 1);
-    },
-    [toolMode, outline, insertVertex, setSelectedVertexIndex]
-  );
-
-  // Dimensions & bounds for HUD room area
+  // Dimensions & bounds for HUD room area & handles
   const roomArea = useMemo(() => {
     return Math.abs(signedArea(outline));
   }, [outline]);
@@ -386,7 +661,19 @@ export const FloorPlanEditor: React.FC = () => {
     return polygonBounds(outline);
   }, [outline]);
 
-  // Wall segments geometry for dimension labels & midpoint handles
+  // Room centroid for center move handle
+  const roomCentroid = useMemo(() => {
+    if (outline.length === 0) return [0, 0] as Vec2;
+    let sx = 0;
+    let sz = 0;
+    for (const pt of outline) {
+      sx += pt[0];
+      sz += pt[1];
+    }
+    return [sx / outline.length, sz / outline.length] as Vec2;
+  }, [outline]);
+
+  // Wall segments geometry for dimension labels, hit boxes, and midpoint handles
   const wallData = useMemo(() => {
     if (outline.length < 2) return [];
     return outline
@@ -395,11 +682,13 @@ export const FloorPlanEditor: React.FC = () => {
           const seg = wallSegment({ outline }, i);
           const midX = (seg.a[0] + seg.b[0]) / 2;
           const midZ = (seg.a[1] + seg.b[1]) / 2;
+          const angle = Math.atan2(seg.b[1] - seg.a[1], seg.b[0] - seg.a[0]);
           return {
             index: i,
             len: seg.len,
             midX,
             midZ,
+            angle,
             normalX: seg.normal[0],
             normalZ: seg.normal[1],
           };
@@ -412,6 +701,7 @@ export const FloorPlanEditor: React.FC = () => {
       len: number;
       midX: number;
       midZ: number;
+      angle: number;
       normalX: number;
       normalZ: number;
     }[];
@@ -458,6 +748,21 @@ export const FloorPlanEditor: React.FC = () => {
       (rubberbandLine?.material as THREE.Material | undefined)?.dispose();
     };
   }, [rubberbandLine]);
+
+  // Handle popover exact length commit
+  const handleApplyPopoverLength = useCallback(() => {
+    if (popoverWallIndex === null) return;
+    const targetLen = parseFloat(popoverLength);
+    if (!Number.isFinite(targetLen) || targetLen <= 0.1) return;
+
+    const res = setWallLength(popoverWallIndex, targetLen, popoverAnchor);
+    if (res.removedOpenings.length > 0) {
+      setToastMessage(
+        `${res.removedOpenings.length} opening(s) removed (wall too short) — press Ctrl+Z to undo`
+      );
+    }
+    setPopoverWallIndex(null);
+  }, [popoverWallIndex, popoverLength, popoverAnchor, setWallLength, setToastMessage]);
 
   return (
     <group name="floor-plan-editor">
@@ -558,14 +863,55 @@ export const FloorPlanEditor: React.FC = () => {
       )}
 
       {/* =========================================
-          SELECT MODE: VERTICES & MIDPOINT HANDLES
+          SELECT MODE: VERTICES, WALL BODIES & HANDLES
           ========================================= */}
       {toolMode === 'select' && (
         <group name="select-mode-handles">
-          {/* 1. Draggable Corner Vertex Handles */}
+          {/* 1. Interactive Wall Body Hit Meshes (Perpendicular Drag / Alt-Extrude) */}
+          {wallData.map((w) => {
+            const isSelected = selectedWallIndex === w.index;
+            const isHovered = hoveredWallIndex === w.index;
+            const isDraggingThis = draggingWallState?.index === w.index;
+            const isError = (hasSelfIntersection && isDraggingThis) || flashRedEdge;
+
+            return (
+              <mesh
+                key={`wall-hit-${w.index}`}
+                position={[w.midX, 0.04, w.midZ]}
+                rotation={[0, -w.angle, 0]}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setHoveredWallIndex(w.index);
+                }}
+                onPointerOut={(e) => {
+                  e.stopPropagation();
+                  setHoveredWallIndex(null);
+                }}
+                onPointerDown={(e) => handleWallPointerDown(w.index, e)}
+                onDoubleClick={(e) => handleWallDoubleClick(w.index, e)}
+              >
+                <boxGeometry args={[w.len, 0.08, 0.35]} />
+                <meshStandardMaterial
+                  color={
+                    isError
+                      ? '#ef4444'
+                      : isDraggingThis
+                        ? '#10b981'
+                        : isSelected
+                          ? '#f59e0b'
+                          : '#38bdf8'
+                  }
+                  transparent
+                  opacity={isSelected || isDraggingThis || isError ? 0.4 : isHovered ? 0.25 : 0.001}
+                />
+              </mesh>
+            );
+          })}
+
+          {/* 2. Draggable Corner Vertex Handles */}
           {outline.map((pt, index) => {
             const isSelected = selectedVertexIndex === index;
-            const isDraggingThis = draggingIndex === index;
+            const isDraggingThis = draggingVertexIndex === index;
             const isError = (hasSelfIntersection && isDraggingThis) || flashRedEdge;
 
             return (
@@ -600,38 +946,137 @@ export const FloorPlanEditor: React.FC = () => {
             );
           })}
 
-          {/* 2. Wall Midpoint Handles (Click to insert/split wall) */}
-          {wallData.map((w) => (
-            <mesh
-              key={`midpoint-${w.index}`}
-              position={[w.midX, 0.04, w.midZ]}
-              onPointerDown={(e) => handleMidpointClick(w.index, e)}
-            >
-              <cylinderGeometry args={[0.07, 0.07, 0.05, 12]} />
-              <meshStandardMaterial color="#e4e4e7" emissive="#71717a" emissiveIntensity={0.2} />
-            </mesh>
-          ))}
+          {/* 3. Wall Midpoint "+" Button (Click to split wall) */}
+          {wallData.map((w) => {
+            const isVisible = hoveredWallIndex === w.index || selectedWallIndex === w.index;
+            if (!isVisible) return null;
 
-          {/* 3. Blender-style Numeric Input HUD */}
-          {(draggingIndex !== null || selectedVertexIndex !== null) && numericInput.length > 0 && (
+            return (
+              <Html
+                key={`midpoint-btn-${w.index}`}
+                center
+                position={[w.midX, 0.12, w.midZ]}
+                className="select-none"
+              >
+                <button
+                  type="button"
+                  data-testid={`wall-split-btn-${w.index}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    splitWall(w.index, [w.midX, w.midZ]);
+                    setSelectedWallIndex(null);
+                  }}
+                  className="w-5 h-5 bg-sky-500 hover:bg-sky-400 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-lg hover:scale-110 transition-transform cursor-pointer"
+                  title="Click to split wall (insert corner)"
+                >
+                  +
+                </button>
+              </Html>
+            );
+          })}
+
+          {/* 4. Live Degree Readout during Corner Angle Snapping */}
+          {draggingVertexIndex !== null && cornerAngleDeg !== null && (
             <Html
               center
-              position={[
-                outline[draggingIndex ?? selectedVertexIndex!]![0],
-                0.45,
-                outline[draggingIndex ?? selectedVertexIndex!]![1],
-              ]}
+              position={[outline[draggingVertexIndex]![0], 0.35, outline[draggingVertexIndex]![1]]}
               className="pointer-events-none select-none"
             >
-              <div className="bg-neutral-900/95 border border-amber-500 text-amber-300 font-mono text-xs px-2.5 py-1.5 rounded-md shadow-xl flex items-center gap-1.5 whitespace-nowrap">
-                <span className="text-neutral-400 font-sans">Wall Length:</span>
-                <span className="font-bold text-amber-200">{numericInput} m</span>
-                <span className="text-[10px] text-neutral-400 font-sans">
-                  (Enter: apply, Esc: cancel)
-                </span>
+              <div className="bg-neutral-900/95 border border-cyan-400 text-cyan-200 font-mono text-xs font-bold px-2 py-1 rounded shadow-xl flex items-center gap-1">
+                <span>📐</span>
+                <span>{cornerAngleDeg.toFixed(1)}°</span>
               </div>
             </Html>
           )}
+
+          {/* 5. Blender-style Numeric Input HUD */}
+          {(draggingVertexIndex !== null || selectedVertexIndex !== null) &&
+            numericInput.length > 0 && (
+              <Html
+                center
+                position={[
+                  outline[draggingVertexIndex ?? selectedVertexIndex!]![0],
+                  0.45,
+                  outline[draggingVertexIndex ?? selectedVertexIndex!]![1],
+                ]}
+                className="pointer-events-none select-none"
+              >
+                <div className="bg-neutral-900/95 border border-amber-500 text-amber-300 font-mono text-xs px-2.5 py-1.5 rounded-md shadow-xl flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="text-neutral-400 font-sans">Wall Length:</span>
+                  <span className="font-bold text-amber-200">{numericInput} m</span>
+                  <span className="text-[10px] text-neutral-400 font-sans">
+                    (Enter: apply, Esc: cancel)
+                  </span>
+                </div>
+              </Html>
+            )}
+
+          {/* 6. Room Center Move Handle */}
+          <group position={[roomCentroid[0], 0.02, roomCentroid[1]]}>
+            <mesh
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                originalOutline.current = outline.map((pt) => [...pt]);
+                setDraggingRoomCenter({
+                  startPoint: [e.point.x, e.point.z],
+                  accumulatedDelta: [0, 0],
+                });
+                setIsDragging(true);
+                if (sharedOrbitControlsRef.current) {
+                  sharedOrbitControlsRef.current.enabled = false;
+                }
+              }}
+            >
+              <cylinderGeometry args={[0.26, 0.26, 0.03, 24]} />
+              <meshStandardMaterial
+                color="#6366f1"
+                emissive="#4338ca"
+                emissiveIntensity={draggingRoomCenter ? 0.8 : 0.3}
+                roughness={0.4}
+              />
+            </mesh>
+            <Html center position={[0, 0.12, 0]} className="pointer-events-none select-none">
+              <span className="text-white text-xs select-none pointer-events-none font-bold">
+                ✥
+              </span>
+            </Html>
+          </group>
+
+          {/* 7. Room Scale Handle at Outer Corner */}
+          <group position={[bounds.max[0] + 0.35, 0.03, bounds.max[1] + 0.35]}>
+            <mesh
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                const curW = bounds.max[0] - bounds.min[0];
+                const curD = bounds.max[1] - bounds.min[1];
+                setDraggingRoomScale({
+                  startPoint: [e.point.x, e.point.z],
+                  startWidth: curW,
+                  startDepth: curD,
+                  accumulatedWidth: curW,
+                  accumulatedDepth: curD,
+                });
+                setIsDragging(true);
+                if (sharedOrbitControlsRef.current) {
+                  sharedOrbitControlsRef.current.enabled = false;
+                }
+              }}
+            >
+              <boxGeometry args={[0.2, 0.06, 0.2]} />
+              <meshStandardMaterial
+                color="#a855f7"
+                emissive="#7e22ce"
+                emissiveIntensity={draggingRoomScale ? 0.8 : 0.4}
+              />
+            </mesh>
+            <Html center position={[0, 0.12, 0]} className="pointer-events-none select-none">
+              <span className="text-white text-[10px] select-none pointer-events-none font-bold">
+                ⤢
+              </span>
+            </Html>
+          </group>
         </group>
       )}
 
@@ -656,37 +1101,130 @@ export const FloorPlanEditor: React.FC = () => {
       )}
 
       {/* =========================================
-          LIVE DIMENSIONS & ROOM AREA
+          LIVE DIMENSIONS & WALL LENGTH POPOVER
           ========================================= */}
-      {showDimensions && (
-        <group name="live-dimensions">
-          {/* Wall Length Labels */}
-          {wallData.map((w) => {
-            const posX = w.midX + w.normalX * 0.28;
-            const posZ = w.midZ + w.normalZ * 0.28;
-            const isError = flashRedEdge || hasSelfIntersection;
+      <group name="live-dimensions">
+        {wallData.map((w) => {
+          const isSelected = selectedWallIndex === w.index;
+          const isHovered = hoveredWallIndex === w.index;
+          const shouldShow = showDimensions || isSelected || isHovered;
+          if (!shouldShow) return null;
 
-            return (
-              <Html
-                key={`dim-${w.index}`}
-                center
-                position={[posX, 0.06, posZ]}
-                className="pointer-events-none select-none"
-              >
+          const posX = w.midX + w.normalX * 0.32;
+          const posZ = w.midZ + w.normalZ * 0.32;
+          const isError = flashRedEdge || hasSelfIntersection;
+
+          return (
+            <React.Fragment key={`dim-group-${w.index}`}>
+              <Html center position={[posX, 0.08, posZ]} className="select-none">
                 <div
-                  className={`backdrop-blur-sm border text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow whitespace-nowrap transition-colors duration-150 ${
+                  data-testid={`wall-dim-${w.index}`}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setPopoverWallIndex(w.index);
+                    setPopoverLength(w.len.toFixed(2));
+                    setPopoverAnchor('center');
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedWallIndex(w.index);
+                    setSelectedVertexIndex(null);
+                  }}
+                  className={`cursor-pointer backdrop-blur-sm border text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow whitespace-nowrap transition-colors duration-150 ${
                     isError
                       ? 'bg-red-950/90 border-red-500 text-red-200'
-                      : 'bg-neutral-900/85 border-neutral-700/60 text-neutral-200'
+                      : isSelected
+                        ? 'bg-amber-950/90 border-amber-500 text-amber-200 ring-1 ring-amber-400'
+                        : isHovered
+                          ? 'bg-sky-950/90 border-sky-500 text-sky-200'
+                          : 'bg-neutral-900/85 border-neutral-700/60 text-neutral-200 hover:border-neutral-500'
                   }`}
+                  title="Double-click to set exact length"
                 >
                   {w.len.toFixed(2)}m
                 </div>
               </Html>
-            );
-          })}
 
-          {/* Room Area Floor Badge */}
+              {/* Exact Wall Length Popover */}
+              {popoverWallIndex === w.index && (
+                <Html center position={[w.midX, 0.45, w.midZ]} className="select-none z-50">
+                  <div
+                    data-testid="wall-length-popover"
+                    className="bg-neutral-900/95 border border-sky-500/80 rounded-xl p-3 shadow-2xl backdrop-blur-md flex flex-col gap-2 w-56 text-neutral-200 animate-in fade-in"
+                  >
+                    <div className="flex items-center justify-between text-xs font-semibold text-white">
+                      <span>Wall #{w.index + 1} Length</span>
+                      <button
+                        type="button"
+                        onClick={() => setPopoverWallIndex(null)}
+                        className="text-neutral-400 hover:text-white text-sm"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        data-testid="popover-length-input"
+                        step="0.05"
+                        min="0.2"
+                        value={popoverLength}
+                        onChange={(e) => setPopoverLength(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleApplyPopoverLength();
+                          if (e.key === 'Escape') setPopoverWallIndex(null);
+                        }}
+                        autoFocus
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1 font-mono text-white text-xs focus:outline-none focus:border-sky-500"
+                      />
+                      <span className="text-neutral-400 font-mono text-xs">m</span>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-neutral-400 uppercase font-semibold">
+                        Anchor:
+                      </span>
+                      <div className="grid grid-cols-3 gap-1 text-[10px]">
+                        {(['start', 'center', 'end'] as const).map((anchor) => (
+                          <button
+                            key={anchor}
+                            type="button"
+                            data-testid={`anchor-${anchor}-btn`}
+                            onClick={() => setPopoverAnchor(anchor)}
+                            className={`py-1 rounded capitalize font-medium border transition-colors ${
+                              popoverAnchor === anchor
+                                ? 'bg-sky-600 border-sky-400 text-white'
+                                : 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:bg-neutral-700'
+                            }`}
+                          >
+                            {anchor === 'start'
+                              ? 'Fixed Start'
+                              : anchor === 'end'
+                                ? 'Fixed End'
+                                : 'Centered'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      data-testid="apply-popover-length-btn"
+                      onClick={handleApplyPopoverLength}
+                      className="mt-1 w-full py-1 bg-sky-500 hover:bg-sky-400 text-neutral-950 font-bold rounded text-xs transition-colors cursor-pointer"
+                    >
+                      Apply Length
+                    </button>
+                  </div>
+                </Html>
+              )}
+            </React.Fragment>
+          );
+        })}
+
+        {/* Room Area Floor Badge */}
+        {showDimensions && (
           <Html
             center
             position={[
@@ -700,8 +1238,8 @@ export const FloorPlanEditor: React.FC = () => {
               Area: <span className="font-bold text-neutral-100">{roomArea.toFixed(2)} m²</span>
             </div>
           </Html>
-        </group>
-      )}
+        )}
+      </group>
     </group>
   );
 };

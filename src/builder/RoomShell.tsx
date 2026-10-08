@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { wallSegment } from '../core/parser';
 import type { Opening, Vec2 } from '../core/schema';
+import { computeMiterCorner } from '../core/wallOperations';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore, type ViewMode } from '../store/uiStore';
 
@@ -138,9 +139,148 @@ interface WallSegmentMeshProps {
   outline: readonly Vec2[];
   wallHeight: number;
   wallThickness: number;
+  wallColor?: string;
+  isSelected?: boolean;
+  isHovered?: boolean;
   wallOpenings: readonly Opening[];
   view: ViewMode;
+  onSelectWall?: (index: number) => void;
+  onHoverWall?: (index: number | null) => void;
 }
+
+/**
+ * Mitered Corner Join: Seamless corner prism joining wall i-1 and wall i with zero gaps and no overlaps.
+ */
+interface MiteredCornerMeshProps {
+  cornerIndex: number;
+  outline: readonly Vec2[];
+  height: number;
+  tIn: number;
+  tOut: number;
+  color?: string;
+  view: ViewMode;
+}
+
+const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
+  cornerIndex,
+  outline,
+  height,
+  tIn,
+  tOut,
+  color = '#3f3f46',
+  view,
+}) => {
+  const n = outline.length;
+  const prevIndex = (cornerIndex - 1 + n) % n;
+
+  const { prismGeometry, cornerPos, normalOut } = useMemo(() => {
+    try {
+      const segIn = wallSegment({ outline }, prevIndex);
+      const segOut = wallSegment({ outline }, cornerIndex);
+      const P = outline[cornerIndex]!;
+
+      const miter = computeMiterCorner(
+        segIn.dir,
+        segIn.normal,
+        tIn,
+        segOut.dir,
+        segOut.normal,
+        tOut
+      );
+
+      const p1X = P[0] + tIn * segIn.normal[0];
+      const p1Z = P[1] + tIn * segIn.normal[1];
+
+      const p2X = P[0] + miter[0];
+      const p2Z = P[1] + miter[1];
+
+      const p3X = P[0] + tOut * segOut.normal[0];
+      const p3Z = P[1] + tOut * segOut.normal[1];
+
+      const shape = new THREE.Shape();
+      shape.moveTo(P[0], -P[1]);
+      shape.lineTo(p1X, -p1Z);
+      shape.lineTo(p2X, -p2Z);
+      shape.lineTo(p3X, -p3Z);
+      shape.closePath();
+
+      const geom = new THREE.ExtrudeGeometry(shape, {
+        depth: height,
+        bevelEnabled: false,
+      });
+
+      // Average normal for fade
+      const avgNormX = (segIn.normal[0] + segOut.normal[0]) / 2;
+      const avgNormZ = (segIn.normal[1] + segOut.normal[1]) / 2;
+
+      return {
+        prismGeometry: geom,
+        cornerPos: new THREE.Vector3(P[0], height / 2, P[1]),
+        normalOut: [avgNormX, avgNormZ] as [number, number],
+      };
+    } catch {
+      return { prismGeometry: null, cornerPos: null, normalOut: null };
+    }
+  }, [outline, cornerIndex, prevIndex, height, tIn, tOut]);
+
+  const cornerMaterial = useMemo(() => {
+    return new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.7,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.85,
+    });
+  }, [color]);
+
+  useEffect(() => {
+    return () => {
+      prismGeometry?.dispose();
+      cornerMaterial.dispose();
+    };
+  }, [prismGeometry, cornerMaterial]);
+
+  useFrame(({ camera }, delta) => {
+    if (!cornerPos || !normalOut) return;
+
+    if (view === '2d') {
+      cornerMaterial.opacity = THREE.MathUtils.lerp(cornerMaterial.opacity, 0.85, delta * 10);
+      cornerMaterial.depthWrite = true;
+    } else {
+      const toCamX = camera.position.x - cornerPos.x;
+      const toCamZ = camera.position.z - cornerPos.z;
+      const dist = Math.hypot(toCamX, toCamZ);
+
+      if (dist > 1e-4) {
+        const vCamX = toCamX / dist;
+        const vCamZ = toCamZ / dist;
+        const cosTheta = vCamX * normalOut[0] + vCamZ * normalOut[1];
+        const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
+        const targetOpacity = THREE.MathUtils.lerp(0.85, 0.2, fadeFactor);
+
+        cornerMaterial.opacity = THREE.MathUtils.lerp(
+          cornerMaterial.opacity,
+          targetOpacity,
+          delta * 8
+        );
+        cornerMaterial.depthWrite = cornerMaterial.opacity > 0.45;
+      }
+    }
+  });
+
+  if (!prismGeometry) return null;
+
+  return (
+    <mesh
+      geometry={prismGeometry}
+      material={cornerMaterial}
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0, 0]}
+      castShadow
+      receiveShadow
+    />
+  );
+};
 
 /**
  * Renders an extruded wall segment with CSG-free cutouts for openings.
@@ -148,16 +288,31 @@ interface WallSegmentMeshProps {
  * Memoized so changes to other objects/walls do NOT cause re-renders.
  */
 const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
-  ({ wallIndex, outline, wallHeight, wallThickness, wallOpenings, view }) => {
+  ({
+    wallIndex,
+    outline,
+    wallHeight,
+    wallThickness,
+    wallColor = '#3f3f46',
+    isSelected = false,
+    isHovered = false,
+    wallOpenings,
+    view,
+    onSelectWall,
+    onHoverWall,
+  }) => {
     const wallMaterial = useMemo(() => {
+      const baseColor = isSelected ? '#f59e0b' : isHovered ? '#38bdf8' : wallColor;
       return new THREE.MeshStandardMaterial({
-        color: '#3f3f46',
+        color: baseColor,
         roughness: 0.7,
         metalness: 0.05,
         transparent: true,
-        opacity: 0.85,
+        opacity: isSelected || isHovered ? 0.95 : 0.85,
+        emissive: isSelected ? '#b45309' : isHovered ? '#0284c7' : '#000000',
+        emissiveIntensity: isSelected || isHovered ? 0.35 : 0,
       });
-    }, []);
+    }, [wallColor, isSelected, isHovered]);
 
     useEffect(() => {
       return () => {
@@ -241,7 +396,11 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
 
           // Fade wall when camera looks from outside towards interior (cosTheta > 0.05)
           const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
-          const targetOpacity = THREE.MathUtils.lerp(0.85, 0.2, fadeFactor);
+          const targetOpacity = THREE.MathUtils.lerp(
+            isSelected || isHovered ? 0.95 : 0.85,
+            0.2,
+            fadeFactor
+          );
 
           wallMaterial.opacity = THREE.MathUtils.lerp(
             wallMaterial.opacity,
@@ -256,7 +415,22 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
     if (!segment || wallBoxes.length === 0) return null;
 
     return (
-      <group name={`wall-segment-${wallIndex}`}>
+      <group
+        name={`wall-segment-${wallIndex}`}
+        onPointerDown={(e) => {
+          if (e.button === 0) {
+            e.stopPropagation();
+            onSelectWall?.(wallIndex);
+          }
+        }}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          onHoverWall?.(wallIndex);
+        }}
+        onPointerOut={() => {
+          onHoverWall?.(null);
+        }}
+      >
         {wallBoxes.map((box) => (
           <mesh
             key={box.id}
@@ -287,6 +461,9 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
       prev.wallIndex !== next.wallIndex ||
       prev.wallHeight !== next.wallHeight ||
       prev.wallThickness !== next.wallThickness ||
+      prev.wallColor !== next.wallColor ||
+      prev.isSelected !== next.isSelected ||
+      prev.isHovered !== next.isHovered ||
       prev.view !== next.view ||
       prev.outline !== next.outline ||
       prev.wallOpenings.length !== next.wallOpenings.length
@@ -470,9 +647,14 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
   const outline = useSceneStore((state) => state.room.outline);
   const wallHeight = useSceneStore((state) => state.room.wallHeight);
   const wallThickness = useSceneStore((state) => state.room.wallThickness);
+  const wallOverrides = useSceneStore((state) => state.room.wallOverrides || {});
   const openings = useSceneStore((state) => state.room.openings);
   const view = useUiStore((state) => state.view);
   const showCeiling = useUiStore((state) => state.showCeiling);
+  const selectedWallIndex = useUiStore((state) => state.selectedWallIndex);
+  const hoveredWallIndex = useUiStore((state) => state.hoveredWallIndex);
+  const setSelectedWallIndex = useUiStore((state) => state.setSelectedWallIndex);
+  const setHoveredWallIndex = useUiStore((state) => state.setHoveredWallIndex);
 
   // Floor polygon triangulation using THREE.Shape
   const { floorShape, outlinePoints } = useMemo(() => {
@@ -531,20 +713,54 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
       {/* 2. Wall Segments with Cutouts & Camera-Facing Fade */}
       {outline.map((_, index) => {
         const wallOpenings = openings.filter((op) => op.wallIndex === index);
+        const override = wallOverrides[index];
+        const segHeight = override?.height ?? wallHeight;
+        const segThickness = override?.thickness ?? wallThickness;
+        const segColor = override?.color ?? '#3f3f46';
+
         return (
           <WallSegmentMesh
             key={`wall-${index}`}
             wallIndex={index}
             outline={outline}
-            wallHeight={wallHeight}
-            wallThickness={wallThickness}
+            wallHeight={segHeight}
+            wallThickness={segThickness}
+            wallColor={segColor}
+            isSelected={selectedWallIndex === index}
+            isHovered={hoveredWallIndex === index}
             wallOpenings={wallOpenings}
+            view={view}
+            onSelectWall={setSelectedWallIndex}
+            onHoverWall={setHoveredWallIndex}
+          />
+        );
+      })}
+
+      {/* 3. Mitered Corner Prisms */}
+      {outline.map((_, index) => {
+        const prevIndex = (index - 1 + outline.length) % outline.length;
+        const tIn = wallOverrides[prevIndex]?.thickness ?? wallThickness;
+        const tOut = wallOverrides[index]?.thickness ?? wallThickness;
+        const hCorner = Math.max(
+          wallOverrides[prevIndex]?.height ?? wallHeight,
+          wallOverrides[index]?.height ?? wallHeight
+        );
+        const cornerColor = wallOverrides[index]?.color ?? '#3f3f46';
+        return (
+          <MiteredCornerMesh
+            key={`miter-${index}`}
+            cornerIndex={index}
+            outline={outline}
+            height={hCorner}
+            tIn={tIn}
+            tOut={tOut}
+            color={cornerColor}
             view={view}
           />
         );
       })}
 
-      {/* 3. Optional Ceiling Mesh */}
+      {/* 4. Optional Ceiling Mesh */}
       {showCeiling && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, wallHeight, 0]} receiveShadow>
           <shapeGeometry args={[floorShape]} />
