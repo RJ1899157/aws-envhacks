@@ -39,6 +39,7 @@ import {
 } from '../core/openingPresets';
 import type { OpeningSubType } from '../core/schema';
 import { SelectionGizmo } from './SelectionGizmo';
+import { PerformanceOverlay } from '../ui/PerformanceOverlay';
 import { DirectObjectManipulator } from './DirectObjectManipulator';
 import { OpeningTaggingPanel } from './OpeningTaggingPanel';
 import { VoxelDebugMesh, VoxelDebugControls } from './VoxelDebug';
@@ -881,6 +882,12 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
                 }
               }
             }}
+            onContextMenu={(e) => {
+              e.stopPropagation();
+              window.dispatchEvent(new CustomEvent('canvas-context-menu', {
+                detail: { x: e.clientX, y: e.clientY, targetType: 'floor' }
+              }));
+            }}
           >
             <planeGeometry args={[2000, 2000]} />
             <meshBasicMaterial visible={false} />
@@ -888,6 +895,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
           {/* 3D Room Shell (floor triangulation, wall cutouts, camera-facing fade, ceiling) */}
           <RoomShell />
+          <PerformanceOverlay />
 
           {/* Soft contact shadows on the floor plane */}
           <ContactShadows

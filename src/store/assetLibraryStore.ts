@@ -1,16 +1,48 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { openDB, type IDBPDatabase } from 'idb';
+import type { AssetDef } from '../core/catalog';
 
 export interface MyAsset {
   id: string;
   name: string;
-  type: string; // 'furniture', 'roomShell', etc.
-  format: string; // 'glb', 'obj'
+  type: string;
+  format: string;
   blob: Blob;
   thumbnailDataUrl?: string;
-  dimensions: [number, number, number]; // w, h, d
+  dimensions: [number, number, number];
   addedAt: number;
 }
+
+interface PersistentLibraryState {
+  favorites: string[];
+  recentlyUsed: string[];
+  customVariants: AssetDef[];
+  addFavorite: (id: string) => void;
+  removeFavorite: (id: string) => void;
+  addRecentlyUsed: (id: string) => void;
+  addCustomVariant: (variant: AssetDef) => void;
+}
+
+export const useLibraryPrefsStore = create<PersistentLibraryState>()(
+  persist(
+    (set) => ({
+      favorites: [],
+      recentlyUsed: [],
+      customVariants: [],
+      addFavorite: (id) => set((s) => ({ favorites: [...new Set([...s.favorites, id])] })),
+      removeFavorite: (id) => set((s) => ({ favorites: s.favorites.filter((f) => f !== id) })),
+      addRecentlyUsed: (id) => set((s) => {
+        const filtered = s.recentlyUsed.filter((r) => r !== id);
+        return { recentlyUsed: [id, ...filtered].slice(0, 20) };
+      }),
+      addCustomVariant: (variant) => set((s) => ({
+        customVariants: [...s.customVariants.filter(v => v.id !== variant.id), variant]
+      })),
+    }),
+    { name: 'airforce-library-prefs' }
+  )
+);
 
 interface AssetLibraryState {
   assets: MyAsset[];

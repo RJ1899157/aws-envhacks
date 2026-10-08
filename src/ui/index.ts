@@ -6,3 +6,7 @@ export * from './HudOverlay';
 export * from './RestoreSessionModal';
 export * from './ImportIssuesModal';
 export * from './OnboardingModal';
+export * from './Outliner';
+export * from './CommandPalette';
+export * from './SnapshotPanel';
+export * from './ContextMenu';

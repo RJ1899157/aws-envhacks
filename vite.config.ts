@@ -14,6 +14,9 @@ export default defineConfig({
     port: 3000,
     open: false,
   },
+  test: {
+    exclude: ['e2e/**', 'node_modules/**', '**/*.spec.ts'],
+  },
   build: {
     rollupOptions: {
       output: {

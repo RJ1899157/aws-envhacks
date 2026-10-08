@@ -71,6 +71,8 @@ export const OpeningSchema = z.object({
   openFraction: z.number().min(0).max(1).default(0),
   flipHinge: z.boolean().optional(),
   flipSwing: z.boolean().optional(),
+  isHidden: z.boolean().optional(),
+  isLocked: z.boolean().optional(),
 });
 export type Opening = z.infer<typeof OpeningSchema>;
 
@@ -90,6 +92,8 @@ export const ObjectSchema = z.object({
   wallMounted: z.boolean().default(false),
   color: z.string().optional(),
   defaultAirflow: z.number().optional(), // optional airflow rate (m³/h or m/s)
+  isHidden: z.boolean().optional(),
+  isLocked: z.boolean().optional(),
 });
 export type SceneObject = z.infer<typeof ObjectSchema>;
 
@@ -122,9 +126,12 @@ export type RoomParams = z.infer<typeof RoomParamsSchema>;
  * Per-wall override attributes for custom height, thickness, and material colour
  */
 export const WallOverrideSchema = z.object({
+  name: z.string().optional(),
   height: z.number().min(1.0).max(10.0).optional(),
   thickness: z.number().min(0.05).max(1.0).optional(),
   color: z.string().optional(),
+  isHidden: z.boolean().optional(),
+  isLocked: z.boolean().optional(),
 });
 export type WallOverride = z.infer<typeof WallOverrideSchema>;
 

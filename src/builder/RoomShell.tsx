@@ -600,6 +600,8 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
         
         const wallMaterialProps = getWallMaterialProps(wallMaterialType, segColor);
 
+        if (override?.isHidden) return null;
+
         return (
           <WallSegmentMesh
             key={`wall-${index}`}
@@ -613,8 +615,8 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
             view={view}
             wallOpacityMode={wallOpacityMode}
             wallMaterialProps={wallMaterialProps}
-            onSelectWall={setSelectedWallIndex}
-            onHoverWall={setHoveredWallIndex}
+            onSelectWall={override?.isLocked ? () => {} : setSelectedWallIndex}
+            onHoverWall={override?.isLocked ? () => {} : setHoveredWallIndex}
           />
         );
       })}
@@ -630,6 +632,8 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
         );
         const cornerColor = wallOverrides[index]?.color ?? '#e2e8f0';
         const cornerWallMaterialProps = getWallMaterialProps(wallMaterialType, cornerColor);
+
+        if (wallOverrides[index]?.isHidden && wallOverrides[prevIndex]?.isHidden) return null;
 
         return (
           <MiteredCornerMesh

@@ -8,6 +8,11 @@ import {
   RestoreSessionModal,
   OnboardingModal,
   ONBOARDING_STORAGE_KEY,
+  Outliner,
+  CommandPalette,
+  ShortcutCheatSheet,
+  SnapshotPanel,
+  ContextMenu,
 } from '../ui';
 import { useAutosave } from '../store/useAutosave';
 
@@ -80,7 +85,9 @@ export const App: React.FC = () => {
       {/* Left Asset Library Sidebar */}
       <AssetLibrary />
 
-      {/* Right Contextual Inspector */}
+      {/* Right Contextual Inspector and Outliner */}
+      <Outliner />
+      <SnapshotPanel />
       <Inspector />
 
       {/* Bottom Status HUD */}
@@ -97,6 +104,10 @@ export const App: React.FC = () => {
 
       {/* 4-Step Onboarding Overlay */}
       <OnboardingModal isOpen={isOnboardingOpen} onClose={() => setIsOnboardingOpen(false)} />
+      
+      <CommandPalette />
+      <ShortcutCheatSheet />
+      <ContextMenu />
 
       {/* Import Modals */}
       <ImportModals />

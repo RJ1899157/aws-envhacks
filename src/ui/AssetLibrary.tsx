@@ -1,306 +1,210 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { CATALOG_ASSETS, type AssetDef } from '../core/catalog';
 import { useUiStore } from '../store/uiStore';
+import { useSceneStore } from '../store/sceneStore';
+import { useAssetLibraryStore, useLibraryPrefsStore } from '../store/assetLibraryStore';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { RoundedBoxPlaceholder } from '../builder/AssetMesh';
 
-type CategoryFilter = 'all' | 'furniture' | 'hvac' | 'openings' | 'decor' | 'my-assets';
-
-const CATEGORY_TABS: { id: CategoryFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'my-assets', label: 'My Assets' },
-  { id: 'furniture', label: 'Furniture' },
-  { id: 'hvac', label: 'Appliances/Airflow' },
-  { id: 'openings', label: 'Openings' },
-  { id: 'decor', label: 'Decor' },
+type TabType = 'categories' | 'favorites' | 'recent' | 'my-assets';
+const TABS: { id: TabType; label: string; icon: string }[] = [
+  { id: 'categories', label: 'Categories', icon: '📁' },
+  { id: 'favorites', label: 'Favorites', icon: '⭐' },
+  { id: 'recent', label: 'Recent', icon: '🕒' },
+  { id: 'my-assets', label: 'My Assets', icon: '📦' },
 ];
 
-export interface AssetLibraryProps {
-  className?: string;
-}
+const CATEGORIES = [
+  'All', 'Bedroom', 'Living', 'Dining', 'Kitchen', 'Bathroom', 
+  'Office', 'Appliances and Airflow', 'Openings', 'Decor'
+];
 
-/**
- * Thumbnail icon rendering a 3D isometric representation of the asset using its real dimensions and color,
- * with skeleton shimmer while loading.
- */
-export const AssetThumbnailSkeleton: React.FC = () => (
-  <div className="flex items-center gap-3 p-2 rounded-lg border border-neutral-800/60 bg-neutral-900/40">
-    <div className="w-11 h-11 rounded-md skeleton-shimmer bg-neutral-800/60 flex-shrink-0" />
-    <div className="flex-1 space-y-1.5">
-      <div className="h-3 w-3/4 rounded skeleton-shimmer bg-neutral-800/80" />
-      <div className="h-2.5 w-1/2 rounded skeleton-shimmer bg-neutral-800/50" />
-    </div>
-  </div>
-);
-
-const AssetThumbnail: React.FC<{ asset: AssetDef & { thumbnailDataUrl?: string }; isLoading?: boolean }> = ({
-  asset,
-  isLoading = false,
-}) => {
-  if (isLoading) {
-    return <div className="w-11 h-11 rounded-md skeleton-shimmer bg-neutral-800/60 flex-shrink-0" />;
-  }
-
-  if (asset.thumbnailDataUrl) {
-    return (
-      <div className="relative w-11 h-11 rounded-md flex items-center justify-center border border-neutral-700/60 overflow-hidden flex-shrink-0 shadow-inner bg-black/40">
-        <img src={asset.thumbnailDataUrl} alt={asset.label} className="w-full h-full object-contain" />
-      </div>
-    );
-  }
-
+// Context Menu
+const ContextMenu = ({ x, y, asset, onClose, onEdit }: { x: number, y: number, asset: AssetDef, onClose: () => void, onEdit: (v: AssetDef) => void }) => {
+  const [color, setColor] = useState(asset.color);
   return (
-    <div
-      className="relative w-11 h-11 rounded-md flex items-center justify-center border border-neutral-700/60 overflow-hidden flex-shrink-0 shadow-inner group-hover:border-neutral-500 transition-colors"
-      style={{ backgroundColor: `${asset.color}20` }}
-    >
-      {/* Isometric 3D box glyph */}
-      <div
-        className="w-5 h-5 rounded-sm shadow-md transition-transform duration-200 group-hover:scale-110"
-        style={{
-          backgroundColor: asset.color,
-          transform: 'rotate(-20deg) skewX(10deg)',
-          border: '1px solid rgba(255,255,255,0.2)',
-        }}
-      />
-      {asset.role === 'source' && (
-        <span className="absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-sm" />
-      )}
+    <div className="fixed z-50 bg-neutral-800 border border-neutral-700 shadow-xl rounded-md p-3 text-xs w-48 text-white" style={{ left: x, top: y }}>
+      <div className="font-bold mb-2 pb-2 border-b border-neutral-700">Edit Variant: {asset.label}</div>
+      <label className="block mb-2 text-neutral-400">Color</label>
+      <input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full mb-3 h-8 bg-transparent cursor-pointer rounded" />
+      <div className="flex gap-2">
+        <button onClick={() => { onEdit({ ...asset, id: `${asset.id}-var-${Date.now()}`, color }); onClose(); }} className="flex-1 bg-sky-600 hover:bg-sky-500 py-1 rounded">Save Variant</button>
+        <button onClick={onClose} className="flex-1 bg-neutral-700 hover:bg-neutral-600 py-1 rounded">Cancel</button>
+      </div>
     </div>
   );
 };
 
-import { useAssetLibraryStore } from '../store/assetLibraryStore';
+// Turntable Component
+const Turntable = ({ asset }: { asset: AssetDef }) => {
+  const ref = useRef<any>();
+  useFrame((_, delta) => {
+    if (ref.current) ref.current.rotation.y += delta;
+  });
+  return (
+    <group ref={ref} position={[0, -asset.size[1]/2, 0]}>
+      <RoundedBoxPlaceholder id={asset.id} size={asset.size} color={asset.color} role={asset.role} />
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[5, 10, 5]} intensity={1.5} />
+    </group>
+  );
+};
 
-export const AssetLibrary: React.FC<AssetLibraryProps> = ({ className = '' }) => {
+export const AssetLibrary: React.FC = () => {
   const { assets: myAssets, loadAssets } = useAssetLibraryStore();
-
-  React.useEffect(() => {
-    loadAssets();
-  }, [loadAssets]);
-  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  const prefs = useLibraryPrefsStore();
+  const [activeTab, setActiveTab] = useState<TabType>('categories');
+  const [activeCat, setActiveCat] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hoveredAsset, setHoveredAsset] = useState<AssetDef | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, asset: AssetDef } | null>(null);
 
   const activeAssetId = useUiStore((state) => state.activeAssetId);
   const setActiveAssetId = useUiStore((state) => state.setActiveAssetId);
   const setToolMode = useUiStore((state) => state.setToolMode);
+  
+  useEffect(() => { loadAssets(); }, [loadAssets]);
 
-  // Filter assets by selected tab and search term
-  const filteredAssets = useMemo(() => {
-    // Map MyAsset to AssetDef roughly
-    const convertedMyAssets = myAssets.map(a => ({
-      id: a.id,
-      label: a.name,
-      category: 'my-assets',
-      role: 'solid', // Default, we could save this in DB
-      wallMounted: false,
-      color: '#4ade80',
-      size: a.dimensions,
-      thumbnailDataUrl: a.thumbnailDataUrl,
-    } as AssetDef & { thumbnailDataUrl?: string }));
+  const allAssets = useMemo(() => {
+    const custom = myAssets.map(a => ({
+      id: a.id, label: a.name, category: 'my-assets', role: 'solid', elevation: 0,
+      color: '#4ade80', size: a.dimensions, thumbnailDataUrl: a.thumbnailDataUrl
+    } as AssetDef));
+    return [...CATALOG_ASSETS, ...prefs.customVariants, ...custom];
+  }, [myAssets, prefs.customVariants]);
 
-    const allAssets = [...CATALOG_ASSETS, ...convertedMyAssets];
-
-    return allAssets.filter((asset) => {
-      const matchesCategory = activeCategory === 'all' || asset.category === activeCategory;
-      const matchesSearch =
-        searchQuery.trim() === '' ||
-        asset.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        asset.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        asset.role.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [activeCategory, searchQuery, myAssets]);
+  const filtered = useMemo(() => {
+    let list = allAssets;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(a => a.label.toLowerCase().includes(q) || a.id.toLowerCase().includes(q));
+    } else {
+      if (activeTab === 'favorites') list = list.filter(a => prefs.favorites.includes(a.id));
+      else if (activeTab === 'recent') list = prefs.recentlyUsed.map(id => allAssets.find(a => a.id === id)).filter(Boolean) as AssetDef[];
+      else if (activeTab === 'my-assets') list = list.filter(a => a.category === 'my-assets');
+      else if (activeCat !== 'All') list = list.filter(a => a.category === activeCat);
+    }
+    return list;
+  }, [allAssets, searchQuery, activeTab, activeCat, prefs.favorites, prefs.recentlyUsed]);
 
   const handleSelectAsset = (asset: AssetDef) => {
+    prefs.addRecentlyUsed(asset.id);
     if (activeAssetId === asset.id) {
-      // Deselect
-      setActiveAssetId(null);
-      setToolMode('select');
+      setActiveAssetId(null); setToolMode('select');
     } else {
-      setActiveAssetId(asset.id);
-      setToolMode(asset.wallMounted ? 'opening' : 'place');
+      setActiveAssetId(asset.id); setToolMode(asset.wallMounted ? 'opening' : 'place');
     }
   };
 
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, asset: AssetDef) => {
+  const handleDoubleClickPlace = (asset: AssetDef) => {
+    prefs.addRecentlyUsed(asset.id);
+    const centerObj = {
+      id: `asset-${Date.now()}`,
+      assetId: asset.id,
+      name: asset.label,
+      position: [0, asset.elevation || 0, 0] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+      size: asset.size,
+      role: asset.role,
+      color: asset.color,
+      elevation: asset.elevation || 0,
+      wallMounted: asset.wallMounted || false,
+    };
+    useSceneStore.getState().addObject(centerObj);
+  };
+
+  const handleDragStart = (e: React.DragEvent, asset: AssetDef) => {
+    prefs.addRecentlyUsed(asset.id);
     e.dataTransfer.setData('text/plain', asset.id);
     e.dataTransfer.setData('application/json', JSON.stringify(asset));
     e.dataTransfer.effectAllowed = 'copy';
-
-    // Also activate placement in UI state
-    setActiveAssetId(asset.id);
-    setToolMode(asset.wallMounted ? 'opening' : 'place');
+    setActiveAssetId(asset.id); setToolMode(asset.wallMounted ? 'opening' : 'place');
   };
 
   return (
-    <aside
-      className={`pointer-events-auto absolute top-20 left-4 z-20 flex flex-col bg-neutral-900/90 backdrop-blur-md border border-neutral-700/60 rounded-xl shadow-2xl transition-all duration-300 text-neutral-200 select-none ${
-        isCollapsed ? 'w-12 h-12 overflow-hidden' : 'w-80 max-h-[calc(100vh-10rem)]'
-      } ${className}`}
-    >
-      {/* Header & Toggle */}
-      <div className="flex items-center justify-between p-3.5 border-b border-neutral-800">
+    <>
+      <aside className={`pointer-events-auto absolute top-20 left-4 z-20 flex flex-col bg-neutral-900/90 backdrop-blur-md border border-neutral-700/60 rounded-xl shadow-2xl transition-all duration-300 text-neutral-200 select-none ${isCollapsed ? 'w-12 h-12 overflow-hidden' : 'w-80 max-h-[calc(100vh-10rem)]'}`}>
+        <div className="flex items-center justify-between p-3 border-b border-neutral-800">
+          {!isCollapsed && <h2 className="text-sm font-bold text-white tracking-wide">Asset Library</h2>}
+          <button onClick={() => setIsCollapsed(!isCollapsed)} className="p-1 text-neutral-400 hover:text-white rounded">
+            {isCollapsed ? '📖' : '➖'}
+          </button>
+        </div>
+
         {!isCollapsed && (
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-white tracking-wide">Catalog</h2>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 font-mono">
-              {filteredAssets.length}
-            </span>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors ml-auto"
-          title={isCollapsed ? 'Expand library' : 'Collapse library'}
-        >
-          {isCollapsed ? (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          )}
-        </button>
-      </div>
-
-      {!isCollapsed && (
-        <>
-          {/* Search Box */}
-          <div className="p-3 border-b border-neutral-800/80">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search assets..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-neutral-950/80 border border-neutral-700/60 rounded-lg px-3 py-1.5 pl-8 text-xs text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all font-sans"
-              />
-              <svg
-                className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-2.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2 text-neutral-400 hover:text-white text-xs"
-                >
-                  &times;
-                </button>
-              )}
+          <>
+            <div className="p-2 border-b border-neutral-800 relative">
+              <input type="text" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-neutral-950/80 border border-neutral-700 rounded px-2 py-1.5 text-xs text-white" />
             </div>
-          </div>
 
-          {/* Category Tabs */}
-          <div className="flex items-center gap-1 p-2 overflow-x-auto border-b border-neutral-800 scrollbar-none text-[11px]">
-            {CATEGORY_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveCategory(tab.id)}
-                className={`px-2.5 py-1 rounded-md font-medium whitespace-nowrap transition-colors ${
-                  activeCategory === tab.id
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Scrollable Asset List */}
-          <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 max-h-[50vh]">
-            {filteredAssets.length === 0 ? (
-              <div
-                data-testid="asset-library-empty-state"
-                className="text-center py-10 px-4 flex flex-col items-center gap-2"
-              >
-                <span className="text-2xl">🔍</span>
-                <span className="text-xs font-medium text-neutral-400">
-                  No matching assets found
-                </span>
-                <span className="text-[11px] text-neutral-500">
-                  Try another search query or select another category
-                </span>
+            {!searchQuery && (
+              <div className="flex bg-neutral-950 border-b border-neutral-800 text-[11px]">
+                {TABS.map(t => (
+                  <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex-1 py-1.5 text-center transition-colors ${activeTab === t.id ? 'bg-neutral-800 text-white font-bold' : 'text-neutral-400 hover:bg-neutral-900'}`}>{t.icon}</button>
+                ))}
               </div>
-            ) : (
-              filteredAssets.map((asset) => {
-                const isSelected = activeAssetId === asset.id;
-                const [w, h, d] = asset.size;
-                const dimensionLabel = `${w.toFixed(2)} x ${h.toFixed(2)} x ${d.toFixed(2)} m`;
-
-                return (
-                  <div
-                    key={asset.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, asset)}
-                    onClick={() => handleSelectAsset(asset)}
-                    className={`group flex items-center gap-3 p-2 rounded-lg cursor-grab active:cursor-grabbing border transition-all ${
-                      isSelected
-                        ? 'bg-sky-950/60 border-sky-500 shadow-md ring-1 ring-sky-500'
-                        : 'bg-neutral-800/40 hover:bg-neutral-800/80 border-neutral-700/40 hover:border-neutral-600'
-                    }`}
-                  >
-                    <AssetThumbnail asset={asset} />
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-semibold text-xs text-white truncate">
-                          {asset.label}
-                        </span>
-                        {asset.wallMounted && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-950/80 border border-amber-600/50 text-amber-300 font-mono uppercase">
-                            Wall
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 mt-0.5 text-[10px] text-neutral-400 font-mono">
-                        <span>{dimensionLabel}</span>
-                        {asset.defaultAirflow && (
-                          <span className="text-cyan-400 font-sans">
-                            {asset.defaultAirflow} m³/h
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
             )}
-          </div>
 
-          {/* Footer Guide */}
-          <div className="p-2.5 border-t border-neutral-800 text-[10px] text-neutral-400 flex items-center justify-between">
-            <span>Drag or click to place</span>
-            <span className="font-mono text-neutral-500">Shift = repeat</span>
+            {!searchQuery && activeTab === 'categories' && (
+              <div className="flex flex-wrap gap-1 p-2 border-b border-neutral-800 max-h-24 overflow-y-auto">
+                {CATEGORIES.map(c => (
+                  <button key={c} onClick={() => setActiveCat(c)} className={`px-2 py-1 rounded text-[10px] ${activeCat === c ? 'bg-sky-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}>{c}</button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto p-2 space-y-1.5 max-h-[40vh] relative">
+              {filtered.map(asset => (
+                <div key={asset.id} 
+                  draggable onDragStart={e => handleDragStart(e, asset)} 
+                  onClick={() => handleSelectAsset(asset)}
+                  onDoubleClick={() => handleDoubleClickPlace(asset)}
+                  onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, asset }); }}
+                  onMouseEnter={() => setHoveredAsset(asset)}
+                  onMouseLeave={() => setHoveredAsset(null)}
+                  className={`group relative flex items-center gap-3 p-2 rounded-lg cursor-grab active:cursor-grabbing border ${activeAssetId === asset.id ? 'bg-sky-950/60 border-sky-500' : 'bg-neutral-800/40 border-neutral-700/40 hover:bg-neutral-800'}`}
+                >
+                  <div className="w-10 h-10 rounded bg-black/40 border border-neutral-700 flex items-center justify-center shrink-0">
+                    <div className="w-5 h-5 rounded-sm" style={{ backgroundColor: asset.color, transform: 'rotate(-20deg) skewX(10deg)', border: '1px solid rgba(255,255,255,0.2)' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-xs text-white truncate">{asset.label}</span>
+                      <button onClick={(e) => { e.stopPropagation(); prefs.favorites.includes(asset.id) ? prefs.removeFavorite(asset.id) : prefs.addFavorite(asset.id); }} className="text-xs">{prefs.favorites.includes(asset.id) ? '⭐' : '☆'}</button>
+                    </div>
+                    <div className="text-[9px] text-neutral-400 mt-0.5">{asset.size.map(s => s.toFixed(2)).join(' x ')}m</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-2 border-t border-neutral-800 text-[10px] text-neutral-400">Right-click to Edit Variants</div>
+          </>
+        )}
+      </aside>
+
+      {/* Hover Tooltip Turntable */}
+      {hoveredAsset && !isCollapsed && (
+        <div className="pointer-events-none absolute left-80 top-20 ml-6 z-30 bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl w-48 overflow-hidden">
+          <div className="bg-neutral-950 h-40">
+            {/* Turntable Canvas */}
+            <Canvas camera={{ position: [2, 2, 2], fov: 40 }}>
+              <Turntable asset={hoveredAsset} />
+            </Canvas>
           </div>
-        </>
+          <div className="p-3 text-xs text-white">
+            <div className="font-bold">{hoveredAsset.label}</div>
+            <div className="text-neutral-400 mt-1">{hoveredAsset.category}</div>
+            <div className="text-neutral-400 mt-1 font-mono">{hoveredAsset.size.map(s => s.toFixed(2)).join(' x ')} m</div>
+            {hoveredAsset.defaultAirflow && <div className="text-cyan-400 mt-1">Airflow: {hoveredAsset.defaultAirflow} m³/h</div>}
+            <div className="text-neutral-500 mt-2 text-[9px]">Double-click to place center</div>
+          </div>
+        </div>
       )}
-    </aside>
+
+      {/* Context Menu */}
+      {contextMenu && <ContextMenu x={contextMenu.x} y={contextMenu.y} asset={contextMenu.asset} onClose={() => setContextMenu(null)} onEdit={prefs.addCustomVariant} />}
+    </>
   );
 };
 

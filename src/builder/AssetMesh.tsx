@@ -79,6 +79,24 @@ const GLTFModel: React.FC<GLTFModelProps> = ({
     return norm;
   }, [scene, targetSize, role, isGhost, isValid, fitMode, sourceUnit]);
 
+  React.useEffect(() => {
+    return () => {
+      normalizedScene.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) {
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach((m) => m.dispose());
+            } else {
+              mesh.material.dispose();
+            }
+          }
+        }
+      });
+    };
+  }, [normalizedScene]);
+
   return <primitive object={normalizedScene} />;
 };
 
@@ -237,7 +255,7 @@ interface PlaceholderProps {
  * Fallback procedural rounded box placeholder matching exact catalog dimensions
  * with bottom-centre pivot.
  */
-export const RoundedBoxPlaceholder: React.FC<PlaceholderProps> = ({
+export const RoundedBoxPlaceholder: React.FC<PlaceholderProps & { id?: string }> = ({
   size,
   color,
   role,
@@ -245,6 +263,7 @@ export const RoundedBoxPlaceholder: React.FC<PlaceholderProps> = ({
   isValid = true,
   isSelected = false,
   isColliding = false,
+  id = '',
 }) => {
   const [width, height, depth] = size;
   const radius = Math.min(Math.min(width, height, depth) * 0.06, 0.04);
@@ -260,46 +279,118 @@ export const RoundedBoxPlaceholder: React.FC<PlaceholderProps> = ({
         emissiveIntensity: 0.5,
       });
     }
-
     if (role === 'source') {
-      return new THREE.MeshStandardMaterial({
-        color,
-        roughness: 0.35,
-        metalness: 0.2,
-        emissive: color,
-        emissiveIntensity: 1.8,
-      });
+      return new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.2, emissive: color, emissiveIntensity: 1.8 });
     }
-
     if (role === 'porous') {
-      return new THREE.MeshStandardMaterial({
-        color,
-        roughness: 0.65,
-        metalness: 0.05,
-        transparent: true,
-        opacity: 0.72,
-      });
+      return new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.05, transparent: true, opacity: 0.72 });
     }
-
-    // solid
-    return new THREE.MeshStandardMaterial({
-      color,
-      roughness: 0.55,
-      metalness: 0.1,
-    });
+    return new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1 });
   }, [color, role, isGhost, isValid]);
 
+  React.useEffect(() => {
+    return () => {
+      material.dispose();
+    };
+  }, [material]);
+
+  const outline = isSelected && <Outlines thickness={0.03} color={outlineColor} />;
+
+  // Procedural geometry logic
+  const lid = id.toLowerCase();
+  
+  const mattressMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#f8fafc' }), []);
+  React.useEffect(() => { return () => { mattressMat.dispose(); }; }, [mattressMat]);
+
+  if (lid.includes('bed')) {
+    // Bed: Base + Mattress + Headboard
+    return (
+      <group position={[0, 0, 0]}>
+        <RoundedBox args={[width, height * 0.4, depth]} position={[0, height * 0.2, 0]} radius={radius} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[width * 0.95, height * 0.4, depth * 0.95]} position={[0, height * 0.6, 0]} radius={radius} material={mattressMat}>{outline}</RoundedBox>
+        <RoundedBox args={[width, height, depth * 0.1]} position={[0, height * 0.5, -depth / 2 + depth * 0.05]} radius={radius} material={material}>{outline}</RoundedBox>
+      </group>
+    );
+  }
+  if (lid.includes('sofa')) {
+    // Sofa: Base seat + backrest + armrests
+    const armW = Math.min(width * 0.15, 0.2);
+    const seatH = height * 0.45;
+    return (
+      <group position={[0, 0, 0]}>
+        {/* Seat */}
+        <RoundedBox args={[width - armW * 2, seatH, depth * 0.8]} position={[0, seatH / 2, depth * 0.1]} radius={radius} material={material}>{outline}</RoundedBox>
+        {/* Backrest */}
+        <RoundedBox args={[width, height, depth * 0.2]} position={[0, height / 2, -depth / 2 + depth * 0.1]} radius={radius} material={material}>{outline}</RoundedBox>
+        {/* Arms */}
+        <RoundedBox args={[armW, height * 0.7, depth]} position={[-width / 2 + armW / 2, height * 0.35, 0]} radius={radius} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[armW, height * 0.7, depth]} position={[width / 2 - armW / 2, height * 0.35, 0]} radius={radius} material={material}>{outline}</RoundedBox>
+      </group>
+    );
+  }
+  if (lid.includes('table') || lid.includes('desk')) {
+    // Table: Top + 4 legs
+    const legW = Math.min(width, depth) * 0.08;
+    const topH = Math.min(height * 0.1, 0.05);
+    return (
+      <group position={[0, 0, 0]}>
+        <RoundedBox args={[width, topH, depth]} position={[0, height - topH / 2, 0]} radius={radius} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[legW, height - topH, legW]} position={[-width / 2 + legW, (height - topH) / 2, -depth / 2 + legW]} radius={radius / 2} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[legW, height - topH, legW]} position={[width / 2 - legW, (height - topH) / 2, -depth / 2 + legW]} radius={radius / 2} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[legW, height - topH, legW]} position={[-width / 2 + legW, (height - topH) / 2, depth / 2 - legW]} radius={radius / 2} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[legW, height - topH, legW]} position={[width / 2 - legW, (height - topH) / 2, depth / 2 - legW]} radius={radius / 2} material={material}>{outline}</RoundedBox>
+      </group>
+    );
+  }
+  if (lid.includes('chair')) {
+    // Chair: Seat + Back + Legs
+    const seatH = height * 0.45;
+    const legW = 0.04;
+    return (
+      <group position={[0, 0, 0]}>
+        <RoundedBox args={[width, 0.05, depth * 0.8]} position={[0, seatH, depth * 0.1]} radius={radius} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[width, height - seatH, 0.05]} position={[0, seatH + (height - seatH) / 2, -depth / 2 + 0.1]} radius={radius} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[legW, seatH, legW]} position={[-width / 2 + legW, seatH / 2, -depth / 2 + 0.1]} radius={radius / 2} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[legW, seatH, legW]} position={[width / 2 - legW, seatH / 2, -depth / 2 + 0.1]} radius={radius / 2} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[legW, seatH, legW]} position={[-width / 2 + legW, seatH / 2, depth / 2 - 0.05]} radius={radius / 2} material={material}>{outline}</RoundedBox>
+        <RoundedBox args={[legW, seatH, legW]} position={[width / 2 - legW, seatH / 2, depth / 2 - 0.05]} radius={radius / 2} material={material}>{outline}</RoundedBox>
+      </group>
+    );
+  }
+  if (lid.includes('wardrobe') || lid.includes('fridge') || lid.includes('cabinet')) {
+    return (
+      <group position={[0, height / 2, 0]}>
+        <RoundedBox args={[width, height, depth]} radius={radius} material={material}>{outline}</RoundedBox>
+        {/* Doors split */}
+        <mesh position={[0, 0, depth / 2 + 0.005]}>
+          <planeGeometry args={[width * 0.95, height * 0.95]} />
+          <meshBasicMaterial color="#000" opacity={0.1} transparent />
+        </mesh>
+      </group>
+    );
+  }
+  if (lid.includes('fan') || lid.includes('purifier')) {
+    // Cylinder base + top
+    return (
+      <group position={[0, 0, 0]}>
+        <mesh position={[0, height * 0.05, 0]} receiveShadow castShadow>
+          <cylinderGeometry args={[width / 2, width / 2 + 0.05, height * 0.1, 32]} />
+          <primitive object={material} attach="material" />
+        </mesh>
+        <mesh position={[0, height / 2 + height * 0.05, 0]} receiveShadow castShadow>
+          <cylinderGeometry args={[width / 2 - 0.02, width / 2 - 0.02, height * 0.9, 32]} />
+          <primitive object={material} attach="material" />
+          {outline}
+        </mesh>
+      </group>
+    );
+  }
+
+  // Fallback box
   return (
     <group position={[0, height / 2, 0]}>
-      <RoundedBox
-        args={[width, height, depth]}
-        radius={radius}
-        smoothness={4}
-        material={material}
-        castShadow={!isGhost}
-        receiveShadow={!isGhost}
-      >
-        {isSelected && <Outlines thickness={0.03} color={outlineColor} />}
+      <RoundedBox args={[width, height, depth]} radius={radius} smoothness={4} material={material} castShadow={!isGhost} receiveShadow={!isGhost}>
+        {outline}
       </RoundedBox>
     </group>
   );
@@ -555,13 +646,13 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
   // Pointer hover handlers
   const handlePointerOver = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      if (isGhost) return;
+      if (isGhost || object.isLocked) return;
       e.stopPropagation();
       if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
       setCanvasCursor('grab');
       setIsHovered(true);
     },
-    [isGhost]
+    [isGhost, object.isLocked]
   );
 
   const handlePointerOut = useCallback(() => {
@@ -574,10 +665,11 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
 
   const handlePointerDownInternal = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      if (object.isLocked) return;
       setCanvasCursor('grabbing');
       onPointerDown?.(e);
     },
-    [onPointerDown]
+    [onPointerDown, object.isLocked]
   );
 
   const handleDoubleClick = useCallback(
@@ -671,6 +763,10 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
 
   const effectiveColliding = isColliding || hasIssues;
 
+  if (object.isHidden) {
+    return null;
+  }
+
   return (
     <group
       ref={groupRef}
@@ -729,6 +825,7 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
         </Suspense>
       ) : (
         <RoundedBoxPlaceholder
+          id={catalogDef?.id}
           size={targetSize}
           color={color}
           role={role}

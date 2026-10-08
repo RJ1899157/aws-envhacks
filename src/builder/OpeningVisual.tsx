@@ -98,6 +98,12 @@ const DoorSwingArc: React.FC<{
     return geom;
   }, [width, flipHinge, flipSwing]);
 
+  React.useEffect(() => {
+    return () => {
+      arcCurve.dispose();
+    };
+  }, [arcCurve]);
+
   return (
     <line>
       <primitive object={arcCurve} attach="geometry" />
@@ -415,6 +421,10 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
   // Window casement sash angle
   const windowAngle = !isDoor && openFraction > 0 ? openFraction * (Math.PI / 3) * (flipHinge ? -1 : 1) : 0;
 
+  if (opening.isHidden) {
+    return null;
+  }
+
   return (
     <group name={`opening-group-${opening.id}`} userData={{ isExportable: true, exportType: 'opening' }}>
       {/* Snap Guide Line & Label in 3D */}
@@ -432,7 +442,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
         position={position}
         quaternion={quaternion}
         onPointerOver={(e) => {
-          if (!isDragging) {
+          if (!isDragging && !opening.isLocked) {
             e.stopPropagation();
             setCanvasCursor('grab');
           }
@@ -441,6 +451,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
           if (!isDragging) resetCanvasCursor();
         }}
         onPointerDown={(e) => {
+          if (opening.isLocked) return;
           setCanvasCursor('grabbing');
           handleOpeningPointerDown(e);
         }}
