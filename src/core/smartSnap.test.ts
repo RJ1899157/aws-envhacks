@@ -17,7 +17,7 @@ describe('computeSmartSnap', () => {
     wallThickness: 0.15,
     openings: [],
     objects: [],
-    params: {
+    floorMaterial: "wood", wallMaterial: "paint", params: {
       windSpeed: 2.5,
       windDirDeg: 45,
       indoorTempC: 22,

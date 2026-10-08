@@ -9,9 +9,12 @@ import {
   OrbitControls,
   OrthographicCamera,
   PerspectiveCamera,
+  Environment,
 } from '@react-three/drei';
+import { EffectComposer, N8AO, Bloom, SMAA } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { useGraphicsStore } from '../store/graphicsStore';
 import { polygonBounds } from '../core/parser';
 import { prefersReducedMotion } from '../core/motion';
 import { GLTFLoadProgressBar } from '../ui/GLTFLoadProgressBar';
@@ -46,6 +49,42 @@ import { usePlacementValidation } from './usePlacementValidation';
  * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
  */
 export const sharedOrbitControlsRef = React.createRef<OrbitControlsImpl | null>();
+
+const FpsCheck: React.FC = () => {
+  const setQuality = useGraphicsStore((state) => state.setQuality);
+  const quality = useGraphicsStore((state) => state.quality);
+  const setFps = useGraphicsStore((state) => state.setFps);
+  const frames = useRef(0);
+  const prevTime = useRef(performance.now());
+
+  useFrame(() => {
+    frames.current++;
+    const time = performance.now();
+    if (time >= prevTime.current + 1000) {
+      const fps = Math.round((frames.current * 1000) / (time - prevTime.current));
+      setFps(fps);
+      if (fps < 40 && quality !== 'Low') {
+        setQuality(quality === 'High' ? 'Medium' : 'Low');
+      }
+      frames.current = 0;
+      prevTime.current = time;
+    }
+  });
+  return null;
+};
+
+const PostProcessingStack: React.FC = () => {
+  const quality = useGraphicsStore((state) => state.quality);
+  if (quality === 'Low') return null;
+
+  return (
+    <EffectComposer multisampling={0}>
+      {quality === 'High' ? <N8AO aoRadius={0.5} intensity={1} /> : <></>}
+      <Bloom luminanceThreshold={1.2} mipmapBlur intensity={1.5} />
+      {quality === 'High' ? <SMAA /> : <></>}
+    </EffectComposer>
+  );
+};
 
 /**
  * Handles HTML5 drag-and-drop of catalog assets directly onto the 3D canvas
@@ -744,6 +783,8 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           alpha: false,
           preserveDrawingBuffer: true,
           powerPreference: 'high-performance',
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.0,
         }}
         className="w-full h-full"
       >
@@ -764,6 +805,10 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
         )}
 
         <Suspense fallback={null}>
+          <FpsCheck />
+          <PostProcessingStack />
+          <Environment preset="studio" />
+          
           {/* Lighting */}
           <ambientLight intensity={0.65} />
           <directionalLight

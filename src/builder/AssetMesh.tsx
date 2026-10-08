@@ -69,8 +69,8 @@ const GLTFModel: React.FC<GLTFModelProps> = ({
           }
         } else if (role === 'source') {
           if (mesh.material && !Array.isArray(mesh.material)) {
-            (mesh.material as THREE.MeshStandardMaterial).emissive = new THREE.Color('#0284c7');
-            (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.4;
+            (mesh.material as THREE.MeshStandardMaterial).emissive = new THREE.Color('#38bdf8');
+            (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.8;
           }
         }
       }
@@ -267,7 +267,7 @@ export const RoundedBoxPlaceholder: React.FC<PlaceholderProps> = ({
         roughness: 0.35,
         metalness: 0.2,
         emissive: color,
-        emissiveIntensity: 0.45,
+        emissiveIntensity: 1.8,
       });
     }
 

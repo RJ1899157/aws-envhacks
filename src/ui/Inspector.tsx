@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSceneStore, useUiStore } from '../store';
+import { useGraphicsStore } from '../store/graphicsStore';
 import { RoomParamsSchema } from '../core/schema';
 import { signedArea, polygonBounds, wallSegment } from '../core/parser';
 import { radToDeg, degToRad } from '../core/units';
@@ -138,6 +139,15 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
   const setIsPlacingPollutantSource = useUiStore((state) => state.setIsPlacingPollutantSource);
   const showScaleReference = useUiStore((state) => state.showScaleReference);
   const toggleScaleReference = useUiStore((state) => state.toggleScaleReference);
+
+  const quality = useGraphicsStore((state) => state.quality);
+  const setQuality = useGraphicsStore((state) => state.setQuality);
+  const theme = useGraphicsStore((state) => state.theme);
+  const setTheme = useGraphicsStore((state) => state.setTheme);
+  const wallOpacityMode = useGraphicsStore((state) => state.wallOpacityMode);
+  const setWallOpacityMode = useGraphicsStore((state) => state.setWallOpacityMode);
+  const setFloorMaterial = useSceneStore((state) => state.setFloorMaterial);
+  const setWallMaterial = useSceneStore((state) => state.setWallMaterial);
 
   // Selected object instance
   const selectedObject = useMemo(() => {
@@ -1633,6 +1643,92 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
               <div className="text-[10px] text-neutral-400 font-mono">
                 {roomAreaFt2.toFixed(1)} ft²
               </div>
+            </div>
+          </div>
+
+          {/* SECTION: RENDERING & MATERIALS */}
+          <div className="pt-2 border-t border-neutral-800 flex flex-col gap-3">
+            <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider">
+              Rendering & Materials
+            </span>
+
+            {/* Quality Setting */}
+            <div className="flex flex-col gap-1.5 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+              <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Graphics Quality
+              </label>
+              <select
+                value={quality}
+                onChange={(e) => setQuality(e.target.value as any)}
+                className="bg-neutral-800 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-white font-medium focus:outline-none focus:border-sky-500 text-xs"
+              >
+                <option value="Low">Low (No Post-Processing)</option>
+                <option value="Medium">Medium (SSAO + SMAA)</option>
+                <option value="High">High (AO + Bloom + SMAA)</option>
+              </select>
+            </div>
+
+            {/* Wall X-Ray Mode */}
+            <div className="flex flex-col gap-1.5 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+              <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Wall Visibility
+              </label>
+              <select
+                value={wallOpacityMode}
+                onChange={(e) => setWallOpacityMode(e.target.value as any)}
+                className="bg-neutral-800 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-white font-medium focus:outline-none focus:border-sky-500 text-xs"
+              >
+                <option value="Solid">Solid</option>
+                <option value="Auto-fade">Auto-fade</option>
+                <option value="Cutaway">Cutaway</option>
+              </select>
+            </div>
+
+            {/* Materials */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 flex flex-col gap-1.5 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+                <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                  Floor
+                </label>
+                <select
+                  value={room.floorMaterial ?? 'wood'}
+                  onChange={(e) => setFloorMaterial(e.target.value)}
+                  className="bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1 text-white focus:outline-none focus:border-sky-500 text-xs"
+                >
+                  <option value="wood">Wood</option>
+                  <option value="tile">Tile</option>
+                  <option value="concrete">Concrete</option>
+                  <option value="carpet">Carpet</option>
+                </select>
+              </div>
+              <div className="flex-1 flex flex-col gap-1.5 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+                <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                  Walls
+                </label>
+                <select
+                  value={room.wallMaterial ?? 'paint'}
+                  onChange={(e) => setWallMaterial(e.target.value)}
+                  className="bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1 text-white focus:outline-none focus:border-sky-500 text-xs"
+                >
+                  <option value="paint">Paint</option>
+                  <option value="brick">Brick</option>
+                  <option value="wallpaper">Wallpaper</option>
+                </select>
+              </div>
+            </div>
+
+            {/* UI Theme Toggle */}
+            <div className="flex items-center justify-between bg-neutral-950/40 p-3 rounded-lg border border-neutral-800">
+              <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Theme
+              </span>
+              <button
+                type="button"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 rounded text-xs text-white"
+              >
+                {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
+              </button>
             </div>
           </div>
 

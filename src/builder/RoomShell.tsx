@@ -6,6 +6,8 @@ import type { Opening, Vec2 } from '../core/schema';
 import { computeMiterCorner } from '../core/wallOperations';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore, type ViewMode } from '../store/uiStore';
+import { useGraphicsStore, type WallOpacityMode } from '../store/graphicsStore';
+import { getFloorMaterialProps, getWallMaterialProps } from '../core/materials';
 import { OpeningVisual } from './OpeningVisual';
 
 export interface WallPiece {
@@ -140,11 +142,12 @@ interface WallSegmentMeshProps {
   outline: readonly Vec2[];
   wallHeight: number;
   wallThickness: number;
-  wallColor?: string;
   isSelected?: boolean;
   isHovered?: boolean;
   wallOpenings: readonly Opening[];
   view: ViewMode;
+  wallOpacityMode: WallOpacityMode;
+  wallMaterialProps: ReturnType<typeof getWallMaterialProps>;
   onSelectWall?: (index: number) => void;
   onHoverWall?: (index: number | null) => void;
 }
@@ -158,8 +161,9 @@ interface MiteredCornerMeshProps {
   height: number;
   tIn: number;
   tOut: number;
-  color?: string;
   view: ViewMode;
+  wallOpacityMode: WallOpacityMode;
+  wallMaterialProps: ReturnType<typeof getWallMaterialProps>;
 }
 
 const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
@@ -168,8 +172,9 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
   height,
   tIn,
   tOut,
-  color = '#3f3f46',
   view,
+  wallOpacityMode,
+  wallMaterialProps,
 }) => {
   const n = outline.length;
   const prevIndex = (cornerIndex - 1 + n) % n;
@@ -226,13 +231,11 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
 
   const cornerMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
-      color,
-      roughness: 0.7,
-      metalness: 0.05,
+      ...wallMaterialProps,
       transparent: true,
       opacity: 0.85,
     });
-  }, [color]);
+  }, [wallMaterialProps]);
 
   useEffect(() => {
     return () => {
@@ -257,7 +260,13 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
         const vCamZ = toCamZ / dist;
         const cosTheta = vCamX * normalOut[0] + vCamZ * normalOut[1];
         const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
-        const targetOpacity = THREE.MathUtils.lerp(0.85, 0.2, fadeFactor);
+        
+        let baseOpacity = 0.85;
+        let minOpacity = 0.15;
+        if (wallOpacityMode === 'Solid') minOpacity = 0.85;
+        if (wallOpacityMode === 'Cutaway') minOpacity = 0.0;
+
+        const targetOpacity = THREE.MathUtils.lerp(baseOpacity, minOpacity, fadeFactor);
 
         cornerMaterial.opacity = THREE.MathUtils.lerp(
           cornerMaterial.opacity,
@@ -294,26 +303,26 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
     outline,
     wallHeight,
     wallThickness,
-    wallColor = '#3f3f46',
     isSelected = false,
     isHovered = false,
     wallOpenings,
     view,
+    wallOpacityMode,
+    wallMaterialProps,
     onSelectWall,
     onHoverWall,
   }) => {
     const wallMaterial = useMemo(() => {
-      const baseColor = isSelected ? '#f59e0b' : isHovered ? '#38bdf8' : wallColor;
+      const baseColor = isSelected ? '#f59e0b' : isHovered ? '#38bdf8' : wallMaterialProps.color;
       return new THREE.MeshStandardMaterial({
+        ...wallMaterialProps,
         color: baseColor,
-        roughness: 0.7,
-        metalness: 0.05,
         transparent: true,
         opacity: isSelected || isHovered ? 0.95 : 0.85,
         emissive: isSelected ? '#b45309' : isHovered ? '#0284c7' : '#000000',
         emissiveIntensity: isSelected || isHovered ? 0.35 : 0,
       });
-    }, [wallColor, isSelected, isHovered]);
+    }, [wallMaterialProps, isSelected, isHovered]);
 
     useEffect(() => {
       return () => {
@@ -397,9 +406,14 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
 
           // Fade wall when camera looks from outside towards interior (cosTheta > 0.05)
           const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
+          
+          let minOpacity = 0.15;
+          if (wallOpacityMode === 'Solid') minOpacity = 0.85;
+          if (wallOpacityMode === 'Cutaway') minOpacity = 0.0;
+
           const targetOpacity = THREE.MathUtils.lerp(
             isSelected || isHovered ? 0.95 : 0.85,
-            0.2,
+            minOpacity,
             fadeFactor
           );
 
@@ -462,7 +476,9 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
       prev.wallIndex !== next.wallIndex ||
       prev.wallHeight !== next.wallHeight ||
       prev.wallThickness !== next.wallThickness ||
-      prev.wallColor !== next.wallColor ||
+      prev.wallOpacityMode !== next.wallOpacityMode ||
+      prev.wallMaterialProps.color !== next.wallMaterialProps.color ||
+      prev.wallMaterialProps.roughness !== next.wallMaterialProps.roughness ||
       prev.isSelected !== next.isSelected ||
       prev.isHovered !== next.isHovered ||
       prev.view !== next.view ||
@@ -506,12 +522,19 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
   const wallThickness = useSceneStore((state) => state.room.wallThickness);
   const wallOverrides = useSceneStore((state) => state.room.wallOverrides || {});
   const openings = useSceneStore((state) => state.room.openings);
+  const floorMaterialType = useSceneStore((state) => state.room.floorMaterial ?? 'wood');
+  const wallMaterialType = useSceneStore((state) => state.room.wallMaterial ?? 'paint');
+  
   const view = useUiStore((state) => state.view);
   const showCeiling = useUiStore((state) => state.showCeiling);
   const selectedWallIndex = useUiStore((state) => state.selectedWallIndex);
   const hoveredWallIndex = useUiStore((state) => state.hoveredWallIndex);
   const setSelectedWallIndex = useUiStore((state) => state.setSelectedWallIndex);
   const setHoveredWallIndex = useUiStore((state) => state.setHoveredWallIndex);
+
+  const wallOpacityMode = useGraphicsStore((state) => state.wallOpacityMode);
+
+  const floorProps = useMemo(() => getFloorMaterialProps(floorMaterialType), [floorMaterialType]);
 
   // Floor polygon triangulation using THREE.Shape
   const { floorShape, outlinePoints } = useMemo(() => {
@@ -555,9 +578,7 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow>
         <shapeGeometry args={[floorShape]} />
         <meshStandardMaterial
-          color="#27272a"
-          roughness={0.8}
-          metalness={0.1}
+          {...floorProps}
           polygonOffset
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
@@ -573,7 +594,9 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
         const override = wallOverrides[index];
         const segHeight = override?.height ?? wallHeight;
         const segThickness = override?.thickness ?? wallThickness;
-        const segColor = override?.color ?? '#3f3f46';
+        const segColor = override?.color ?? '#e2e8f0';
+        
+        const wallMaterialProps = getWallMaterialProps(wallMaterialType, segColor);
 
         return (
           <WallSegmentMesh
@@ -582,11 +605,12 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
             outline={outline}
             wallHeight={segHeight}
             wallThickness={segThickness}
-            wallColor={segColor}
             isSelected={selectedWallIndex === index}
             isHovered={hoveredWallIndex === index}
             wallOpenings={wallOpenings}
             view={view}
+            wallOpacityMode={wallOpacityMode}
+            wallMaterialProps={wallMaterialProps}
             onSelectWall={setSelectedWallIndex}
             onHoverWall={setHoveredWallIndex}
           />
@@ -602,7 +626,9 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
           wallOverrides[prevIndex]?.height ?? wallHeight,
           wallOverrides[index]?.height ?? wallHeight
         );
-        const cornerColor = wallOverrides[index]?.color ?? '#3f3f46';
+        const cornerColor = wallOverrides[index]?.color ?? '#e2e8f0';
+        const cornerWallMaterialProps = getWallMaterialProps(wallMaterialType, cornerColor);
+
         return (
           <MiteredCornerMesh
             key={`miter-${index}`}
@@ -611,8 +637,9 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
             height={hCorner}
             tIn={tIn}
             tOut={tOut}
-            color={cornerColor}
             view={view}
+            wallOpacityMode={wallOpacityMode}
+            wallMaterialProps={cornerWallMaterialProps}
           />
         );
       })}

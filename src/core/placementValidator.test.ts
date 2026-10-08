@@ -22,7 +22,7 @@ describe('Phase B Placement Validator', () => {
     wallThickness: 0.15,
     openings: [],
     objects: [],
-    params: {
+    floorMaterial: "wood", wallMaterial: "paint", params: {
       windSpeed: 2.5,
       windDirDeg: 180,
       pressurePa: 101325,

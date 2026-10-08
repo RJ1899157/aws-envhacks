@@ -374,7 +374,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
 
       {/* Floating Toast Notification (bottom-centre with Undo action) */}
       {toastMessage && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        <div className="fixed bottom-14 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
           <div
             data-testid="hud-toast-message"
             className="bg-neutral-900/95 border border-amber-500/70 text-amber-200 px-4 py-2.5 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-3 text-xs font-medium animate-in fade-in slide-in-from-bottom-3 duration-200"
@@ -404,6 +404,14 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
           </div>
         </div>
       )}
+
+      {/* Tool Hints Bar */}
+      <div className="fixed bottom-3 left-1/2 -translate-x-1/2 pointer-events-auto flex items-center justify-center gap-4 bg-neutral-900/80 backdrop-blur-lg border border-neutral-700/50 rounded-full px-5 py-1.5 text-[11px] text-neutral-300 font-sans tracking-wide select-none shadow-glass">
+        <span className="flex items-center gap-1.5"><kbd className="bg-neutral-800 border border-neutral-600 rounded shadow-sm px-1.5 py-0.5 font-mono text-neutral-100">Drag</kbd> to move</span>
+        <span className="flex items-center gap-1.5"><kbd className="bg-neutral-800 border border-neutral-600 rounded shadow-sm px-1.5 py-0.5 font-mono text-neutral-100">R</kbd> to rotate</span>
+        <span className="flex items-center gap-1.5"><kbd className="bg-neutral-800 border border-neutral-600 rounded shadow-sm px-1.5 py-0.5 font-mono text-neutral-100">Alt</kbd> to lift</span>
+        <span className="flex items-center gap-1.5"><kbd className="bg-neutral-800 border border-neutral-600 rounded shadow-sm px-1.5 py-0.5 font-mono text-neutral-100">F</kbd> focus</span>
+      </div>
     </div>
   );
 };

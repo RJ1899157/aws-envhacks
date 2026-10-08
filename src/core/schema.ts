@@ -149,5 +149,7 @@ export const RoomSchema = z.object({
   objects: z.array(ObjectSchema).default([]),
   params: RoomParamsSchema.default(() => RoomParamsSchema.parse({})),
   wallOverrides: z.record(z.coerce.number(), WallOverrideSchema).optional(),
+  floorMaterial: z.string().default('wood'),
+  wallMaterial: z.string().default('paint'),
 });
 export type Room = z.infer<typeof RoomSchema>;

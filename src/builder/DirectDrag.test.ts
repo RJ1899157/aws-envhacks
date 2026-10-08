@@ -26,7 +26,7 @@ describe('Direct Manipulation & Smart Snapping System', () => {
     wallThickness: 0.15,
     openings: [],
     objects: [],
-    params: {
+    floorMaterial: "wood", wallMaterial: "paint", params: {
       windSpeed: 2.5,
       windDirDeg: 0,
       indoorTempC: 21,

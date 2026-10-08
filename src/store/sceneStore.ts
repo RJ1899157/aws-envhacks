@@ -60,6 +60,8 @@ export interface SceneState {
   setWallHeight: (height: number) => void;
   setWallThickness: (thickness: number) => void;
   setRoomName: (name: string) => void;
+  setFloorMaterial: (material: string) => void;
+  setWallMaterial: (material: string) => void;
   setParams: (params: Partial<RoomParams>) => void;
   addObject: (object: SceneObject) => void;
   updateObject: (id: string, updates: Partial<Omit<SceneObject, 'id'>>) => void;
@@ -318,6 +320,16 @@ export const useSceneStore = create<SceneState>()(
       setRoomName: (name) =>
         set((state) => {
           state.room.name = name;
+        }),
+
+      setFloorMaterial: (material) =>
+        set((state) => {
+          state.room.floorMaterial = material;
+        }),
+
+      setWallMaterial: (material) =>
+        set((state) => {
+          state.room.wallMaterial = material;
         }),
 
       setParams: (params) =>

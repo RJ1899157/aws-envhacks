@@ -108,7 +108,7 @@ describe('Root Asset Scaling and Dimension Readout Suite', () => {
         wallThickness: 0.15,
         openings: [],
         objects: [testObj],
-        params: {
+        floorMaterial: "wood", wallMaterial: "paint", params: {
           windSpeed: 3,
           windDirDeg: 270,
           outdoorTempC: 28,

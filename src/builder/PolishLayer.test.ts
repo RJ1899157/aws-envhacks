@@ -82,7 +82,7 @@ describe('Polish Layer', () => {
         wallThickness: 0.15,
         openings: [],
         objects: [],
-        params: {
+        floorMaterial: "wood", wallMaterial: "paint", params: {
           windSpeed: 1.5,
           windDirDeg: 0,
           pressurePa: 101325,
