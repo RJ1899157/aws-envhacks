@@ -135,7 +135,9 @@ class SharedCameraController {
   ): void {
     const { center, distance } = this.getRoomFraming(room);
     const targetLookAt = center.clone();
-    targetLookAt.y = 0; // look at floor center
+    // Keep the orbit target safely above the floor. A floor-level look-at is
+    // fine for top view, but produces a below-floor polar angle for side views.
+    targetLookAt.y = preset === 'top' ? 0 : Math.max(0.5, center.y);
 
     const targetPos = new THREE.Vector3();
 
@@ -144,7 +146,9 @@ class SharedCameraController {
         targetPos.set(center.x, distance * 1.5, center.z + 0.0001);
         break;
       case 'bottom':
-        targetPos.set(center.x, -distance * 1.5, center.z + 0.0001);
+        // Bottom is intentionally mapped to a high top-down view: the camera
+        // must never move below the room floor.
+        targetPos.set(center.x, distance * 1.5, center.z + 0.0001);
         break;
       case 'front':
         targetPos.set(center.x, center.y + 1.2, center.z + distance);
@@ -312,19 +316,43 @@ class SharedCameraController {
   ): void {
     const currentProj = useCameraStore.getState().projection;
     const nextProj = currentProj === 'perspective' ? 'orthographic' : 'perspective';
-    useCameraStore.getState().setProjection(nextProj);
+    // Ease the perspective FOV through the store, and set projection after the
+    // transition. The ortho camera is sized from the same visible span.
 
-    // If switching to orthographic, match zoom
+    // Match the visible vertical span when the Canvas swaps camera instances.
+    // The camera's world position and controls target remain untouched.
     if (nextProj === 'orthographic' && controls) {
       const dist = camera.position.distanceTo(controls.target);
       const fovRad = ((camera as THREE.PerspectiveCamera).fov * Math.PI) / 180;
       const visibleHeight = 2 * Math.tan(fovRad / 2) * dist;
       if ('zoom' in camera) {
         const winHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-        (camera as THREE.OrthographicCamera).zoom = winHeight / (visibleHeight || 1);
-        (camera as THREE.OrthographicCamera).updateProjectionMatrix();
+        const startZoom = (camera as THREE.OrthographicCamera).zoom;
+        const endZoom = winHeight / (visibleHeight || 1);
+        const started = performance.now();
+        const tick = (now: number) => {
+          const t = Math.min(1, (now - started) / 500);
+          const eased = easeInOutCubic(t);
+          (camera as THREE.OrthographicCamera).zoom = startZoom + (endZoom - startZoom) * eased;
+          (camera as THREE.OrthographicCamera).updateProjectionMatrix();
+          if (t < 1) this.activeAnimationId = safeRequestAnimationFrame(tick);
+          else {
+            this.activeAnimationId = null;
+            this.isAnimating = false;
+            useCameraStore.getState().setProjection(nextProj);
+          }
+        };
+        this.cancelAnimation();
+        this.isAnimating = true;
+        this.activeAnimationId = safeRequestAnimationFrame(tick);
+        return;
       }
     }
+    useCameraStore.getState().setProjection(nextProj);
+  }
+
+  public clampDistance(distance: number, maxDim: number): number {
+    return Math.max(Math.max(0.5, maxDim * 0.08), Math.min(maxDim * 6, distance));
   }
 }
 

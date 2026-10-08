@@ -486,6 +486,7 @@ export interface AssetMeshProps {
   isGhost?: boolean;
   isValidPlacement?: boolean;
   onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
+  onDoubleClick?: (e: ThreeEvent<MouseEvent>) => void;
 }
 
 const EMPTY_ISSUES: PlacementIssue[] = [];
@@ -506,6 +507,7 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
   isGhost = false,
   isValidPlacement = true,
   onPointerDown,
+  onDoubleClick,
 }) => {
   const groupRef = React.useRef<THREE.Group>(null);
   const pulseMatRef = React.useRef<THREE.MeshBasicMaterial>(null);
@@ -675,11 +677,12 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
   const handleDoubleClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
+      onDoubleClick?.(e);
       window.dispatchEvent(
         new CustomEvent('fly-focus-object', { detail: { objectId: object.id } })
       );
     },
-    [object.id]
+    [object.id, onDoubleClick]
   );
 
   const handleTooltipPointerEnter = useCallback(() => {

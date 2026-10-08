@@ -40,7 +40,11 @@ export async function handleFileDrop(items: DataTransferItemList | FileList) {
       if (!sceneFile) throw new Error('Invalid .airforce project: missing scene.json');
       const text = await sceneFile.async('string');
       // For a real app, we would also extract and save embedded blobs here
-      window.dispatchEvent(new CustomEvent('airforce:import-json', { detail: text }));
+      const project = JSON.parse(text) as { room?: unknown; cameraViews?: unknown };
+      window.dispatchEvent(new CustomEvent('airforce:import-json', { detail: JSON.stringify(project.room ?? project) }));
+      if (Array.isArray(project.cameraViews)) {
+        window.dispatchEvent(new CustomEvent('airforce:import-views', { detail: project.cameraViews }));
+      }
       store.setProgressModal({ isOpen: false });
       return;
     }

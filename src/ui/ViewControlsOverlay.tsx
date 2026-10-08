@@ -31,6 +31,12 @@ export const ViewControlsOverlay: React.FC = () => {
   const setView = useUiStore((state) => state.setView);
 
   const projection = useCameraStore((state) => state.projection);
+  const fov = useCameraStore((state) => state.fov);
+  const setFov = useCameraStore((state) => state.setFov);
+  const pivotMode = useCameraStore((state) => state.pivotMode);
+  const setPivotMode = useCameraStore((state) => state.setPivotMode);
+  const dampedInertia = useCameraStore((state) => state.dampedInertia);
+  const setDampedInertia = useCameraStore((state) => state.setDampedInertia);
   const isTurntableActive = useCameraStore((state) => state.isTurntableActive);
   const toggleTurntable = useCameraStore((state) => state.toggleTurntable);
   const isWalkthroughActive = useCameraStore((state) => state.isWalkthroughActive);
@@ -43,12 +49,14 @@ export const ViewControlsOverlay: React.FC = () => {
   // Popover menus
   const [isPresetsOpen, setIsPresetsOpen] = useState(false);
   const [isSavedViewsOpen, setIsSavedViewsOpen] = useState(false);
+  const [isViewSettingsOpen, setIsViewSettingsOpen] = useState(false);
   const [newViewName, setNewViewName] = useState('');
   const [editingViewId, setEditingViewId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
   const presetsRef = useRef<HTMLDivElement>(null);
   const viewsRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   // Close popovers on click outside
   useEffect(() => {
@@ -58,6 +66,9 @@ export const ViewControlsOverlay: React.FC = () => {
       }
       if (viewsRef.current && !viewsRef.current.contains(e.target as Node)) {
         setIsSavedViewsOpen(false);
+      }
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setIsViewSettingsOpen(false);
       }
     };
     window.addEventListener('pointerdown', handleOutside);
@@ -270,6 +281,7 @@ export const ViewControlsOverlay: React.FC = () => {
         <Tooltip label="Fit Room" shortcut="Home" side="top">
           <button
             type="button"
+            aria-label="Fit Room"
             onClick={handleFitRoom}
             className="w-7 h-7 rounded-[6px] hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors"
           >
@@ -281,6 +293,7 @@ export const ViewControlsOverlay: React.FC = () => {
         <Tooltip label="Fit Selection" shortcut="F" side="top">
           <button
             type="button"
+            aria-label="Fit Selection"
             onClick={handleFitSelection}
             disabled={!selectedObjectId}
             className={`w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors ${
@@ -315,6 +328,7 @@ export const ViewControlsOverlay: React.FC = () => {
         <Tooltip label="Walkthrough First-Person Mode" side="top">
           <button
             type="button"
+            aria-label="Toggle Walkthrough Mode"
             onClick={toggleWalkthrough}
             className={`w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors ${
               isWalkthroughActive
@@ -330,6 +344,7 @@ export const ViewControlsOverlay: React.FC = () => {
         <Tooltip label="Turntable Spin Presentation" side="top">
           <button
             type="button"
+            aria-label="Toggle Turntable"
             onClick={toggleTurntable}
             className={`w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors ${
               isTurntableActive
@@ -484,6 +499,7 @@ export const ViewControlsOverlay: React.FC = () => {
         <Tooltip label="Zoom In" side="top">
           <button
             type="button"
+            aria-label="Zoom In"
             onClick={handleZoomIn}
             className="w-7 h-7 rounded-[6px] hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors"
           >
@@ -494,6 +510,7 @@ export const ViewControlsOverlay: React.FC = () => {
         <Tooltip label="Zoom Out" side="top">
           <button
             type="button"
+            aria-label="Zoom Out"
             onClick={handleZoomOut}
             className="w-7 h-7 rounded-[6px] hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors"
           >
@@ -502,6 +519,15 @@ export const ViewControlsOverlay: React.FC = () => {
         </Tooltip>
 
         <div className="w-px h-3.5 bg-white/10" />
+
+        <div ref={settingsRef} className="relative">
+          <button type="button" onClick={() => setIsViewSettingsOpen((open) => !open)} className="h-7 px-2 rounded-[6px] hover:bg-white/10 text-xs">View ▾</button>
+          {isViewSettingsOpen && <div className="absolute bottom-full right-0 mb-2 w-56 rounded-lg border border-white/10 bg-neutral-900/95 p-3 text-xs text-white shadow-2xl flex flex-col gap-3">
+            <label className="flex flex-col gap-1">Field of view: {fov}°<input aria-label="Field of view" type="range" min="30" max="90" value={fov} onChange={(e) => setFov(Number(e.target.value))} /></label>
+            <label className="flex flex-col gap-1">Orbit pivot<select value={pivotMode} onChange={(e) => setPivotMode(e.target.value as typeof pivotMode)} className="bg-neutral-800 rounded p-1"><option value="room-center">Room centre</option><option value="selection">Selection</option><option value="cursor">Cursor point</option></select></label>
+            <label className="flex items-center justify-between">Damped inertia<input type="checkbox" checked={dampedInertia} onChange={(e) => setDampedInertia(e.target.checked)} /></label>
+          </div>}
+        </div>
 
         {/* 9. 2D / 3D Toggle */}
         <Tooltip label="Toggle 2D / 3D View" shortcut="Tab" side="top">

@@ -94,8 +94,8 @@ const FootprintDecal: React.FC<{
           transparent
           opacity={0.3}
           polygonOffset
-          polygonOffsetFactor={-1}
-          polygonOffsetUnits={-1}
+          polygonOffsetFactor={-2}
+          polygonOffsetUnits={-2}
         />
       </mesh>
       {/* Crisp perimeter outline */}

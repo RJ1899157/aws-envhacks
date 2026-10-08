@@ -266,6 +266,8 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
       {!isVisible && (
         <button
           type="button"
+        data-testid="open-room-inspector-btn"
+        aria-label="Open Room Inspector"
           onClick={() => {
             setIsManuallyOpened(true);
             setActiveTab('room');
@@ -333,6 +335,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
           <Tooltip label="Close Inspector">
             <button
               type="button"
+              aria-label="Close Inspector"
               onClick={() => {
                 clearSelection();
                 setSelectedWallIndex(null);
@@ -401,7 +404,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                   </div>
 
                   {/* Transform Section with Scrubbable Inputs */}
-                  <CollapsibleSection title="Transform">
+                  <CollapsibleSection title="Transform" defaultOpen={false} summary={`Position ${selectedObject.position.map((v) => v.toFixed(2)).join(', ')}`}>
                     <div className="flex flex-col gap-2">
                       <div className="text-[10px] text-neutral-400 font-semibold uppercase tracking-wider">
                         Position
@@ -505,7 +508,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                   </CollapsibleSection>
 
                   {/* Simulation Role */}
-                  <CollapsibleSection title="Airflow Role">
+                  <CollapsibleSection title="Airflow Role" defaultOpen={false} summary={selectedObject.role}>
                     <Select
                       value={selectedObject.role}
                       onChange={(role) => updateObject(selectedObject.id, { role: role as any })}
@@ -555,7 +558,11 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                     </button>
                   </div>
 
-                  <CollapsibleSection title="Dimensions">
+                  <CollapsibleSection
+                    title="Dimensions"
+                    defaultOpen={false}
+                    summary={`${selectedWallSegment.len.toFixed(2)} m`}
+                  >
                     <ScrubbableInput
                       label="Length"
                       step={0.1}
@@ -588,7 +595,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                     </div>
                   </CollapsibleSection>
 
-                  <CollapsibleSection title="Operations">
+                  <CollapsibleSection title="Operations" defaultOpen={false}>
                     <div className="flex flex-col gap-2">
                       <button
                         type="button"
@@ -627,7 +634,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                     </button>
                   </div>
 
-                  <CollapsibleSection title="Coordinates">
+                  <CollapsibleSection title="Coordinates" defaultOpen={false} summary={selectedWallSegment ? `${selectedWallSegment.len.toFixed(2)} m wall` : undefined}>
                     <div className="grid grid-cols-2 gap-2">
                       <ScrubbableInput
                         label="X"
@@ -652,7 +659,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                     </div>
                   </CollapsibleSection>
 
-                  <CollapsibleSection title="Operations">
+                  <CollapsibleSection title="Operations" defaultOpen={false}>
                     <button
                       type="button"
                       data-testid="merge-corner-btn"
@@ -680,7 +687,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                     </button>
                   </div>
 
-                  <CollapsibleSection title="Geometry">
+                  <CollapsibleSection title="Geometry" defaultOpen={false} summary={`${room.outline.length} corners · ${roomAreaM2.toFixed(1)} m²`}>
                     <div className="flex flex-col gap-2">
                       <ScrubbableInput
                         label="Offset"
@@ -719,7 +726,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                     </div>
                   </CollapsibleSection>
 
-                  <CollapsibleSection title="Ventilation">
+                  <CollapsibleSection title="Ventilation" defaultOpen={false} summary={`${ventilationStats.inletCount} in · ${ventilationStats.outletCount} out`}>
                     <Select
                       value={selectedOpening.role}
                       onChange={(role) => updateOpening(selectedOpening.id, { role: role as any })}
@@ -809,7 +816,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
               </div>
 
               {/* Wind Direction & Speed */}
-              <CollapsibleSection title="External Wind">
+              <CollapsibleSection title="External Wind" defaultOpen={false} summary={`${room.params.windSpeed.toFixed(1)} m/s · ${room.params.windDirDeg}°`}>
                 <div className="flex items-center justify-around py-1">
                   <CompassWidget
                     degrees={room.params.windDirDeg}
@@ -840,7 +847,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
               </CollapsibleSection>
 
               {/* Ambient Atmosphere */}
-              <CollapsibleSection title="Ambient Atmosphere">
+              <CollapsibleSection title="Ambient Atmosphere" defaultOpen={false} summary={`${room.params.indoorTempC.toFixed(1)}°C · ${room.params.humidity}% RH`}>
                 <div className="flex flex-col gap-2">
                   <div className="grid grid-cols-2 gap-2">
                     <ScrubbableInput
@@ -882,7 +889,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
               </CollapsibleSection>
 
               {/* Pollutant Source */}
-              <CollapsibleSection title="Pollutant Source">
+              <CollapsibleSection title="Pollutant Source" defaultOpen={false} summary={room.params.pollutantSource?.type ?? 'None'}>
                 <Checkbox
                   checked={Boolean(room.params.pollutantSource)}
                   onChange={(checked) => {
@@ -962,7 +969,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
           {activeTab === 'room' && (
             <div className="flex flex-col gap-3 animate-in fade-in duration-100">
               {/* Room Dimensions & Height */}
-              <CollapsibleSection title="Room Dimensions">
+              <CollapsibleSection title="Room Dimensions" defaultOpen={false} summary={`${room.name} · ${roomAreaM2.toFixed(1)} m²`}>
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] text-neutral-400 font-semibold uppercase">Room Name</span>
@@ -1006,7 +1013,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
               </CollapsibleSection>
 
               {/* Quick Preset Shapes */}
-              <CollapsibleSection title="Quick Preset Shapes">
+              <CollapsibleSection title="Quick Preset Shapes" defaultOpen={false}>
                 <div className="flex flex-col gap-2">
                   <div className="grid grid-cols-3 gap-1 bg-black/20 dark:bg-white/5 p-1 rounded-[6px] border border-white/10 text-[11px]">
                     {(['rectangle', 'l-shape', 't-shape'] as QuickShapeType[]).map((shape) => (
@@ -1059,7 +1066,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
               </CollapsibleSection>
 
               {/* Scene Hierarchy / Outliner */}
-              <CollapsibleSection title="Scene Hierarchy">
+              <CollapsibleSection title="Scene Hierarchy" defaultOpen={false} summary={`${room.objects.length} objects · ${room.openings.length} openings`}>
                 <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
                   {/* Objects */}
                   <span className="text-[10px] text-neutral-400 uppercase font-semibold mt-1">

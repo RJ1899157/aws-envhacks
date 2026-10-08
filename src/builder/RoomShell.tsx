@@ -234,6 +234,9 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
       ...wallMaterialProps,
       transparent: true,
       opacity: 0.85,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     });
   }, [wallMaterialProps]);
 
@@ -259,7 +262,7 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
         const vCamX = toCamX / dist;
         const vCamZ = toCamZ / dist;
         const cosTheta = vCamX * normalOut[0] + vCamZ * normalOut[1];
-        const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
+      const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
         
         const baseOpacity = 0.85;
         let minOpacity = 0.15;
@@ -322,6 +325,9 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
         opacity: isSelected || isHovered ? 0.95 : 0.85,
         emissive: isSelected ? '#b45309' : isHovered ? '#0284c7' : '#000000',
         emissiveIntensity: isSelected || isHovered ? 0.35 : 0,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
       });
     }, [wallMaterialProps, isSelected, isHovered]);
 
@@ -449,7 +455,7 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
         }}
       >
         {wallBoxes.map((box) => (
-          <mesh
+        <mesh
             key={box.id}
             position={box.position}
             quaternion={box.quaternion}
@@ -577,13 +583,13 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
   return (
     <group name="room-shell">
       {/* 1. Floor Mesh */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow userData={{ isExportable: true, exportType: 'wall' }}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow userData={{ isExportable: true, exportType: 'wall' }}>
         <shapeGeometry args={[floorShape]} />
         <meshStandardMaterial
           {...floorProps}
           polygonOffset
-          polygonOffsetFactor={1}
-          polygonOffsetUnits={1}
+          polygonOffsetFactor={-1}
+          polygonOffsetUnits={-1}
         />
       </mesh>
 

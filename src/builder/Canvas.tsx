@@ -839,6 +839,24 @@ const PollutantSourceMarker: React.FC = () => {
   );
 };
 
+const NewProjectEmptyState: React.FC = () => {
+  const room = useSceneStore((state) => state.room);
+  const setToolMode = useUiStore((state) => state.setToolMode);
+  const isEmpty = room.name === 'New Room' && room.objects.length === 0 && room.openings.length === 0 && room.outline.length >= 3;
+  if (!isEmpty) return null;
+  return <Html fullscreen><div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+    <div className="pointer-events-auto max-w-md rounded-2xl border border-white/10 bg-neutral-950/80 p-6 text-center text-white shadow-2xl backdrop-blur-md">
+      <div className="mx-auto mb-3 h-24 w-36 rounded-xl border border-indigo-400/30 bg-gradient-to-br from-indigo-500/20 to-cyan-400/5 flex items-center justify-center"><div className="h-12 w-20 border-2 border-cyan-300/70 rotate-[-8deg] rounded-sm" /></div>
+      <h2 className="text-lg font-semibold">Start with an empty room</h2><p className="mt-1 text-xs text-neutral-400">Build a space, choose a template, or bring in a model.</p>
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <button type="button" onClick={() => setToolMode('draw-floor')} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs hover:bg-indigo-500">Draw your room</button>
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('airforce:open-templates'))} className="rounded-lg bg-white/10 px-2 py-2 text-xs hover:bg-white/15">Start from a template</button>
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('airforce:open-import'))} className="rounded-lg bg-white/10 px-2 py-2 text-xs hover:bg-white/15">Import a model</button>
+      </div>
+    </div>
+  </div></Html>;
+};
+
 export interface CanvasProps {
   className?: string;
 }
@@ -855,6 +873,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
   const isWalkthroughActive = useCameraStore((state) => state.isWalkthroughActive);
   const fov = useCameraStore((state) => state.fov);
   const projection = useCameraStore((state) => state.projection);
+  const setTurntableActive = useCameraStore((state) => state.setTurntableActive);
 
   const roomBounds = useMemo(() => polygonBounds(room.outline), [room.outline]);
   const maxRoomDim = Math.max(roomBounds.width, roomBounds.depth, room.wallHeight || 2.8, 4);
@@ -873,6 +892,31 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
     <div
       className={`relative w-full h-full overflow-hidden select-none bg-neutral-900 ${className}`}
       onContextMenu={(e) => e.preventDefault()} // Allow right-click orbit without context menu
+      onPointerDownCapture={(e) => {
+        if (e.altKey && e.button === 0) {
+          e.preventDefault();
+          const canvas = e.currentTarget.querySelector('canvas');
+          if (!canvas) return;
+          let lastX = e.clientX;
+          let lastY = e.clientY;
+          const move = (event: PointerEvent) => {
+            const deltaX = event.clientX - lastX;
+            const deltaY = event.clientY - lastY;
+            lastX = event.clientX;
+            lastY = event.clientY;
+            const controls = sharedOrbitControlsRef.current;
+            if (!controls) return;
+            cameraController.nudgeOrbit(-deltaX * 0.45, -deltaY * 0.45, controls.object, controls);
+          };
+          const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up, { once: true });
+          setTurntableActive(false);
+        }
+      }}
     >
       {/* Global GLTF / Asset Loading Progress Bar */}
       <GLTFLoadProgressBar />
@@ -909,18 +953,21 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
         <color attach="background" args={['#18181b']} />
 
         {/* Dual camera setup with projection preservation and makeDefault toggle */}
-        {view === '3d' && projection === 'perspective' ? (
-          <PerspectiveCamera makeDefault position={[7, 5, 7]} fov={fov} near={0.1} far={1000} />
-        ) : (
-          <OrthographicCamera
-            makeDefault
-            position={view === '2d' ? [0, 20, 0] : [10, 10, 10]}
-            zoom={view === '2d' ? 55 : 45}
-            near={0.1}
-            far={1000}
-            up={view === '2d' ? [0, 0, -1] : [0, 1, 0]}
-          />
-        )}
+        <PerspectiveCamera
+          makeDefault={view === '3d' && projection === 'perspective'}
+          position={[7, 5, 7]}
+          fov={fov}
+          near={0.1}
+          far={1000}
+        />
+        <OrthographicCamera
+          makeDefault={view === '2d' || projection === 'orthographic'}
+          position={view === '2d' ? [0, 20, 0] : [10, 10, 10]}
+          zoom={view === '2d' ? 55 : 45}
+          near={0.1}
+          far={1000}
+          up={view === '2d' ? [0, 0, -1] : [0, 1, 0]}
+        />
 
         <Suspense fallback={null}>
           <FpsCheck />
@@ -1025,13 +1072,15 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
             enabled={!isDragging && !isWalkthroughActive}
             enableDamping={dampedInertia}
             dampingFactor={0.05}
-            minDistance={0.5}
+            minDistance={Math.max(0.5, maxRoomDim * 0.08)}
             maxDistance={maxOrbitDistance}
-            minPolarAngle={0}
+            minPolarAngle={0.04}
             maxPolarAngle={view === '2d' ? 0 : Math.PI / 2 - 0.04} // Clamped above floor plane in 3D
             enableRotate={view === '3d'} // Locked rotation in 2D mode
             mouseButtons={{
-              LEFT: THREE.MOUSE.ROTATE, // Left click/drag on empty space orbits
+              // Empty-space left drag orbits. Object/wall/gizmo handlers stop
+              // propagation before OrbitControls receives their pointer-down.
+              LEFT: THREE.MOUSE.ROTATE,
               MIDDLE: THREE.MOUSE.PAN, // Middle-drag pan (Shift+Left drag also pans)
               RIGHT: THREE.MOUSE.ROTATE, // Right-drag orbit
             }}
@@ -1039,6 +1088,8 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
               ONE: THREE.TOUCH.ROTATE, // Single finger touch rotates
               TWO: THREE.TOUCH.DOLLY_PAN, // Two-finger pinch zooms and pans
             }}
+            // Shift+left pan is the standard OrbitControls gesture; Alt+left
+            // remains an orbit alternative for trackpads.
           />
 
           {/* Voxel Domain Debug Visualizer (non-fluid InstancedMesh cubes) */}
@@ -1047,7 +1098,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {/* Top-Right Clickable 3D View-Cube (drei GizmoViewcube) */}
           <GizmoHelper
             alignment="top-right"
-            margin={[75, 75]}
+            margin={[160, 130]}
             onTarget={() => controlsRef.current?.target ?? new THREE.Vector3(0, 0, 0)}
           >
             <GizmoViewcube
@@ -1059,6 +1110,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
             />
           </GizmoHelper>
           <SceneExporter />
+          <NewProjectEmptyState />
         </Suspense>
       </R3FCanvas>
 

@@ -303,6 +303,7 @@ export const AssetLibrary: React.FC = () => {
                     <Tooltip key={t.id} label={t.label}>
                       <button
                         type="button"
+                        aria-label={t.label}
                         onClick={() => setActiveTab(t.id)}
                         className={`flex-1 py-1 rounded-[4px] flex items-center justify-center transition-colors ${
                           isActive

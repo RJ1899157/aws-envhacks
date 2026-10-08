@@ -41,6 +41,7 @@ export const FloorPlanEditor: React.FC = () => {
   const snapEnabled = useUiStore((state) => state.snapEnabled);
   const gridStep = useUiStore((state) => state.gridStep);
   const showDimensions = useUiStore((state) => state.showDimensions);
+  const showAllWallDimensions = useUiStore((state) => state.showAllWallDimensions);
   const selectedVertexIndex = useUiStore((state) => state.selectedVertexIndex);
   const setSelectedVertexIndex = useUiStore((state) => state.setSelectedVertexIndex);
   const selectedWallIndex = useUiStore((state) => state.selectedWallIndex);
@@ -981,6 +982,7 @@ export const FloorPlanEditor: React.FC = () => {
               <mesh
                 key={`vertex-${index}`}
                 position={[pt[0], 0.05, pt[1]]}
+                visible={isSelected || isDraggingThis || hoveredWallIndex !== null && (() => { const wall = wallData[hoveredWallIndex]; return !!wall && ((wall.midX === pt[0] && wall.midZ === pt[1]) || Math.hypot(wall.midX - pt[0], wall.midZ - pt[1]) <= wall.len / 2 + 0.01); })()}
                 onPointerOver={(e) => {
                   e.stopPropagation();
                   setCanvasCursor('move');
@@ -1306,7 +1308,7 @@ export const FloorPlanEditor: React.FC = () => {
         {wallData.map((w) => {
           const isSelected = selectedWallIndex === w.index;
           const isHovered = hoveredWallIndex === w.index;
-          const shouldShow = showDimensions || isSelected || isHovered;
+          const shouldShow = (showDimensions && showAllWallDimensions) || isSelected || isHovered;
           if (!shouldShow) return null;
 
           const posX = w.midX + w.normalX * 0.32;
@@ -1315,7 +1317,7 @@ export const FloorPlanEditor: React.FC = () => {
 
           return (
             <React.Fragment key={`dim-group-${w.index}`}>
-              <Html center position={[posX, 0.08, posZ]} className="select-none">
+              <Html center position={[posX, 0.08, posZ]} className="select-none" distanceFactor={0}>
                 <div
                   data-testid={`wall-dim-${w.index}`}
                   onDoubleClick={(e) => {

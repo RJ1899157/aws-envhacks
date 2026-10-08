@@ -192,12 +192,35 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
       if (custom.detail) processImportContent(custom.detail);
     };
     window.addEventListener('airforce:import-json', handleDropJson);
-    return () => window.removeEventListener('airforce:import-json', handleDropJson);
+    const handleImportViews = (e: Event) => {
+      const views = (e as CustomEvent<unknown>).detail;
+      if (!Array.isArray(views)) return;
+      const parsed = views.filter((v): v is import('../store/cameraStore').SavedView =>
+        !!v && typeof v === 'object' && 'position' in v && 'target' in v && 'name' in v && 'id' in v
+      );
+      useCameraStore.getState().replaceSavedViews(parsed);
+    };
+    window.addEventListener('airforce:import-views', handleImportViews);
+    return () => {
+      window.removeEventListener('airforce:import-json', handleDropJson);
+      window.removeEventListener('airforce:import-views', handleImportViews);
+    };
   }, [processImportContent]);
 
   const handleImportClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  useEffect(() => {
+    const openImport = () => handleImportClick();
+    const openTemplates = () => setIsImportExportOpen(true);
+    window.addEventListener('airforce:open-import', openImport);
+    window.addEventListener('airforce:open-templates', openTemplates);
+    return () => {
+      window.removeEventListener('airforce:open-import', openImport);
+      window.removeEventListener('airforce:open-templates', openTemplates);
+    };
+  }, [handleImportClick]);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -356,6 +379,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
               <button
                 type="button"
                 data-testid="undo-btn"
+                aria-label="Undo"
                 disabled={!canUndo}
                 onClick={handleUndo}
                 className={`p-1 rounded-[4px] transition-colors ${
@@ -370,6 +394,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
               <button
                 type="button"
                 data-testid="redo-btn"
+                aria-label="Redo"
                 disabled={!canRedo}
                 onClick={handleRedo}
                 className={`p-1 rounded-[4px] transition-colors ${
@@ -403,6 +428,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
             <Tooltip label="View display options">
               <button
                 type="button"
+                aria-label="View display options"
                 onClick={() => setIsViewMenuOpen(!isViewMenuOpen)}
                 className={`h-7 px-2 rounded-[6px] border flex items-center gap-1 transition-colors ${
                   isViewMenuOpen

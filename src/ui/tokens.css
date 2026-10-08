@@ -61,7 +61,7 @@
 
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: #475569;
 
   /* Shadows (3 levels) */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -88,7 +88,7 @@
 
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-muted: #94a3b8;
 
   /* Shadows (3 levels) */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);

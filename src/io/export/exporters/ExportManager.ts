@@ -3,6 +3,7 @@ import { GLTFExporter, OBJExporter, STLExporter } from 'three-stdlib';
 import JSZip from 'jszip';
 import { useExportStore } from '../../../store/exportStore';
 import { useSceneStore } from '../../../store/sceneStore';
+import { useCameraStore } from '../../../store/cameraStore';
 
 export type ExportFormat = 'glb' | 'gltf' | 'obj' | 'stl' | 'usdz' | 'svg' | 'pdf' | 'dxf' | 'png' | 'json' | 'airforce';
 
@@ -160,13 +161,14 @@ function exportJSON(filename: string) {
 // ---- AIRFORCE (Project) ----
 async function exportAirforce(filename: string) {
   const room = useSceneStore.getState().room;
+  const savedViews = useCameraStore.getState().savedViews;
   const zip = new JSZip();
   
   // Manifest
   zip.file('manifest.json', JSON.stringify({ version: '1.0', type: 'airforce_project' }));
   
   // Scene
-  zip.file('scene.json', JSON.stringify(room, null, 2));
+  zip.file('scene.json', JSON.stringify({ room, cameraViews: savedViews }, null, 2));
 
   // In a real app we would fetch the IDB blobs for custom assets and pack them into `assets/`
   // We can do this by querying useAssetLibraryStore

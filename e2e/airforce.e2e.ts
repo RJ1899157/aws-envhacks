@@ -19,17 +19,17 @@ test('End-to-end user journey: building a room, adding assets, and verifying rou
   await expect(page.getByText('Asset Library')).toBeVisible();
   
   // 2. Add an object
-  await page.getByText('bed-double-01').dblclick();
+  await page.getByText('Double Bed', { exact: true }).dblclick();
   
   // 3. Open Inspector and check if object is selected
   // The selected object name should appear in the inspector
-  await expect(page.getByText('bed-double-01').last()).toBeVisible();
+  await expect(page.getByTestId('object-name-input')).toHaveValue('Double Bed');
 
   // 4. Save a snapshot
-  await page.keyboard.press('Meta+k'); // Command palette
+  await page.keyboard.press('Control+k'); // Command palette
   await page.getByPlaceholder('Search commands...').fill('Toggle 2D/3D View');
   await page.keyboard.press('Enter');
 
   // Verify view changed (HUD indicates it)
-  await expect(page.getByText('2D')).toBeVisible();
+  await expect(page.getByTestId('view-toggle-btn')).toContainText('2D');
 });

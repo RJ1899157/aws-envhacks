@@ -5,6 +5,8 @@ import { useUiStore, type ToolMode } from '../store/uiStore';
 import { AssetMesh } from './AssetMesh';
 import type { SceneObject } from '../core/schema';
 import { startDirectObjectDrag } from './DirectObjectManipulator';
+import { cameraController } from './cameraController';
+import { sharedOrbitControlsRef } from './Canvas';
 
 interface PlacedObjectItemProps {
   object: SceneObject;
@@ -25,9 +27,9 @@ const PlacedObjectItem = React.memo<PlacedObjectItemProps>(
       (e: ThreeEvent<PointerEvent>) => {
         if (toolMode === 'select' && e.button === 0) {
           e.stopPropagation();
-          onSelect(object.id, e.shiftKey);
-          startDirectObjectDrag(object.id, e);
-        }
+        onSelect(object.id, e.shiftKey);
+        startDirectObjectDrag(object.id, e);
+      }
       },
       [toolMode, onSelect, object.id]
     );
@@ -38,6 +40,11 @@ const PlacedObjectItem = React.memo<PlacedObjectItemProps>(
         isSelected={isSelected}
         isColliding={isColliding}
         onPointerDown={handlePointerDown}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          const controls = sharedOrbitControlsRef.current;
+          if (controls) cameraController.fitSelection(object.id, useSceneStore.getState().room, controls.object, controls);
+        }}
       />
     );
   }

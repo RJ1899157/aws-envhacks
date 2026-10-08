@@ -24,6 +24,7 @@ export interface UiState {
   snapEnabled: boolean;
   gridStep: number;
   showDimensions: boolean;
+  showAllWallDimensions: boolean;
   showCeiling: boolean;
   selectedVertexIndex: number | null;
   selectedWallIndex: number | null;
@@ -65,6 +66,7 @@ export interface UiState {
   setIsCollisionWarning: (warning: boolean) => void;
   setShowDimensions: (show: boolean) => void;
   toggleDimensions: () => void;
+  setShowAllWallDimensions: (show: boolean) => void;
   setShowCeiling: (show: boolean) => void;
   toggleCeiling: () => void;
   setShowScaleReference: (show: boolean) => void;
@@ -98,6 +100,7 @@ export const initialUiState = {
   numericInputBuffer: null as string | null,
   isCollisionWarning: false,
   showDimensions: true,
+  showAllWallDimensions: false,
   showCeiling: false,
   selectedVertexIndex: null as number | null,
   selectedWallIndex: null as number | null,
@@ -138,6 +141,7 @@ export const useUiStore = create<UiState>()((set) => ({
   setIsCollisionWarning: (isCollisionWarning) => set({ isCollisionWarning }),
   setShowDimensions: (showDimensions) => set({ showDimensions }),
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
+  setShowAllWallDimensions: (showAllWallDimensions) => set({ showAllWallDimensions }),
   setShowCeiling: (showCeiling) => set({ showCeiling }),
   toggleCeiling: () => set((state) => ({ showCeiling: !state.showCeiling })),
   setShowScaleReference: (showScaleReference) => set({ showScaleReference }),

@@ -35,6 +35,7 @@ export interface CameraState {
   saveView: (view: Omit<SavedView, 'id' | 'createdAt'>) => SavedView;
   deleteSavedView: (id: string) => void;
   renameSavedView: (id: string, name: string) => void;
+  replaceSavedViews: (views: SavedView[]) => void;
 }
 
 const STORAGE_KEY = 'airforce-saved-views';
@@ -102,5 +103,9 @@ export const useCameraStore = create<CameraState>()((set, get) => ({
     } catch {
       // ignore
     }
+  },
+  replaceSavedViews: (views) => {
+    set({ savedViews: views });
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(views)); } catch { /* ignore */ }
   },
 }));

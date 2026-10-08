@@ -18,16 +18,36 @@ interface StepContent {
 
 const ONBOARDING_STEPS: StepContent[] = [
   {
+    icon: '🧭', stepNumber: 1, title: 'Orbit the room', subtitle: 'Change the view from any angle',
+    description: 'Drag empty space to orbit, use the view cube or angle presets, and scroll or pinch to zoom. Double-click an object to frame it.',
+    tips: ['Shift-drag pans the view', 'Top view keeps rotation locked', 'Home fits the whole room'],
+  },
+  {
+    icon: '🪑', stepNumber: 2, title: 'Place an object', subtitle: 'Build out your room at real scale',
+    description: 'Drag an asset from the library into the room, then move, rotate, and resize it with the on-canvas controls or Inspector.',
+    tips: ['Click an object to select it', 'G moves and R rotates', 'Use Fit Selection to frame it'],
+  },
+  {
+    icon: '🧱', stepNumber: 3, title: 'Edit a wall', subtitle: 'Adjust room shape and dimensions',
+    description: 'Hover or select a wall to reveal its controls. Drag the wall body or a corner, or double-click a dimension to enter an exact length.',
+    tips: ['Select a wall to show its dimension', 'Use the plus control to split it', 'Undo is available in the toolbar'],
+  },
+  {
+    icon: '🪟', stepNumber: 4, title: 'Add a window', subtitle: 'Openings snap to the wall',
+    description: 'Double-click a wall to open the quick menu, or choose a window in the asset library and place it on a wall.',
+    tips: ['Resize from the opening handles', 'Set sill height in the Inspector', 'Choose inlet, outlet, or closed'],
+  },
+  {
     icon: '📐',
-    stepNumber: 1,
-    title: 'Draw & Edit Floor Plans',
+    stepNumber: 5,
+    title: 'Export your project',
     subtitle: 'Custom room geometry with millimeter precision',
     description:
-      "Click 'Draw Floor' in the toolbar to sketch your custom room outline. Click corners on the ground grid, drag handles with snapping, split walls with midpoints, and watch live dimension meters and floor area update in real time.",
+      'Open File → Export Dialog to save a project or export a model, floor plan, or screenshot. Project exports can be reopened later.',
     tips: [
-      'Enter closes polygon; Esc cancels drawing',
-      'Hold Shift for orthogonal horizontal/vertical lock',
-      'Self-intersecting polygons are automatically blocked',
+      'Use .airforce to preserve project data and saved views',
+      'Choose the export format that fits your workflow',
+      'Take a screenshot from the File menu',
     ],
   },
   {
