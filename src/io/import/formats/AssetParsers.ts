@@ -29,7 +29,7 @@ export async function parse3DModel(resolved: ResolvedFile, onProgress?: (p: numb
   });
 
   const mainUrl = urls[mainFile.name.toLowerCase()] || urls[mainFile.name];
-  let resultGroup = new THREE.Group();
+  const resultGroup = new THREE.Group();
 
   try {
     if (extension === 'gltf' || extension === 'glb') {
