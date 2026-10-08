@@ -1,13 +1,15 @@
 import React from 'react';
 import { Canvas } from '../builder';
-import { AssetLibrary, HeaderOverlay } from '../ui';
+import { AssetLibrary, Toolbar, Inspector, HudOverlay } from '../ui';
 
 export const App: React.FC = () => {
   return (
-    <main className="relative w-screen h-screen overflow-hidden bg-neutral-950">
+    <main className="relative w-screen h-screen overflow-hidden bg-neutral-950 select-none">
       <Canvas />
-      <HeaderOverlay />
+      <Toolbar />
       <AssetLibrary />
+      <Inspector />
+      <HudOverlay />
     </main>
   );
 };

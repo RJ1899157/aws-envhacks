@@ -87,7 +87,7 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ className = '' }) =>
   return (
     <aside
       className={`pointer-events-auto absolute top-20 left-4 z-20 flex flex-col bg-neutral-900/90 backdrop-blur-md border border-neutral-700/60 rounded-xl shadow-2xl transition-all duration-300 text-neutral-200 select-none ${
-        isCollapsed ? 'w-12 h-12 overflow-hidden' : 'w-80 max-h-[calc(100vh-6.5rem)]'
+        isCollapsed ? 'w-12 h-12 overflow-hidden' : 'w-80 max-h-[calc(100vh-10rem)]'
       } ${className}`}
     >
       {/* Header & Toggle */}

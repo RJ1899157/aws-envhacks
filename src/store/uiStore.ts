@@ -21,6 +21,8 @@ export interface UiState {
   transformY: boolean;
   numericInputBuffer: string | null;
   isCollisionWarning: boolean;
+  cursorCoords: [number, number] | null;
+  isPlacingPollutantSource: boolean;
 
   // Actions
   setToolMode: (mode: ToolMode) => void;
@@ -41,6 +43,8 @@ export interface UiState {
   setSelectedVertexIndex: (index: number | null) => void;
   setActiveAssetId: (id: string | null) => void;
   setGhostPosition: (pos: Vec3 | null) => void;
+  setCursorCoords: (coords: [number, number] | null) => void;
+  setIsPlacingPollutantSource: (placing: boolean) => void;
   resetUi: () => void;
 }
 
@@ -59,6 +63,8 @@ export const initialUiState = {
   selectedVertexIndex: null as number | null,
   activeAssetId: null as string | null,
   ghostPosition: null as Vec3 | null,
+  cursorCoords: null as [number, number] | null,
+  isPlacingPollutantSource: false,
 };
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -82,5 +88,7 @@ export const useUiStore = create<UiState>()((set) => ({
   setSelectedVertexIndex: (selectedVertexIndex) => set({ selectedVertexIndex }),
   setActiveAssetId: (activeAssetId) => set({ activeAssetId }),
   setGhostPosition: (ghostPosition) => set({ ghostPosition }),
+  setCursorCoords: (cursorCoords) => set({ cursorCoords }),
+  setIsPlacingPollutantSource: (isPlacingPollutantSource) => set({ isPlacingPollutantSource }),
   resetUi: () => set(initialUiState),
 }));

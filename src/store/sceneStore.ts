@@ -21,6 +21,8 @@ export interface SceneState {
   insertVertex: (index: number, position: Vec2) => void;
   removeVertex: (index: number) => void;
   setWallHeight: (height: number) => void;
+  setWallThickness: (thickness: number) => void;
+  setRoomName: (name: string) => void;
   setParams: (params: Partial<RoomParams>) => void;
   addObject: (object: SceneObject) => void;
   updateObject: (id: string, updates: Partial<Omit<SceneObject, 'id'>>) => void;
@@ -139,6 +141,16 @@ export const useSceneStore = create<SceneState>()(
       setWallHeight: (height) =>
         set((state) => {
           state.room.wallHeight = height;
+        }),
+
+      setWallThickness: (thickness) =>
+        set((state) => {
+          state.room.wallThickness = thickness;
+        }),
+
+      setRoomName: (name) =>
+        set((state) => {
+          state.room.name = name;
         }),
 
       setParams: (params) =>

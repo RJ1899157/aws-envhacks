@@ -1,0 +1,150 @@
+import { RoomSchema, type Room } from './schema';
+
+/**
+ * Creates a rich, realistic sample room for immediate demonstration and testing:
+ * - 5.0m x 4.0m master bedroom & study
+ * - Cross-ventilated with south inlet window and north outlet window, plus west entrance door
+ * - Fully furnished with double bed, work desk, ergonomic chair, bookshelf, ceiling fan, and air purifier
+ * - Environmental conditions and IAQ pollutant source configured
+ */
+export function createSampleRoom(): Room {
+  const roomData = {
+    version: 1 as const,
+    name: 'Sample Master Suite (5x4m)',
+    wallHeight: 2.8,
+    wallThickness: 0.15,
+    outline: [
+      [-2.5, -2.0],
+      [2.5, -2.0],
+      [2.5, 2.0],
+      [-2.5, 2.0],
+    ] as [number, number][],
+    openings: [
+      {
+        id: 'sample-window-inlet',
+        wallIndex: 0,
+        type: 'window' as const,
+        offset: 1.7,
+        width: 1.6,
+        height: 1.3,
+        sill: 0.9,
+        role: 'inlet' as const,
+        openFraction: 0.8,
+      },
+      {
+        id: 'sample-window-outlet',
+        wallIndex: 2,
+        type: 'window' as const,
+        offset: 1.8,
+        width: 1.4,
+        height: 1.3,
+        sill: 0.9,
+        role: 'outlet' as const,
+        openFraction: 0.75,
+      },
+      {
+        id: 'sample-door',
+        wallIndex: 3,
+        type: 'door' as const,
+        offset: 0.8,
+        width: 0.9,
+        height: 2.1,
+        sill: 0.0,
+        role: 'closed' as const,
+        openFraction: 0,
+      },
+    ],
+    objects: [
+      {
+        id: 'sample-bed',
+        assetId: 'double-bed',
+        name: 'Master Double Bed',
+        position: [-1.2, 0, -0.8] as [number, number, number],
+        rotation: [0, 0, 0] as [number, number, number],
+        size: [1.5, 0.55, 2.0] as [number, number, number],
+        elevation: 0,
+        role: 'solid' as const,
+        wallMounted: false,
+        color: '#4338ca',
+      },
+      {
+        id: 'sample-desk',
+        assetId: 'desk',
+        name: 'Work Desk',
+        position: [1.5, 0, 1.2] as [number, number, number],
+        rotation: [0, Math.PI, 0] as [number, number, number],
+        size: [1.4, 0.75, 0.7] as [number, number, number],
+        elevation: 0,
+        role: 'solid' as const,
+        wallMounted: false,
+        color: '#92400e',
+      },
+      {
+        id: 'sample-chair',
+        assetId: 'office-chair',
+        name: 'Desk Chair',
+        position: [1.5, 0, 0.5] as [number, number, number],
+        rotation: [0, 0, 0] as [number, number, number],
+        size: [0.65, 0.95, 0.65] as [number, number, number],
+        elevation: 0,
+        role: 'porous' as const,
+        wallMounted: false,
+        color: '#1f2937',
+      },
+      {
+        id: 'sample-ceiling-fan',
+        assetId: 'ceiling-fan',
+        name: 'Ceiling Fan',
+        position: [0, 2.4, 0] as [number, number, number],
+        rotation: [0, 0, 0] as [number, number, number],
+        size: [1.2, 0.35, 1.2] as [number, number, number],
+        elevation: 2.4,
+        role: 'source' as const,
+        wallMounted: false,
+        color: '#0369a1',
+        defaultAirflow: 800,
+      },
+      {
+        id: 'sample-purifier',
+        assetId: 'air-purifier',
+        name: 'HEPA Air Purifier',
+        position: [2.0, 0, -1.4] as [number, number, number],
+        rotation: [0, 0, 0] as [number, number, number],
+        size: [0.38, 0.6, 0.38] as [number, number, number],
+        elevation: 0,
+        role: 'source' as const,
+        wallMounted: false,
+        color: '#0891b2',
+        defaultAirflow: 350,
+      },
+      {
+        id: 'sample-bookshelf',
+        assetId: 'bookshelf',
+        name: 'Bookshelf',
+        position: [-2.1, 0, 1.2] as [number, number, number],
+        rotation: [0, Math.PI / 2, 0] as [number, number, number],
+        size: [0.8, 1.8, 0.35] as [number, number, number],
+        elevation: 0,
+        role: 'porous' as const,
+        wallMounted: false,
+        color: '#854d0e',
+      },
+    ],
+    params: {
+      windSpeed: 3.2,
+      windDirDeg: 45,
+      pressurePa: 101325,
+      indoorTempC: 23.5,
+      outdoorTempC: 28.0,
+      humidity: 55.0,
+      datetime: '2026-10-05T14:30:00Z',
+      pollutantSource: {
+        type: 'VOC',
+        emissionRateMgH: 15,
+        position: [0.5, 0, -0.5] as [number, number, number],
+      },
+    },
+  };
+
+  return RoomSchema.parse(roomData);
+}

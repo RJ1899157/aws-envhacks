@@ -398,6 +398,38 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
   return null;
 };
 
+/**
+ * 3D marker on the floor plane indicating the active pollutant source
+ */
+const PollutantSourceMarker: React.FC = () => {
+  const pollutantSource = useSceneStore((state) => state.room.params.pollutantSource);
+  if (!pollutantSource || !pollutantSource.position) return null;
+  const [x, , z] = pollutantSource.position;
+
+  return (
+    <group position={[x, 0.1, z]}>
+      <mesh>
+        <cylinderGeometry args={[0.15, 0.2, 0.15, 16]} />
+        <meshStandardMaterial
+          color="#ec4899"
+          emissive="#ec4899"
+          emissiveIntensity={0.6}
+          roughness={0.3}
+        />
+      </mesh>
+      <mesh position={[0, 0.2, 0]}>
+        <sphereGeometry args={[0.1, 16, 16]} />
+        <meshStandardMaterial
+          color="#f43f5e"
+          emissive="#f43f5e"
+          emissiveIntensity={0.8}
+          roughness={0.2}
+        />
+      </mesh>
+    </group>
+  );
+};
+
 export interface CanvasProps {
   className?: string;
 }
@@ -522,13 +554,38 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {/* Blender X (Red) and Z (Blue) floor axis lines */}
           <BlenderAxisLines />
 
-          {/* Ground click detector to clear selection on empty space */}
+          {/* Ground click detector to clear selection on empty space & track cursor coordinates */}
           <mesh
             rotation={[-Math.PI / 2, 0, 0]}
             position={[0, -0.0001, 0]}
+            onPointerMove={(e) => {
+              const x = Number(e.point.x.toFixed(2));
+              const z = Number(e.point.z.toFixed(2));
+              useUiStore.getState().setCursorCoords([x, z]);
+            }}
+            onPointerLeave={() => {
+              useUiStore.getState().setCursorCoords(null);
+            }}
             onPointerDown={(e) => {
-              if (e.button === 0 && toolMode === 'select') {
-                useSceneStore.getState().clearSelection();
+              if (e.button === 0) {
+                const isPlacing = useUiStore.getState().isPlacingPollutantSource;
+                if (isPlacing) {
+                  e.stopPropagation();
+                  const currentParams = useSceneStore.getState().room.params;
+                  useSceneStore.getState().setParams({
+                    pollutantSource: {
+                      type: currentParams.pollutantSource?.type ?? 'VOC',
+                      emissionRateMgH: currentParams.pollutantSource?.emissionRateMgH ?? 10,
+                      position: [Number(e.point.x.toFixed(2)), 0, Number(e.point.z.toFixed(2))],
+                    },
+                  });
+                  useUiStore.getState().setIsPlacingPollutantSource(false);
+                  return;
+                }
+
+                if (toolMode === 'select') {
+                  useSceneStore.getState().clearSelection();
+                }
               }
             }}
           >
@@ -553,6 +610,9 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
           {/* Interactive Placement Controller (Ghost preview, snapping, wall mounting) */}
           <PlacementController />
+
+          {/* Pollutant Source 3D Visual Marker */}
+          <PollutantSourceMarker />
 
           {/* HTML5 Drag & Drop Listener */}
           <CanvasDropListener />
