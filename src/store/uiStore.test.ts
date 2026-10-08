@@ -14,6 +14,8 @@ describe('useUiStore', () => {
     expect(state.snapEnabled).toBe(true);
     expect(state.gridStep).toBe(0.05);
     expect(state.showDimensions).toBe(true);
+    expect(state.showCeiling).toBe(false);
+    expect(state.selectedVertexIndex).toBeNull();
     expect(state.activeAssetId).toBeNull();
     expect(state.ghostPosition).toBeNull();
   });
@@ -27,6 +29,20 @@ describe('useUiStore', () => {
 
     useUiStore.getState().setView('2d');
     expect(useUiStore.getState().view).toBe('2d');
+  });
+
+  it('toggles and sets ceiling and selected vertex index', () => {
+    useUiStore.getState().toggleCeiling();
+    expect(useUiStore.getState().showCeiling).toBe(true);
+
+    useUiStore.getState().setShowCeiling(false);
+    expect(useUiStore.getState().showCeiling).toBe(false);
+
+    useUiStore.getState().setSelectedVertexIndex(2);
+    expect(useUiStore.getState().selectedVertexIndex).toBe(2);
+
+    useUiStore.getState().setSelectedVertexIndex(null);
+    expect(useUiStore.getState().selectedVertexIndex).toBeNull();
   });
 
   it('toggles and sets snapping and gridStep', () => {

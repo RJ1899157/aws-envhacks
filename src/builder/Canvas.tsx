@@ -13,6 +13,8 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { polygonBounds } from '../core/parser';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
+import { RoomShell } from './RoomShell';
+import { FloorPlanEditor } from './FloorPlanEditor';
 
 /**
  * Shared OrbitControls ref accessible by tools, transform gizmos, and viewport managers
@@ -332,8 +334,11 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {/* Blender X (Red) and Z (Blue) floor axis lines */}
           <BlenderAxisLines />
 
-          {/* Room Floor Preview */}
-          <RoomFloorPreview />
+          {/* 3D Room Shell (floor triangulation, wall cutouts, camera-facing fade, ceiling) */}
+          <RoomShell />
+
+          {/* Interactive Floor Plan Editor (drawing, vertex handles, midpoint splits, live dimensions) */}
+          <FloorPlanEditor />
 
           {/* Camera Controller & Keyboard Shortcuts */}
           <CameraController controlsRef={controlsRef} />

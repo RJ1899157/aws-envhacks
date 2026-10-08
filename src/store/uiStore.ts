@@ -13,6 +13,8 @@ export interface UiState {
   snapEnabled: boolean;
   gridStep: number;
   showDimensions: boolean;
+  showCeiling: boolean;
+  selectedVertexIndex: number | null;
   activeAssetId: string | null;
   ghostPosition: Vec3 | null;
 
@@ -25,6 +27,9 @@ export interface UiState {
   setGridStep: (step: number) => void;
   setShowDimensions: (show: boolean) => void;
   toggleDimensions: () => void;
+  setShowCeiling: (show: boolean) => void;
+  toggleCeiling: () => void;
+  setSelectedVertexIndex: (index: number | null) => void;
   setActiveAssetId: (id: string | null) => void;
   setGhostPosition: (pos: Vec3 | null) => void;
   resetUi: () => void;
@@ -37,6 +42,8 @@ export const initialUiState = {
   snapEnabled: true,
   gridStep: DEFAULT_TRANSLATION_SNAP_METERS, // 0.05m
   showDimensions: true,
+  showCeiling: false,
+  selectedVertexIndex: null as number | null,
   activeAssetId: null as string | null,
   ghostPosition: null as Vec3 | null,
 };
@@ -52,6 +59,9 @@ export const useUiStore = create<UiState>()((set) => ({
   setGridStep: (gridStep) => set({ gridStep }),
   setShowDimensions: (showDimensions) => set({ showDimensions }),
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
+  setShowCeiling: (showCeiling) => set({ showCeiling }),
+  toggleCeiling: () => set((state) => ({ showCeiling: !state.showCeiling })),
+  setSelectedVertexIndex: (selectedVertexIndex) => set({ selectedVertexIndex }),
   setActiveAssetId: (activeAssetId) => set({ activeAssetId }),
   setGhostPosition: (ghostPosition) => set({ ghostPosition }),
   resetUi: () => set(initialUiState),
