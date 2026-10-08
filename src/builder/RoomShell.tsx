@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { wallSegment } from '../core/parser';
@@ -144,7 +144,21 @@ interface WallSegmentMeshProps {
  * Automatically fades opacity when camera faces the exterior of the wall.
  */
 const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({ wallIndex, room, view }) => {
-  const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const wallMaterial = useMemo(() => {
+    return new THREE.MeshStandardMaterial({
+      color: '#3f3f46',
+      roughness: 0.7,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.85,
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      wallMaterial.dispose();
+    };
+  }, [wallMaterial]);
 
   const segment = useMemo(() => {
     try {
@@ -205,16 +219,12 @@ const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({ wallIndex, room, view
 
   // Dynamic Camera-Facing Fade
   useFrame(({ camera }, delta) => {
-    if (!materialRef.current || !segment) return;
+    if (!segment) return;
 
     if (view === '2d') {
       // In 2D top-down mode, keep walls crisp and solid
-      materialRef.current.opacity = THREE.MathUtils.lerp(
-        materialRef.current.opacity,
-        0.85,
-        delta * 10
-      );
-      materialRef.current.depthWrite = true;
+      wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, 0.85, delta * 10);
+      wallMaterial.depthWrite = true;
     } else {
       // Vector from wall center to camera
       const toCamX = camera.position.x - wallCenter.x;
@@ -232,12 +242,8 @@ const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({ wallIndex, room, view
         const fadeFactor = Math.max(0, Math.min(1, (cosTheta - 0.05) / 0.55));
         const targetOpacity = THREE.MathUtils.lerp(0.85, 0.2, fadeFactor);
 
-        materialRef.current.opacity = THREE.MathUtils.lerp(
-          materialRef.current.opacity,
-          targetOpacity,
-          delta * 8
-        );
-        materialRef.current.depthWrite = materialRef.current.opacity > 0.45;
+        wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, targetOpacity, delta * 8);
+        wallMaterial.depthWrite = wallMaterial.opacity > 0.45;
       }
     }
   });
@@ -246,26 +252,16 @@ const WallSegmentMesh: React.FC<WallSegmentMeshProps> = ({ wallIndex, room, view
 
   return (
     <group name={`wall-segment-${wallIndex}`}>
-      {/* Shared material for all pieces in this wall segment */}
-      <meshStandardMaterial
-        ref={materialRef}
-        color="#3f3f46"
-        roughness={0.7}
-        metalness={0.05}
-        transparent
-        opacity={0.85}
-      />
-
       {wallBoxes.map((box) => (
         <mesh
           key={box.id}
           position={box.position}
           quaternion={box.quaternion}
+          material={wallMaterial}
           castShadow
           receiveShadow
         >
           <boxGeometry args={box.dimensions} />
-          {/* Wire frame or edge outline if needed */}
         </mesh>
       ))}
 
@@ -372,9 +368,18 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
     return { floorShape: shape, outlinePoints: points };
   }, [room.outline]);
 
-  const outlineGeometry = useMemo(() => {
-    return new THREE.BufferGeometry().setFromPoints(outlinePoints);
+  const outlineLine = useMemo(() => {
+    const geom = new THREE.BufferGeometry().setFromPoints(outlinePoints);
+    const mat = new THREE.LineBasicMaterial({ color: 0x38bdf8 });
+    return new THREE.Line(geom, mat);
   }, [outlinePoints]);
+
+  useEffect(() => {
+    return () => {
+      outlineLine.geometry.dispose();
+      (outlineLine.material as THREE.Material).dispose();
+    };
+  }, [outlineLine]);
 
   if (room.outline.length < 3) return null;
 
@@ -394,14 +399,7 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
       </mesh>
 
       {/* Floor Outline Perimeter Line */}
-      <primitive
-        object={
-          new THREE.Line(
-            outlineGeometry,
-            new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2 })
-          )
-        }
-      />
+      <primitive object={outlineLine} />
 
       {/* 2. Wall Segments with Cutouts & Camera-Facing Fade */}
       {room.outline.map((_, index) => (

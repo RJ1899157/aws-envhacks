@@ -417,6 +417,48 @@ export const FloorPlanEditor: React.FC = () => {
     }[];
   }, [room]);
 
+  // Memoized line connecting placed drawing points
+  const connectedLine = useMemo(() => {
+    if (drawingPoints.length < 2) return null;
+    const geom = new THREE.BufferGeometry().setFromPoints(
+      drawingPoints.map((p) => new THREE.Vector3(p[0], 0.05, p[1]))
+    );
+    const mat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2 });
+    return new THREE.Line(geom, mat);
+  }, [drawingPoints]);
+
+  useEffect(() => {
+    return () => {
+      connectedLine?.geometry.dispose();
+      (connectedLine?.material as THREE.Material | undefined)?.dispose();
+    };
+  }, [connectedLine]);
+
+  // Memoized rubberband line to cursor
+  const rubberbandLine = useMemo(() => {
+    if (drawingPoints.length === 0 || !cursorPos) return null;
+    const last = drawingPoints[drawingPoints.length - 1]!;
+    const geom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(last[0], 0.05, last[1]),
+      new THREE.Vector3(cursorPos[0], 0.05, cursorPos[1]),
+    ]);
+    const mat = new THREE.LineDashedMaterial({
+      color: 0x67e8f9,
+      dashSize: 0.2,
+      gapSize: 0.1,
+    });
+    const line = new THREE.Line(geom, mat);
+    line.computeLineDistances();
+    return line;
+  }, [drawingPoints, cursorPos]);
+
+  useEffect(() => {
+    return () => {
+      rubberbandLine?.geometry.dispose();
+      (rubberbandLine?.material as THREE.Material | undefined)?.dispose();
+    };
+  }, [rubberbandLine]);
+
   return (
     <group name="floor-plan-editor">
       {/* Invisible ground plane raycaster for pointer events */}
@@ -441,7 +483,7 @@ export const FloorPlanEditor: React.FC = () => {
             <mesh
               key={`draw-pt-${i}`}
               position={[pt[0], 0.05, pt[1]]}
-              onClick={(e) => {
+              onPointerDown={(e) => {
                 if (i === 0 && drawingPoints.length >= 3) {
                   e.stopPropagation();
                   const finalOutline = [...drawingPoints];
@@ -466,41 +508,12 @@ export const FloorPlanEditor: React.FC = () => {
           ))}
 
           {/* Connected segments */}
-          {drawingPoints.length > 1 && (
-            <primitive
-              object={
-                new THREE.Line(
-                  new THREE.BufferGeometry().setFromPoints(
-                    drawingPoints.map((p) => new THREE.Vector3(p[0], 0.05, p[1]))
-                  ),
-                  new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 3 })
-                )
-              }
-            />
-          )}
+          {connectedLine && <primitive object={connectedLine} />}
 
           {/* Active rubberband line to cursor */}
-          {drawingPoints.length > 0 && cursorPos && (
+          {rubberbandLine && cursorPos && (
             <>
-              <primitive
-                object={
-                  new THREE.Line(
-                    new THREE.BufferGeometry().setFromPoints([
-                      new THREE.Vector3(
-                        drawingPoints[drawingPoints.length - 1]![0],
-                        0.05,
-                        drawingPoints[drawingPoints.length - 1]![1]
-                      ),
-                      new THREE.Vector3(cursorPos[0], 0.05, cursorPos[1]),
-                    ]),
-                    new THREE.LineDashedMaterial({
-                      color: 0x67e8f9,
-                      dashSize: 0.2,
-                      gapSize: 0.1,
-                    })
-                  )
-                }
-              />
+              <primitive object={rubberbandLine} />
 
               {/* Cursor preview pin */}
               <mesh position={[cursorPos[0], 0.05, cursorPos[1]]}>
