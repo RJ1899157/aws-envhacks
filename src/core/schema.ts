@@ -1,92 +1,123 @@
 import { z } from 'zod';
-import {
-  DEFAULT_ROTATION_SNAP_DEGREES,
-  DEFAULT_TRANSLATION_SNAP_METERS,
-  DEFAULT_WALL_HEIGHT_METERS,
-} from './constants';
 
+/**
+ * 2D vector on the XZ floor plane: [x, z] in meters
+ */
+export const Vec2Schema = z.tuple([z.number(), z.number()]);
+export type Vec2 = z.infer<typeof Vec2Schema>;
+
+/**
+ * 3D vector: [x, y, z] in meters where Y is UP and XZ is the floor plane
+ */
+export const Vec3Schema = z.tuple([z.number(), z.number(), z.number()]);
+export type Vec3 = z.infer<typeof Vec3Schema>;
+
+/**
+ * Positive 3D size bounding box: [width, height, depth] in meters
+ */
+export const PositiveVec3Schema = z.tuple([
+  z.number().positive('Width must be greater than 0'),
+  z.number().positive('Height must be greater than 0'),
+  z.number().positive('Depth must be greater than 0'),
+]);
+export type PositiveVec3 = z.infer<typeof PositiveVec3Schema>;
+
+/**
+ * Airflow role classifications for CFD & IAQ simulation
+ */
 export const AirflowRoleSchema = z.enum(['solid', 'source', 'porous', 'none']);
+export type AirflowRole = z.infer<typeof AirflowRoleSchema>;
 
+/**
+ * Role of a wall opening in ventilation
+ */
 export const OpeningRoleSchema = z.enum(['inlet', 'outlet', 'closed']);
+export type OpeningRole = z.infer<typeof OpeningRoleSchema>;
 
+/**
+ * Architectural opening type
+ */
 export const OpeningTypeSchema = z.enum(['window', 'door']);
+export type OpeningType = z.infer<typeof OpeningTypeSchema>;
 
 /**
- * 2D point on floor plane: [x, z] in meters
- */
-export const FloorPointSchema = z.tuple([z.number(), z.number()]);
-
-/**
- * 3D point in meters: [x, y, z] where Y is UP and XZ is the floor plane
- */
-export const Vector3Schema = z.tuple([z.number(), z.number(), z.number()]);
-
-/**
- * Window or door opening attached to a specific wall segment
+ * Wall opening schema (windows and doors)
  */
 export const OpeningSchema = z.object({
-  id: z.string().uuid().or(z.string().min(1)),
-  wallIndex: z.number().int().nonnegative(),
+  id: z.string().min(1),
+  wallIndex: z.number().int().nonnegative('Wall index must be a non-negative integer'),
   type: OpeningTypeSchema,
-  offset: z.number().nonnegative(), // meters along the wall from vertex[wallIndex]
-  width: z.number().positive(), // meters
-  height: z.number().positive(), // meters
-  sill: z.number().nonnegative(), // sill height from floor in meters
-  role: OpeningRoleSchema,
-  openFraction: z.number().min(0).max(1), // 0 to 1
+  offset: z.number().nonnegative('Opening offset must be non-negative'),
+  width: z.number().positive('Opening width must be positive'),
+  height: z.number().positive('Opening height must be positive'),
+  sill: z.number().nonnegative('Sill height must be non-negative'),
+  role: OpeningRoleSchema.default('closed'),
+  openFraction: z.number().min(0).max(1).default(0),
 });
+export type Opening = z.infer<typeof OpeningSchema>;
 
 /**
- * Room represented by a counter-clockwise floor polygon on XZ plane and wall height
+ * 3D placed object instance in the room
+ */
+export const ObjectSchema = z.object({
+  id: z.string().min(1),
+  assetId: z.string().min(1),
+  name: z.string().min(1),
+  position: Vec3Schema, // [x, y, z] in meters
+  rotation: Vec3Schema.default([0, 0, 0]), // [rx, ry, rz] Euler angles in radians
+  size: PositiveVec3Schema, // [width, height, depth] in meters (all > 0)
+  elevation: z.number().default(0), // elevation offset from floor in meters
+  role: AirflowRoleSchema.default('solid'),
+  wallMounted: z.boolean().default(false),
+  color: z.string().optional(),
+  defaultAirflow: z.number().optional(), // optional airflow rate (m³/h or m/s)
+});
+export type SceneObject = z.infer<typeof ObjectSchema>;
+
+/**
+ * Optional IAQ pollutant source parameters
+ */
+export const PollutantSourceSchema = z.object({
+  type: z.string().default('VOC'),
+  emissionRateMgH: z.number().nonnegative().default(10), // mg/hour
+  position: Vec3Schema.optional(),
+});
+export type PollutantSource = z.infer<typeof PollutantSourceSchema>;
+
+/**
+ * Environmental and ventilation simulation parameters
+ */
+export const RoomParamsSchema = z.object({
+  windSpeed: z.number().nonnegative('Wind speed cannot be negative').default(2.5), // m/s
+  windDirDeg: z.number().min(0).max(360, 'Wind direction must be 0-360 degrees').default(0), // 0° = North
+  pressurePa: z.number().positive('Atmospheric pressure must be positive').default(101325), // Pa
+  indoorTempC: z.number().default(22.0), // °C
+  outdoorTempC: z.number().default(25.0), // °C
+  humidity: z.number().min(0).max(100, 'Humidity must be 0-100%').default(50.0), // %
+  datetime: z.string().default('2026-10-05T12:00:00Z'),
+  pollutantSource: PollutantSourceSchema.optional(),
+});
+export type RoomParams = z.infer<typeof RoomParamsSchema>;
+
+/**
+ * Complete Room specification for 3D modeling and IAQ simulation
  */
 export const RoomSchema = z.object({
-  id: z.string().uuid().or(z.string().min(1)),
-  name: z.string().min(1),
-  polygon: z.array(FloorPointSchema).min(3), // counter-clockwise outline of [x, z] points
-  wallHeight: z.number().positive().default(DEFAULT_WALL_HEIGHT_METERS), // meters
+  version: z.literal(1).default(1),
+  name: z.string().min(1).default('Default Room'),
+  wallHeight: z
+    .number()
+    .min(2.0, 'Wall height must be at least 2.0m')
+    .max(6.0, 'Wall height cannot exceed 6.0m')
+    .default(2.7),
+  wallThickness: z
+    .number()
+    .min(0.05, 'Wall thickness must be at least 0.05m')
+    .max(0.5, 'Wall thickness cannot exceed 0.5m')
+    .default(0.15),
+  outline: z.array(Vec2Schema).min(3, 'Room outline must have at least 3 vertices'),
   openings: z.array(OpeningSchema).default([]),
+  objects: z.array(ObjectSchema).default([]),
+  params: RoomParamsSchema.default(() => RoomParamsSchema.parse({})),
 });
-
-/**
- * Asset definition in catalog with real-world dimensions in meters
- */
-export const CatalogAssetSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  category: z.string().min(1),
-  dimensions: Vector3Schema, // [width(x), height(y), depth(z)] in meters
-  airflowRole: AirflowRoleSchema,
-  modelUrl: z.string().optional(),
-});
-
-/**
- * Placed asset instance in the 3D room
- */
-export const PlacedAssetSchema = z.object({
-  id: z.string().uuid().or(z.string().min(1)),
-  catalogId: z.string().min(1),
-  name: z.string().min(1),
-  position: Vector3Schema, // [x, y, z] in meters (Y is up)
-  rotation: Vector3Schema, // [rx, ry, rz] Euler angles in radians
-  dimensions: Vector3Schema, // bounding box [width, height, depth] in meters
-  airflowRole: AirflowRoleSchema,
-});
-
-/**
- * Snap settings configuration
- */
-export const SnapConfigSchema = z.object({
-  translation: z.number().positive().default(DEFAULT_TRANSLATION_SNAP_METERS),
-  rotation: z.number().positive().default(DEFAULT_ROTATION_SNAP_DEGREES),
-  enabled: z.boolean().default(true),
-});
-
-/**
- * Complete scene state schema
- */
-export const SceneDataSchema = z.object({
-  room: RoomSchema,
-  placedAssets: z.array(PlacedAssetSchema),
-  selectedId: z.string().nullable(),
-  snapConfig: SnapConfigSchema,
-});
+export type Room = z.infer<typeof RoomSchema>;

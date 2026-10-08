@@ -1,123 +1,135 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DEFAULT_ROTATION_SNAP_DEGREES,
-  DEFAULT_ROTATION_SNAP_RADIANS,
-  DEFAULT_TRANSLATION_SNAP_METERS,
-} from './constants';
+import { createDefaultRoom } from './defaultRoom';
 import {
   AirflowRoleSchema,
-  CatalogAssetSchema,
+  ObjectSchema,
   OpeningRoleSchema,
   OpeningSchema,
-  PlacedAssetSchema,
+  RoomParamsSchema,
   RoomSchema,
 } from './schema';
 
-describe('Global Conventions & Core Data Schemas', () => {
-  it('enforces default snap values: 0.05 m translation and 15 degree rotation', () => {
-    expect(DEFAULT_TRANSLATION_SNAP_METERS).toBe(0.05);
-    expect(DEFAULT_ROTATION_SNAP_DEGREES).toBe(15);
-    expect(DEFAULT_ROTATION_SNAP_RADIANS).toBeCloseTo((15 * Math.PI) / 180);
+describe('RoomSchema & Data Validation', () => {
+  it('parses the default room successfully without errors', () => {
+    const defaultRoom = createDefaultRoom();
+    const result = RoomSchema.safeParse(defaultRoom);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.version).toBe(1);
+      expect(result.data.name).toBe('Default Room (4x3m)');
+      expect(result.data.wallHeight).toBe(2.7);
+      expect(result.data.wallThickness).toBe(0.15);
+      expect(result.data.outline).toHaveLength(4);
+      expect(result.data.openings).toHaveLength(2);
+      expect(result.data.objects).toEqual([]);
+      expect(result.data.params.pressurePa).toBe(101325);
+      expect(result.data.params.indoorTempC).toBe(22.0);
+      expect(result.data.params.outdoorTempC).toBe(25.0);
+    }
   });
 
-  it('validates Room with floor polygon (counter-clockwise [x, z]) and wallHeight in meters', () => {
-    const validRoom = {
-      id: 'room-1',
-      name: 'Office Room',
-      polygon: [
-        [-3, -2],
-        [3, -2],
-        [3, 2],
-        [-3, 2],
-      ],
-      wallHeight: 2.8,
-      openings: [],
-    };
-
-    const parsed = RoomSchema.parse(validRoom);
-    expect(parsed.polygon).toHaveLength(4);
-    expect(parsed.wallHeight).toBe(2.8);
-
-    // Invalid polygon with fewer than 3 vertices
-    expect(() =>
-      RoomSchema.parse({
-        ...validRoom,
-        polygon: [
-          [0, 0],
-          [1, 1],
-        ],
-      })
-    ).toThrow();
-  });
-
-  it('validates openings attached to a wall index with offset, dimensions, role, and openFraction', () => {
-    const validWindow = {
-      id: 'win-1',
+  it('rejects negative widths in openings', () => {
+    const invalidOpening = {
+      id: 'win-bad',
       wallIndex: 0,
       type: 'window' as const,
-      offset: 1.2,
-      width: 1.5,
+      offset: 1.0,
+      width: -1.2, // Negative width
       height: 1.2,
       sill: 0.9,
       role: 'inlet' as const,
-      openFraction: 0.8,
+      openFraction: 0.5,
     };
 
-    const parsed = OpeningSchema.parse(validWindow);
-    expect(parsed.role).toBe('inlet');
-    expect(parsed.openFraction).toBe(0.8);
-
-    // Opening roles must be 'inlet' | 'outlet' | 'closed'
-    expect(OpeningRoleSchema.safeParse('inlet').success).toBe(true);
-    expect(OpeningRoleSchema.safeParse('outlet').success).toBe(true);
-    expect(OpeningRoleSchema.safeParse('closed').success).toBe(true);
-    expect(OpeningRoleSchema.safeParse('invalid').success).toBe(false);
-
-    // openFraction must be between 0 and 1
-    expect(() =>
-      OpeningSchema.parse({
-        ...validWindow,
-        openFraction: 1.5,
-      })
-    ).toThrow();
+    const result = OpeningSchema.safeParse(invalidOpening);
+    expect(result.success).toBe(false);
   });
 
-  it('validates airflow roles: "solid" | "source" | "porous" | "none"', () => {
+  it('rejects zero width in openings', () => {
+    const invalidOpening = {
+      id: 'win-zero',
+      wallIndex: 0,
+      type: 'window' as const,
+      offset: 1.0,
+      width: 0, // Zero width
+      height: 1.2,
+      sill: 0.9,
+      role: 'inlet' as const,
+      openFraction: 0.5,
+    };
+
+    const result = OpeningSchema.safeParse(invalidOpening);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects negative widths in object sizes', () => {
+    const invalidObject = {
+      id: 'obj-bad',
+      assetId: 'desk',
+      name: 'Bad Desk',
+      position: [0, 0, 0] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+      size: [-1.4, 0.75, 0.7] as [number, number, number], // Negative width
+      elevation: 0,
+      role: 'solid' as const,
+    };
+
+    const result = ObjectSchema.safeParse(invalidObject);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects wallHeight outside 2.0m - 6.0m bounds', () => {
+    const defaultRoom = createDefaultRoom();
+
+    expect(RoomSchema.safeParse({ ...defaultRoom, wallHeight: 1.8 }).success).toBe(false);
+    expect(RoomSchema.safeParse({ ...defaultRoom, wallHeight: 6.5 }).success).toBe(false);
+    expect(RoomSchema.safeParse({ ...defaultRoom, wallHeight: 3.5 }).success).toBe(true);
+  });
+
+  it('rejects wallThickness outside 0.05m - 0.5m bounds', () => {
+    const defaultRoom = createDefaultRoom();
+
+    expect(RoomSchema.safeParse({ ...defaultRoom, wallThickness: 0.02 }).success).toBe(false);
+    expect(RoomSchema.safeParse({ ...defaultRoom, wallThickness: 0.6 }).success).toBe(false);
+    expect(RoomSchema.safeParse({ ...defaultRoom, wallThickness: 0.2 }).success).toBe(true);
+  });
+
+  it('rejects outlines with fewer than 3 vertices', () => {
+    const defaultRoom = createDefaultRoom();
+
+    expect(
+      RoomSchema.safeParse({
+        ...defaultRoom,
+        outline: [
+          [0, 0],
+          [2, 0],
+        ],
+      }).success
+    ).toBe(false);
+  });
+
+  it('validates airflow and opening roles correctly', () => {
     expect(AirflowRoleSchema.safeParse('solid').success).toBe(true);
     expect(AirflowRoleSchema.safeParse('source').success).toBe(true);
     expect(AirflowRoleSchema.safeParse('porous').success).toBe(true);
     expect(AirflowRoleSchema.safeParse('none').success).toBe(true);
-    expect(AirflowRoleSchema.safeParse('other').success).toBe(false);
+    expect(AirflowRoleSchema.safeParse('unknown').success).toBe(false);
+
+    expect(OpeningRoleSchema.safeParse('inlet').success).toBe(true);
+    expect(OpeningRoleSchema.safeParse('outlet').success).toBe(true);
+    expect(OpeningRoleSchema.safeParse('closed').success).toBe(true);
+    expect(OpeningRoleSchema.safeParse('other').success).toBe(false);
   });
 
-  it('validates catalog assets with real-world dimensions in meters', () => {
-    const validCatalogAsset = {
-      id: 'desk-01',
-      name: 'Office Desk',
-      category: 'furniture',
-      dimensions: [1.6, 0.75, 0.8] as [number, number, number], // width, height, depth in meters
-      airflowRole: 'solid' as const,
-    };
-
-    const parsed = CatalogAssetSchema.parse(validCatalogAsset);
-    expect(parsed.dimensions[0]).toBe(1.6);
-    expect(parsed.dimensions[1]).toBe(0.75);
-    expect(parsed.dimensions[2]).toBe(0.8);
-  });
-
-  it('validates placed asset instances with 3D transform and airflow role', () => {
-    const validPlaced = {
-      id: 'inst-1',
-      catalogId: 'desk-01',
-      name: 'Office Desk 1',
-      position: [0.5, 0, -1.0] as [number, number, number],
-      rotation: [0, Math.PI / 2, 0] as [number, number, number],
-      dimensions: [1.6, 0.75, 0.8] as [number, number, number],
-      airflowRole: 'solid' as const,
-    };
-
-    const parsed = PlacedAssetSchema.parse(validPlaced);
-    expect(parsed.position).toEqual([0.5, 0, -1.0]);
-    expect(parsed.airflowRole).toBe('solid');
+  it('applies sensible defaults for RoomParamsSchema when omitted', () => {
+    const parsed = RoomParamsSchema.parse({});
+    expect(parsed.windSpeed).toBe(2.5);
+    expect(parsed.windDirDeg).toBe(0);
+    expect(parsed.pressurePa).toBe(101325);
+    expect(parsed.indoorTempC).toBe(22.0);
+    expect(parsed.outdoorTempC).toBe(25.0);
+    expect(parsed.humidity).toBe(50.0);
+    expect(parsed.datetime).toBeDefined();
   });
 });

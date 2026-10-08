@@ -4,49 +4,39 @@ import { immer } from 'zustand/middleware/immer';
 import {
   DEFAULT_ROTATION_SNAP_DEGREES,
   DEFAULT_TRANSLATION_SNAP_METERS,
-  DEFAULT_WALL_HEIGHT_METERS,
 } from '../core/constants';
-import type { FloorPoint, Opening, PlacedAsset, Room, SnapConfig } from '../core/types';
+import { createDefaultRoom } from '../core/defaultRoom';
+import type { Opening, Room, SceneObject, Vec2 } from '../core/types';
+
+export interface SnapConfig {
+  translation: number;
+  rotation: number;
+  enabled: boolean;
+}
 
 export interface SceneState {
   room: Room;
-  placedAssets: PlacedAsset[];
   selectedId: string | null;
   snapConfig: SnapConfig;
 
   // Actions
   setRoom: (room: Room) => void;
   setWallHeight: (height: number) => void;
-  updatePolygon: (polygon: FloorPoint[]) => void;
+  setWallThickness: (thickness: number) => void;
+  updateOutline: (outline: Vec2[]) => void;
   addOpening: (opening: Opening) => void;
+  updateOpening: (id: string, updates: Partial<Omit<Opening, 'id'>>) => void;
   removeOpening: (openingId: string) => void;
-  addPlacedAsset: (asset: PlacedAsset) => void;
-  updatePlacedAsset: (id: string, updates: Partial<Omit<PlacedAsset, 'id'>>) => void;
-  removePlacedAsset: (id: string) => void;
+  addObject: (object: SceneObject) => void;
+  updateObject: (id: string, updates: Partial<Omit<SceneObject, 'id'>>) => void;
+  removeObject: (id: string) => void;
   selectObject: (id: string | null) => void;
   setSnapConfig: (config: Partial<SnapConfig>) => void;
   resetScene: () => void;
 }
 
-/**
- * Default empty 5m x 4m room polygon (counter-clockwise on XZ plane: [x, z])
- */
-export const createDefaultRoom = (): Room => ({
-  id: 'default-room',
-  name: 'Main Room',
-  polygon: [
-    [-2.5, -2],
-    [2.5, -2],
-    [2.5, 2],
-    [-2.5, 2],
-  ],
-  wallHeight: DEFAULT_WALL_HEIGHT_METERS,
-  openings: [],
-});
-
 export const initialSceneData = {
   room: createDefaultRoom(),
-  placedAssets: [] as PlacedAsset[],
   selectedId: null as string | null,
   snapConfig: {
     translation: DEFAULT_TRANSLATION_SNAP_METERS,
@@ -70,9 +60,14 @@ export const useSceneStore = create<SceneState>()(
           state.room.wallHeight = height;
         }),
 
-      updatePolygon: (polygon) =>
+      setWallThickness: (thickness) =>
         set((state) => {
-          state.room.polygon = polygon;
+          state.room.wallThickness = thickness;
+        }),
+
+      updateOutline: (outline) =>
+        set((state) => {
+          state.room.outline = outline;
         }),
 
       addOpening: (opening) =>
@@ -80,30 +75,41 @@ export const useSceneStore = create<SceneState>()(
           state.room.openings.push(opening);
         }),
 
-      removeOpening: (openingId) =>
+      updateOpening: (id, updates) =>
         set((state) => {
-          state.room.openings = state.room.openings.filter((op) => op.id !== openingId);
-        }),
-
-      addPlacedAsset: (asset) =>
-        set((state) => {
-          state.placedAssets.push(asset);
-        }),
-
-      updatePlacedAsset: (id, updates) =>
-        set((state) => {
-          const index = state.placedAssets.findIndex((a) => a.id === id);
-          if (index !== -1 && state.placedAssets[index]) {
-            state.placedAssets[index] = {
-              ...state.placedAssets[index],
+          const index = state.room.openings.findIndex((o) => o.id === id);
+          if (index !== -1 && state.room.openings[index]) {
+            state.room.openings[index] = {
+              ...state.room.openings[index],
               ...updates,
             };
           }
         }),
 
-      removePlacedAsset: (id) =>
+      removeOpening: (openingId) =>
         set((state) => {
-          state.placedAssets = state.placedAssets.filter((a) => a.id !== id);
+          state.room.openings = state.room.openings.filter((op) => op.id !== openingId);
+        }),
+
+      addObject: (object) =>
+        set((state) => {
+          state.room.objects.push(object);
+        }),
+
+      updateObject: (id, updates) =>
+        set((state) => {
+          const index = state.room.objects.findIndex((o) => o.id === id);
+          if (index !== -1 && state.room.objects[index]) {
+            state.room.objects[index] = {
+              ...state.room.objects[index],
+              ...updates,
+            };
+          }
+        }),
+
+      removeObject: (id) =>
+        set((state) => {
+          state.room.objects = state.room.objects.filter((o) => o.id !== id);
           if (state.selectedId === id) {
             state.selectedId = null;
           }
@@ -122,7 +128,6 @@ export const useSceneStore = create<SceneState>()(
       resetScene: () =>
         set((state) => {
           state.room = createDefaultRoom();
-          state.placedAssets = [];
           state.selectedId = null;
           state.snapConfig = {
             translation: DEFAULT_TRANSLATION_SNAP_METERS,
@@ -132,10 +137,8 @@ export const useSceneStore = create<SceneState>()(
         }),
     })),
     {
-      // zundo temporal config: track room and placedAssets changes
       partialize: (state) => ({
         room: state.room,
-        placedAssets: state.placedAssets,
       }),
     }
   )
