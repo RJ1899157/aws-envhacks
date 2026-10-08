@@ -5,20 +5,16 @@ import {
   Magnet,
   AlertTriangle,
   CheckCircle2,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  Layers,
-  Compass,
   X,
   Undo2,
 } from 'lucide-react';
-import { parseRoom, polygonBounds } from '../core/parser';
+import { parseRoom } from '../core/parser';
 import { useSceneStore, useUiStore } from '../store';
 import { usePlacementIssuesStore } from '../store/placementIssuesStore';
 import type { PlacementIssue } from '../core/placementValidator';
 import { sharedOrbitControlsRef } from '../builder/Canvas';
 import { Tooltip } from './components/Tooltip';
+import { ViewControlsOverlay } from './ViewControlsOverlay';
 
 export interface HudOverlayProps {
   className?: string;
@@ -38,8 +34,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
   const toggleSnap = useUiStore((state) => state.toggleSnap);
   const gridStep = useUiStore((state) => state.gridStep);
   const cursorCoords = useUiStore((state) => state.cursorCoords);
-  const view = useUiStore((state) => state.view);
-  const setView = useUiStore((state) => state.setView);
   const toastMessage = useUiStore((state) => state.toastMessage);
   const setToastMessage = useUiStore((state) => state.setToastMessage);
 
@@ -108,42 +102,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
   const issues = parseResult.issues;
   const errorCount = useMemo(() => issues.filter((i) => i.level === 'error').length, [issues]);
   const totalIssuesCount = activePlacementIssues.length + issues.length;
-
-  // Camera Controls
-  const handleZoomIn = () => {
-    if (sharedOrbitControlsRef.current) {
-      const cam = sharedOrbitControlsRef.current.object;
-      const target = sharedOrbitControlsRef.current.target;
-      cam.position.lerp(target, 0.25);
-      sharedOrbitControlsRef.current.update();
-    }
-  };
-
-  const handleZoomOut = () => {
-    if (sharedOrbitControlsRef.current) {
-      const cam = sharedOrbitControlsRef.current.object;
-      const target = sharedOrbitControlsRef.current.target;
-      const dir = cam.position.clone().sub(target).multiplyScalar(1.25);
-      cam.position.copy(target).add(dir);
-      sharedOrbitControlsRef.current.update();
-    }
-  };
-
-  const handleFrameRoom = () => {
-    if (sharedOrbitControlsRef.current) {
-      const cam = sharedOrbitControlsRef.current.object;
-      const bounds = polygonBounds(room.outline);
-      const center = new THREE.Vector3(
-        (bounds.min[0] + bounds.max[0]) / 2,
-        0,
-        (bounds.min[1] + bounds.max[1]) / 2
-      );
-      const maxDim = Math.max(bounds.width, bounds.depth, 4.0);
-      cam.position.set(center.x, maxDim * 1.8, center.z + maxDim * 1.4);
-      sharedOrbitControlsRef.current.target.copy(center);
-      sharedOrbitControlsRef.current.update();
-    }
-  };
 
   // Selection count label for tests
   const selectionLabel = useMemo(() => {
@@ -292,61 +250,8 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
         </div>
       </div>
 
-      {/* 3. BOTTOM-RIGHT: View Controls & Zoom Cluster */}
-      <div className="fixed bottom-3 right-3 z-[20] pointer-events-auto flex items-center gap-1 bg-neutral-900/85 dark:bg-[#121826]/85 backdrop-blur-md p-1 rounded-[8px] border border-neutral-300/20 dark:border-white/10 shadow-lg text-neutral-300">
-        <Tooltip label="Zoom in" side="top">
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            className="w-7 h-7 rounded-[4px] hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors"
-          >
-            <ZoomIn size={15} strokeWidth={1.75} />
-          </button>
-        </Tooltip>
-
-        <Tooltip label="Zoom out" side="top">
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            className="w-7 h-7 rounded-[4px] hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors"
-          >
-            <ZoomOut size={15} strokeWidth={1.75} />
-          </button>
-        </Tooltip>
-
-        <div className="w-px h-3.5 bg-white/10" />
-
-        <Tooltip label="Frame entire room" shortcut="Home" side="top">
-          <button
-            type="button"
-            onClick={handleFrameRoom}
-            className="w-7 h-7 rounded-[4px] hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors"
-          >
-            <Maximize2 size={14} strokeWidth={1.75} />
-          </button>
-        </Tooltip>
-
-        <Tooltip label="North orientation" side="top">
-          <div className="w-7 h-7 flex items-center justify-center text-indigo-400 font-bold text-xs" title="North is Up (Z-)">
-            <Compass size={15} strokeWidth={1.75} />
-          </div>
-        </Tooltip>
-
-        <div className="w-px h-3.5 bg-white/10" />
-
-        <Tooltip label="Toggle 2D / 3D view" shortcut="Tab" side="top">
-          <button
-            type="button"
-            onClick={() => setView(view === '3d' ? '2d' : '3d')}
-            className={`h-7 px-2 rounded-[4px] text-xs font-semibold flex items-center gap-1 transition-colors ${
-              view === '2d' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10 text-neutral-300'
-            }`}
-          >
-            <Layers size={13} strokeWidth={1.75} />
-            <span>{view === '3d' ? '3D' : '2D'}</span>
-          </button>
-        </Tooltip>
-      </div>
+      {/* 3. BOTTOM-RIGHT: Upgraded View Controls & Navigation Cluster */}
+      <ViewControlsOverlay />
 
       {/* Floating Toast Notification (bottom-centre with Undo) */}
       {toastMessage && (

@@ -1,9 +1,9 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas as R3FCanvas, useFrame, useThree } from '@react-three/fiber';
 import {
   ContactShadows,
   GizmoHelper,
-  GizmoViewport,
+  GizmoViewcube,
   Grid,
   Html,
   OrbitControls,
@@ -16,13 +16,15 @@ import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { useGraphicsStore } from '../store/graphicsStore';
 import { polygonBounds } from '../core/parser';
-import { prefersReducedMotion } from '../core/motion';
 import { GLTFLoadProgressBar } from '../ui/GLTFLoadProgressBar';
 import { SelectedGroundGlow } from './SelectedGroundGlow';
 import { DropRipplesVisualizer } from './DropRipplesVisualizer';
 import { useDropFeedbackStore } from '../store/dropFeedbackStore';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
+import { useCameraStore } from '../store/cameraStore';
+import { cameraController } from './cameraController';
+import { WalkthroughControls } from './WalkthroughControls';
 import { RoomShell } from './RoomShell';
 import { FloorPlanEditor } from './FloorPlanEditor';
 import { PlacedObjects } from './PlacedObjects';
@@ -439,98 +441,141 @@ interface CameraControllerProps {
 }
 
 /**
- * Handles smooth camera transitions, mode switching (2D/3D), and Blender keyboard shortcuts
+ * Handles smooth camera transitions, mode switching (2D/3D), FOV updates,
+ * Blender keyboard shortcuts, and trackpad/mouse navigation gestures.
  */
 export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef }) => {
   const { camera, gl } = useThree();
   const view = useUiStore((state) => state.view);
   const room = useSceneStore((state) => state.room);
+  const selectedObjectId = useSceneStore((state) => state.selectedObjectId);
+  const fov = useCameraStore((state) => state.fov);
+  const pivotMode = useCameraStore((state) => state.pivotMode);
 
-  // Target animation state
-  const targetCamPos = useRef<THREE.Vector3>(new THREE.Vector3(8, 6, 8));
-  const targetLookAt = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.35, 0));
-  const isTransitioning = useRef<boolean>(false);
+  // Sync camera FOV when changed in store
+  useEffect(() => {
+    if ('fov' in camera) {
+      (camera as THREE.PerspectiveCamera).fov = fov;
+      (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+    }
+  }, [camera, fov]);
 
-  // Calculates room center and framing distance
-  const getRoomFraming = useCallback(() => {
-    const bounds = polygonBounds(room.outline);
-    const centerX = (bounds.min[0] + bounds.max[0]) / 2;
-    const centerZ = (bounds.min[1] + bounds.max[1]) / 2;
-    const centerY = room.wallHeight / 2;
-    const maxDim = Math.max(bounds.width, bounds.depth, room.wallHeight, 4);
-    const distance = maxDim * 1.6;
+  // Cancel any active animation when user starts dragging OrbitControls
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
 
-    return {
-      center: new THREE.Vector3(centerX, centerY, centerZ),
-      floorCenter: new THREE.Vector3(centerX, 0, centerZ),
-      distance,
+    const onStart = () => {
+      cameraController.cancelAnimation();
     };
-  }, [room.outline, room.wallHeight]);
 
-  // Animate camera to specific preset views
-  const animateTo = useCallback((pos: THREE.Vector3, target: THREE.Vector3) => {
-    targetCamPos.current.copy(pos);
-    targetLookAt.current.copy(target);
-    isTransitioning.current = true;
-  }, []);
+    controls.addEventListener('start', onStart);
+    return () => {
+      controls.removeEventListener('start', onStart);
+    };
+  }, [controlsRef]);
 
-  // Smoothly fly-focuses to a specific object's bounding center
-  const flyFocusToObject = useCallback(
-    (objectId: string) => {
-      const obj = room.objects.find((o) => o.id === objectId);
-      if (!obj) return;
-      const [w, h, d] = obj.size;
-      const sx = obj.scale?.[0] ?? 1;
-      const sy = obj.scale?.[1] ?? 1;
-      const sz = obj.scale?.[2] ?? 1;
-      const maxDim = Math.max(w * sx, h * sy, d * sz, 0.8);
-      const elev = obj.elevation ?? 0;
-      const objCenter = new THREE.Vector3(
-        obj.position[0],
-        (obj.position[1] ?? 0) + elev + (h * sy) / 2,
-        obj.position[2]
-      );
-      const flyDist = Math.max(maxDim * 2.5, 2.5);
-
-      if (view === '2d') {
-        animateTo(
-          new THREE.Vector3(objCenter.x, objCenter.y + flyDist * 1.5, objCenter.z + 0.0001),
-          new THREE.Vector3(objCenter.x, 0, objCenter.z)
+  // Pivot Mode: Orbit around selection when an object is selected
+  useEffect(() => {
+    if (pivotMode === 'selection' && selectedObjectId && controlsRef.current) {
+      const obj = room.objects.find((o) => o.id === selectedObjectId);
+      if (obj) {
+        const elev = obj.elevation ?? 0;
+        const targetPos = new THREE.Vector3(
+          obj.position[0],
+          (obj.position[1] ?? 0) + elev + obj.size[1] / 2,
+          obj.position[2]
         );
-      } else {
-        animateTo(
-          new THREE.Vector3(
-            objCenter.x + flyDist * 0.7,
-            objCenter.y + flyDist * 0.5,
-            objCenter.z + flyDist * 0.7
-          ),
-          objCenter
-        );
+        cameraController.recenterPivot(targetPos, camera, controlsRef.current);
       }
-    },
-    [room.objects, view, animateTo]
-  );
+    }
+  }, [pivotMode, selectedObjectId, room.objects, camera, controlsRef]);
 
-  // Mouse-wheel zooms toward cursor position
+  // Mouse & Trackpad gestures:
+  // - Pinch zoom (or Ctrl+wheel) zooms towards cursor
+  // - Shift + two-finger scroll pans
+  // - Trackpad two-finger scroll orbits around target
+  // - Regular mouse-wheel zooms toward cursor position
   useEffect(() => {
     const dom = gl.domElement;
+
     const onWheel = (e: WheelEvent) => {
-      if (isTransitioning.current) return;
-      if (e.deltaY >= 0) return; // Only zoom-to-cursor when zooming in
+      if (useCameraStore.getState().isWalkthroughActive) return;
+      cameraController.cancelAnimation();
 
       const rect = dom.getBoundingClientRect();
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
 
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+      // 1. Pinch Zoom on Trackpad (Ctrl + wheel on macOS)
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+        const targetY = controlsRef.current ? controlsRef.current.target.y : 0;
+        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -targetY);
+        const hit = new THREE.Vector3();
 
-      const targetY = controlsRef.current ? controlsRef.current.target.y : 0;
-      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -targetY);
-      const hit = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(groundPlane, hit) && controlsRef.current) {
+          const zoomDelta = e.deltaY * 0.01;
+          const shiftFactor = 0.04 * Math.sign(-zoomDelta);
+          const shift = new THREE.Vector3()
+            .subVectors(hit, controlsRef.current.target)
+            .multiplyScalar(shiftFactor);
+          controlsRef.current.target.add(shift);
+          camera.position.add(shift);
+          const camToTarget = camera.position.clone().sub(controlsRef.current.target);
+          const scale = Math.max(0.1, 1 + zoomDelta);
+          camera.position.copy(controlsRef.current.target).add(camToTarget.multiplyScalar(scale));
+          controlsRef.current.update();
+        }
+        return;
+      }
 
-      if (raycaster.ray.intersectPlane(groundPlane, hit)) {
+      // 2. Shift + Two-Finger Scroll: Screen-space Pan
+      if (e.shiftKey) {
+        e.preventDefault();
         if (controlsRef.current) {
+          const panSpeed = 0.003 * camera.position.distanceTo(controlsRef.current.target);
+          const forward = new THREE.Vector3();
+          camera.getWorldDirection(forward);
+          const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+          const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+
+          const panOffset = new THREE.Vector3()
+            .addScaledVector(right, -e.deltaX * panSpeed)
+            .addScaledVector(up, e.deltaY * panSpeed);
+
+          camera.position.add(panOffset);
+          controlsRef.current.target.add(panOffset);
+          controlsRef.current.update();
+        }
+        return;
+      }
+
+      // 3. Trackpad Two-Finger Scroll: Orbit around target
+      const isTrackpad = Math.abs(e.deltaX) > 0 || !Number.isInteger(e.deltaY) || Math.abs(e.deltaY) < 35;
+      if (isTrackpad && view === '3d' && controlsRef.current) {
+        e.preventDefault();
+        const rotSpeed = 0.003;
+        cameraController.nudgeOrbit(
+          -e.deltaX * rotSpeed * 30,
+          -e.deltaY * rotSpeed * 30,
+          camera,
+          controlsRef.current
+        );
+        return;
+      }
+
+      // 4. Mouse-wheel: Zoom toward cursor position
+      if (e.deltaY < 0) {
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+        const targetY = controlsRef.current ? controlsRef.current.target.y : 0;
+        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -targetY);
+        const hit = new THREE.Vector3();
+
+        if (raycaster.ray.intersectPlane(groundPlane, hit) && controlsRef.current) {
           const shiftFactor = 0.07;
           const shift = new THREE.Vector3()
             .subVectors(hit, controlsRef.current.target)
@@ -541,14 +586,13 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
       }
     };
 
-    dom.addEventListener('wheel', onWheel, { passive: true });
+    dom.addEventListener('wheel', onWheel, { passive: false });
     return () => dom.removeEventListener('wheel', onWheel);
-  }, [camera, gl.domElement, controlsRef]);
+  }, [camera, gl.domElement, controlsRef, view]);
 
   // Keyboard shortcut handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore keystrokes when typing into input / textarea fields
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -557,81 +601,78 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
         return;
       }
 
-      const { center, distance } = getRoomFraming();
-
       // F key: Fly-focus to selected object
       if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         const selId =
           useSceneStore.getState().selectedObjectId ??
-          useSceneStore.getState().selectedObjectIds[0];
-        if (selId) {
-          flyFocusToObject(selId);
+          useSceneStore.getState().selectedObjectIds[0] ??
+          null;
+        cameraController.fitSelection(selId, room, camera, controlsRef.current);
+      }
+      // Numpad 7: Top View (Ctrl+Numpad 7: Bottom View)
+      else if (e.code === 'Numpad7' || (e.key === '7' && !e.shiftKey)) {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          cameraController.goToPreset('bottom', room, camera, controlsRef.current);
         } else {
-          // If nothing selected, frame the whole room
-          if (view === '2d') {
-            animateTo(
-              new THREE.Vector3(center.x, center.y + distance * 1.2, center.z + 0.0001),
-              new THREE.Vector3(center.x, 0, center.z)
-            );
-          } else {
-            animateTo(
-              new THREE.Vector3(
-                center.x + distance * 0.7,
-                center.y + distance * 0.5,
-                center.z + distance * 0.7
-              ),
-              center
-            );
-          }
+          cameraController.goToPreset('top', room, camera, controlsRef.current);
         }
       }
-      // Numpad 7: Top View
-      else if (e.code === 'Numpad7' || e.key === '7') {
+      // Numpad 1: Front View (Ctrl+Numpad 1: Back View)
+      else if (e.code === 'Numpad1' || (e.key === '1' && !e.shiftKey)) {
         e.preventDefault();
-        animateTo(new THREE.Vector3(center.x, center.y + distance, center.z + 0.0001), center);
+        if (e.ctrlKey || e.metaKey) {
+          cameraController.goToPreset('back', room, camera, controlsRef.current);
+        } else {
+          cameraController.goToPreset('front', room, camera, controlsRef.current);
+        }
       }
-      // Numpad 1: Front View (along +Z looking towards -Z)
-      else if (e.code === 'Numpad1' || e.key === '1') {
+      // Numpad 3: Right View (Ctrl+Numpad 3: Left View)
+      else if (e.code === 'Numpad3' || (e.key === '3' && !e.shiftKey)) {
         e.preventDefault();
-        animateTo(new THREE.Vector3(center.x, center.y, center.z + distance), center);
+        if (e.ctrlKey || e.metaKey) {
+          cameraController.goToPreset('left', room, camera, controlsRef.current);
+        } else {
+          cameraController.goToPreset('right', room, camera, controlsRef.current);
+        }
       }
-      // Numpad 3: Right View (along +X looking towards -X)
-      else if (e.code === 'Numpad3' || e.key === '3') {
+      // Numpad 5: Toggle Ortho / Perspective preserving framing
+      else if (e.code === 'Numpad5' || (e.key === '5' && !e.shiftKey)) {
         e.preventDefault();
-        animateTo(new THREE.Vector3(center.x + distance, center.y, center.z), center);
+        cameraController.toggleProjectionPreservingFraming(camera, controlsRef.current);
       }
-      // Numpad 5: Toggle 2D / 3D
-      else if (e.code === 'Numpad5' || e.key === '5') {
+      // Numpad 4: Nudge orbit left 15°
+      else if (e.code === 'Numpad4' || (e.key === '4' && !e.shiftKey)) {
         e.preventDefault();
-        const currentView = useUiStore.getState().view;
-        useUiStore.getState().setView(currentView === '3d' ? '2d' : '3d');
+        cameraController.nudgeOrbit(-15, 0, camera, controlsRef.current);
+      }
+      // Numpad 6: Nudge orbit right 15°
+      else if (e.code === 'Numpad6' || (e.key === '6' && !e.shiftKey)) {
+        e.preventDefault();
+        cameraController.nudgeOrbit(15, 0, camera, controlsRef.current);
+      }
+      // Numpad 8: Nudge orbit up 15°
+      else if (e.code === 'Numpad8' || (e.key === '8' && !e.shiftKey)) {
+        e.preventDefault();
+        cameraController.nudgeOrbit(0, 15, camera, controlsRef.current);
+      }
+      // Numpad 2: Nudge orbit down 15°
+      else if (e.code === 'Numpad2' || (e.key === '2' && !e.shiftKey)) {
+        e.preventDefault();
+        cameraController.nudgeOrbit(0, -15, camera, controlsRef.current);
       }
       // Home: Frame the room
       else if (e.code === 'Home' || e.key === 'Home') {
         e.preventDefault();
-        if (view === '2d') {
-          animateTo(
-            new THREE.Vector3(center.x, center.y + distance * 1.2, center.z + 0.0001),
-            new THREE.Vector3(center.x, 0, center.z)
-          );
-        } else {
-          animateTo(
-            new THREE.Vector3(
-              center.x + distance * 0.7,
-              center.y + distance * 0.5,
-              center.z + distance * 0.7
-            ),
-            center
-          );
-        }
+        cameraController.fitRoom(room, camera, controlsRef.current);
       }
     };
 
     const handleFlyFocusEvent = (e: Event) => {
       const custom = e as CustomEvent<{ objectId: string }>;
       if (custom.detail?.objectId) {
-        flyFocusToObject(custom.detail.objectId);
+        cameraController.fitSelection(custom.detail.objectId, room, camera, controlsRef.current);
       }
     };
 
@@ -642,62 +683,128 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('fly-focus-object', handleFlyFocusEvent);
     };
-  }, [getRoomFraming, view, animateTo, flyFocusToObject]);
+  }, [camera, controlsRef, room]);
 
   // Adjust camera when view mode switches between 2D and 3D
   useEffect(() => {
-    const { center, distance } = getRoomFraming();
-
     if (view === '2d') {
-      animateTo(
-        new THREE.Vector3(center.x, center.y + distance * 1.2, center.z + 0.0001),
-        new THREE.Vector3(center.x, 0, center.z)
-      );
+      cameraController.goToPreset('top', room, camera, controlsRef.current);
     } else {
-      animateTo(
-        new THREE.Vector3(
-          center.x + distance * 0.7,
-          center.y + distance * 0.5,
-          center.z + distance * 0.7
-        ),
-        center
-      );
+      cameraController.goToPreset('perspective', room, camera, controlsRef.current);
     }
-  }, [getRoomFraming, view, animateTo]);
-
-  // Per-frame smooth transition using critically damped spring easing
-  useFrame((_, delta) => {
-    if (isTransitioning.current) {
-      if (prefersReducedMotion()) {
-        camera.position.copy(targetCamPos.current);
-        controlsRef.current?.target.copy(targetLookAt.current);
-        controlsRef.current?.update();
-        isTransitioning.current = false;
-        return;
-      }
-
-      const step = Math.min(delta * 12, 1);
-      camera.position.lerp(targetCamPos.current, step);
-
-      if (controlsRef.current) {
-        controlsRef.current.target.lerp(targetLookAt.current, step);
-        controlsRef.current.update();
-      }
-
-      const targetDist = controlsRef.current
-        ? controlsRef.current.target.distanceTo(targetLookAt.current)
-        : 0;
-
-      if (camera.position.distanceTo(targetCamPos.current) < 0.015 && targetDist < 0.015) {
-        camera.position.copy(targetCamPos.current);
-        controlsRef.current?.target.copy(targetLookAt.current);
-        controlsRef.current?.update();
-        isTransitioning.current = false;
-      }
-    }
-  });
+  }, [view, camera, controlsRef, room]);
 
   return null;
+};
+
+/**
+ * Auto-rotates camera gracefully for turntable presentation, canceled on any user input
+ */
+const TurntableController: React.FC<{ controlsRef: React.RefObject<OrbitControlsImpl | null> }> = ({
+  controlsRef,
+}) => {
+  const isTurntableActive = useCameraStore((state) => state.isTurntableActive);
+  const setTurntableActive = useCameraStore((state) => state.setTurntableActive);
+
+  // Auto-rotate per frame when active
+  useFrame((_, delta) => {
+    if (!isTurntableActive || !controlsRef.current) return;
+    const speed = 0.25; // Graceful spin speed (rad/s)
+    const controls = controlsRef.current;
+    const cam = controls.object;
+    const target = controls.target;
+
+    const offset = cam.position.clone().sub(target);
+    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), speed * delta);
+    cam.position.copy(target).add(offset);
+    controls.update();
+  });
+
+  // Cancel turntable on ANY user input
+  useEffect(() => {
+    if (!isTurntableActive) return;
+
+    const cancel = () => {
+      setTurntableActive(false);
+    };
+
+    window.addEventListener('pointerdown', cancel, { passive: true });
+    window.addEventListener('keydown', cancel, { passive: true });
+    window.addEventListener('wheel', cancel, { passive: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', cancel);
+      window.removeEventListener('keydown', cancel);
+      window.removeEventListener('wheel', cancel);
+    };
+  }, [isTurntableActive, setTurntableActive]);
+
+  return null;
+};
+
+/**
+ * Ground click & double click detector to clear selection or re-center orbit pivot
+ */
+const GroundPlaneDetector: React.FC<{ controlsRef: React.RefObject<OrbitControlsImpl | null> }> = ({
+  controlsRef,
+}) => {
+  const { camera } = useThree();
+  const toolMode = useUiStore((state) => state.toolMode);
+
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, -0.0001, 0]}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        cameraController.recenterPivot(e.point, camera, controlsRef.current);
+      }}
+      onPointerMove={(e) => {
+        const x = Number(e.point.x.toFixed(2));
+        const z = Number(e.point.z.toFixed(2));
+        const current = useUiStore.getState().cursorCoords;
+        if (!current || current[0] !== x || current[1] !== z) {
+          useUiStore.getState().setCursorCoords([x, z]);
+        }
+      }}
+      onPointerLeave={() => {
+        useUiStore.getState().setCursorCoords(null);
+      }}
+      onPointerDown={(e) => {
+        if (e.button === 0) {
+          const isPlacing = useUiStore.getState().isPlacingPollutantSource;
+          if (isPlacing) {
+            e.stopPropagation();
+            const currentParams = useSceneStore.getState().room.params;
+            useSceneStore.getState().setParams({
+              pollutantSource: {
+                type: currentParams.pollutantSource?.type ?? 'VOC',
+                emissionRateMgH: currentParams.pollutantSource?.emissionRateMgH ?? 10,
+                position: [Number(e.point.x.toFixed(2)), 0, Number(e.point.z.toFixed(2))],
+              },
+            });
+            useUiStore.getState().setIsPlacingPollutantSource(false);
+            return;
+          }
+
+          if (toolMode === 'select') {
+            useSceneStore.getState().clearSelection();
+          }
+        }
+      }}
+      onContextMenu={(e) => {
+        e.stopPropagation();
+        window.dispatchEvent(
+          new CustomEvent('canvas-context-menu', {
+            detail: { x: e.clientX, y: e.clientY, targetType: 'floor' },
+          })
+        );
+      }}
+    >
+      <planeGeometry args={[2000, 2000]} />
+      <meshBasicMaterial visible={false} />
+    </mesh>
+  );
 };
 
 /**
@@ -739,10 +846,19 @@ export interface CanvasProps {
 export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const isDragging = useSceneStore((state) => state.isDragging);
+  const room = useSceneStore((state) => state.room);
   const view = useUiStore((state) => state.view);
-  const toolMode = useUiStore((state) => state.toolMode);
   const transformMode = useUiStore((state) => state.transformMode);
   const numericInputBuffer = useUiStore((state) => state.numericInputBuffer);
+
+  const dampedInertia = useCameraStore((state) => state.dampedInertia);
+  const isWalkthroughActive = useCameraStore((state) => state.isWalkthroughActive);
+  const fov = useCameraStore((state) => state.fov);
+  const projection = useCameraStore((state) => state.projection);
+
+  const roomBounds = useMemo(() => polygonBounds(room.outline), [room.outline]);
+  const maxRoomDim = Math.max(roomBounds.width, roomBounds.depth, room.wallHeight || 2.8, 4);
+  const maxOrbitDistance = Math.max(100, maxRoomDim * 6);
 
   // Run Phase B placement validation off the hot path (debounced 100ms)
   usePlacementValidation();
@@ -792,17 +908,17 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
       >
         <color attach="background" args={['#18181b']} />
 
-        {/* Dual camera setup with makeDefault toggle */}
-        {view === '3d' ? (
-          <PerspectiveCamera makeDefault position={[7, 5, 7]} fov={45} near={0.1} far={1000} />
+        {/* Dual camera setup with projection preservation and makeDefault toggle */}
+        {view === '3d' && projection === 'perspective' ? (
+          <PerspectiveCamera makeDefault position={[7, 5, 7]} fov={fov} near={0.1} far={1000} />
         ) : (
           <OrthographicCamera
             makeDefault
-            position={[0, 20, 0]}
-            zoom={55}
+            position={view === '2d' ? [0, 20, 0] : [10, 10, 10]}
+            zoom={view === '2d' ? 55 : 45}
             near={0.1}
             far={1000}
-            up={[0, 0, -1]} // Top-down view looking at XZ plane with -Z up
+            up={view === '2d' ? [0, 0, -1] : [0, 1, 0]}
           />
         )}
 
@@ -845,53 +961,8 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {/* Blender X (Red) and Z (Blue) floor axis lines */}
           <BlenderAxisLines />
 
-          {/* Ground click detector to clear selection on empty space & track cursor coordinates */}
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[0, -0.0001, 0]}
-            onPointerMove={(e) => {
-              const x = Number(e.point.x.toFixed(2));
-              const z = Number(e.point.z.toFixed(2));
-              const current = useUiStore.getState().cursorCoords;
-              if (!current || current[0] !== x || current[1] !== z) {
-                useUiStore.getState().setCursorCoords([x, z]);
-              }
-            }}
-            onPointerLeave={() => {
-              useUiStore.getState().setCursorCoords(null);
-            }}
-            onPointerDown={(e) => {
-              if (e.button === 0) {
-                const isPlacing = useUiStore.getState().isPlacingPollutantSource;
-                if (isPlacing) {
-                  e.stopPropagation();
-                  const currentParams = useSceneStore.getState().room.params;
-                  useSceneStore.getState().setParams({
-                    pollutantSource: {
-                      type: currentParams.pollutantSource?.type ?? 'VOC',
-                      emissionRateMgH: currentParams.pollutantSource?.emissionRateMgH ?? 10,
-                      position: [Number(e.point.x.toFixed(2)), 0, Number(e.point.z.toFixed(2))],
-                    },
-                  });
-                  useUiStore.getState().setIsPlacingPollutantSource(false);
-                  return;
-                }
-
-                if (toolMode === 'select') {
-                  useSceneStore.getState().clearSelection();
-                }
-              }
-            }}
-            onContextMenu={(e) => {
-              e.stopPropagation();
-              window.dispatchEvent(new CustomEvent('canvas-context-menu', {
-                detail: { x: e.clientX, y: e.clientY, targetType: 'floor' }
-              }));
-            }}
-          >
-            <planeGeometry args={[2000, 2000]} />
-            <meshBasicMaterial visible={false} />
-          </mesh>
+          {/* Ground click & double click detector to clear selection or re-center orbit pivot */}
+          <GroundPlaneDetector controlsRef={controlsRef} />
 
           {/* 3D Room Shell (floor triangulation, wall cutouts, camera-facing fade, ceiling) */}
           <RoomShell />
@@ -942,37 +1013,49 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           <CanvasDropListener />
           <DraggedOpeningPreviewMesh />
 
-          {/* Camera Controller & Keyboard Shortcuts */}
+          {/* Camera Controller, Walkthrough first-person controls, & Turntable auto-rotator */}
           <CameraController controlsRef={controlsRef} />
+          <WalkthroughControls />
+          <TurntableController controlsRef={controlsRef} />
 
-          {/* Blender-like OrbitControls */}
+          {/* Blender-like OrbitControls with trackpad & touch gestures */}
           <OrbitControls
             ref={controlsRef}
             makeDefault
-            enabled={!isDragging}
-            enableDamping
+            enabled={!isDragging && !isWalkthroughActive}
+            enableDamping={dampedInertia}
             dampingFactor={0.05}
             minDistance={0.5}
-            maxDistance={120}
+            maxDistance={maxOrbitDistance}
             minPolarAngle={0}
-            maxPolarAngle={view === '2d' ? 0 : Math.PI / 2 - 0.01} // Clamped above floor plane in 3D
+            maxPolarAngle={view === '2d' ? 0 : Math.PI / 2 - 0.04} // Clamped above floor plane in 3D
             enableRotate={view === '3d'} // Locked rotation in 2D mode
             mouseButtons={{
-              LEFT: -1 as unknown as THREE.MOUSE, // Left click/drag reserved for object interaction
-              MIDDLE: THREE.MOUSE.PAN, // Middle-drag pan
+              LEFT: THREE.MOUSE.ROTATE, // Left click/drag on empty space orbits
+              MIDDLE: THREE.MOUSE.PAN, // Middle-drag pan (Shift+Left drag also pans)
               RIGHT: THREE.MOUSE.ROTATE, // Right-drag orbit
+            }}
+            touches={{
+              ONE: THREE.TOUCH.ROTATE, // Single finger touch rotates
+              TWO: THREE.TOUCH.DOLLY_PAN, // Two-finger pinch zooms and pans
             }}
           />
 
           {/* Voxel Domain Debug Visualizer (non-fluid InstancedMesh cubes) */}
           <VoxelDebugMesh />
 
-          {/* Top-Right Axis Gizmo Viewport */}
-          <GizmoHelper alignment="top-right" margin={[70, 70]}>
-            <GizmoViewport
-              axisColors={['#ef4444', '#22c55e', '#3b82f6']}
-              labelColor="#ffffff"
-              labels={['X', 'Y', 'Z']}
+          {/* Top-Right Clickable 3D View-Cube (drei GizmoViewcube) */}
+          <GizmoHelper
+            alignment="top-right"
+            margin={[75, 75]}
+            onTarget={() => controlsRef.current?.target ?? new THREE.Vector3(0, 0, 0)}
+          >
+            <GizmoViewcube
+              color="#1f2433"
+              hoverColor="#4f46e5"
+              textColor="#f8fafc"
+              strokeColor="#334155"
+              opacity={0.92}
             />
           </GizmoHelper>
           <SceneExporter />

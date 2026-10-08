@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { useSceneStore, useUiStore } from '../store';
+import { useCameraStore, type PivotMode } from '../store/cameraStore';
 import { useGraphicsStore, type QualitySetting, type WallOpacityMode } from '../store/graphicsStore';
 import { createStudioSample, createBedroomSample, createLivingRoomSample } from '../core/samples';
 import { createSampleRoom } from '../core/sampleRoom';
@@ -132,6 +133,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
   const setQuality = useGraphicsStore((state) => state.setQuality);
   const wallOpacityMode = useGraphicsStore((state) => state.wallOpacityMode);
   const setWallOpacityMode = useGraphicsStore((state) => state.setWallOpacityMode);
+
+  // Camera Store
+  const fov = useCameraStore((state) => state.fov);
+  const setFov = useCameraStore((state) => state.setFov);
+  const pivotMode = useCameraStore((state) => state.pivotMode);
+  const setPivotMode = useCameraStore((state) => state.setPivotMode);
+  const dampedInertia = useCameraStore((state) => state.dampedInertia);
+  const setDampedInertia = useCameraStore((state) => state.setDampedInertia);
 
   // Undo / Redo
   const pastStates = useStore(useSceneStore.temporal, (state) => state.pastStates);
@@ -516,6 +525,59 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
                     }`}
                   >
                     {showScaleReference ? 'Shown' : 'Off'}
+                  </button>
+                </div>
+
+                <div className="h-px bg-white/5" />
+
+                <span className="text-[10px] uppercase font-semibold text-neutral-400 tracking-wider">
+                  Camera & Navigation
+                </span>
+
+                {/* Field of View Slider (30-90 deg) */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-xs text-neutral-300">
+                    <span>Field of View</span>
+                    <span className="font-mono text-indigo-400 text-[11px] font-semibold">{fov}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={30}
+                    max={90}
+                    step={1}
+                    value={fov}
+                    onChange={(e) => setFov(Number(e.target.value))}
+                    className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-neutral-700 rounded-lg appearance-none"
+                  />
+                </div>
+
+                {/* Orbit Pivot Mode */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-neutral-300">Orbit Pivot</span>
+                  <select
+                    value={pivotMode}
+                    onChange={(e) => setPivotMode(e.target.value as PivotMode)}
+                    className="bg-black/40 border border-white/10 rounded text-[11px] px-1.5 py-0.5 text-neutral-200 outline-none"
+                  >
+                    <option value="room-center">Room Center</option>
+                    <option value="selection">Selection</option>
+                    <option value="cursor">Cursor Point</option>
+                  </select>
+                </div>
+
+                {/* Camera Inertia / Damping */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-neutral-300">Damped Inertia</span>
+                  <button
+                    type="button"
+                    onClick={() => setDampedInertia(!dampedInertia)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium border ${
+                      dampedInertia
+                        ? 'bg-indigo-600 border-indigo-500 text-white'
+                        : 'bg-white/5 border-white/10 text-neutral-400'
+                    }`}
+                  >
+                    {dampedInertia ? 'On' : 'Off'}
                   </button>
                 </div>
               </div>
