@@ -3,4 +3,5 @@ export * from './units';
 export * from './schema';
 export * from './catalog';
 export * from './defaultRoom';
+export * from './parser';
 export * from './types';
