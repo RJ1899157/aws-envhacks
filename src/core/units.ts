@@ -17,8 +17,9 @@ export function snap(value: number, step: number): number {
   }
   const factor = 1 / step;
   const snapped = Math.round(value * factor) / factor;
-  // Eliminate floating point precision quirks (e.g. -1.0500000000000003)
-  return Number(snapped.toFixed(6));
+  // Eliminate floating point precision quirks (e.g. -1.0500000000000003) and -0
+  const normalized = Number(snapped.toFixed(6));
+  return normalized === 0 ? 0 : normalized;
 }
 
 /**
@@ -50,7 +51,7 @@ export function clamp(value: number, min: number, max: number): number {
  */
 export function metersToFeetInches(meters: number): string {
   if (!Number.isFinite(meters)) {
-    return "0' 0\"";
+    return '0\' 0"';
   }
 
   const isNegative = meters < 0;

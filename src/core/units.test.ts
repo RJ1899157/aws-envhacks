@@ -15,6 +15,7 @@ describe('Units & Math Utilities', () => {
       expect(snap(-1.03, 0.05)).toBe(-1.05);
       expect(snap(-0.04, 0.05)).toBe(-0.05);
       expect(snap(-0.01, 0.05)).toBe(0);
+      expect(Object.is(snap(-0.01, 0.05), 0)).toBe(true);
       expect(snap(-2.176, 0.1)).toBe(-2.2);
       expect(snap(-15.3, 15)).toBe(-15);
       expect(snap(-23.4, 15)).toBe(-30);

@@ -281,6 +281,28 @@ describe('Room Parser & Geometry Helpers', () => {
       );
     });
 
+    it('errors if floor area is zero or degenerate', () => {
+      const defaultRoom = createDefaultRoom();
+      const collinearRoom = {
+        ...defaultRoom,
+        outline: [
+          [0, 0],
+          [2, 0],
+          [4, 0],
+        ] as Vec2[],
+        openings: [],
+      };
+
+      const result = parseRoom(collinearRoom);
+      expect(result.room).toBeNull();
+      expect(result.issues).toContainEqual(
+        expect.objectContaining({
+          level: 'error',
+          message: expect.stringMatching(/zero or degenerate/i),
+        })
+      );
+    });
+
     it('warns if floor area is less than 4 m²', () => {
       const defaultRoom = createDefaultRoom();
       // 1.5m x 1.5m room -> area = 2.25 m² (< 4 m²)

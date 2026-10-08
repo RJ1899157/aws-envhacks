@@ -1,10 +1,7 @@
 import { create } from 'zustand';
 import { temporal } from 'zundo';
 import { immer } from 'zustand/middleware/immer';
-import {
-  DEFAULT_ROTATION_SNAP_DEGREES,
-  DEFAULT_TRANSLATION_SNAP_METERS,
-} from '../core/constants';
+import { DEFAULT_ROTATION_SNAP_DEGREES, DEFAULT_TRANSLATION_SNAP_METERS } from '../core/constants';
 import { createDefaultRoom } from '../core/defaultRoom';
 import type { Opening, Room, SceneObject, Vec2 } from '../core/types';
 

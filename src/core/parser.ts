@@ -238,9 +238,14 @@ export function parseRoom(raw: unknown): ParseResult {
     });
   }
 
-  // 4. Warn if area < 4 m²
+  // 4. Check floor area
   const absArea = Math.abs(area);
-  if (absArea < 4) {
+  if (absArea <= 1e-6) {
+    issues.push({
+      level: 'error',
+      message: 'Room floor area is zero or degenerate',
+    });
+  } else if (absArea < 4) {
     issues.push({
       level: 'warning',
       message: `Room floor area (${absArea.toFixed(2)} m²) is less than 4 m²`,
