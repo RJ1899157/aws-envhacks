@@ -52,7 +52,6 @@ export const PlacedObjects: React.FC = () => {
   const selectedObjectId = useSceneStore((state) => state.selectedObjectId);
   const selectedObjectIds = useSceneStore((state) => state.selectedObjectIds);
   const selectObject = useSceneStore((state) => state.selectObject);
-  const isCollisionWarning = useUiStore((state) => state.isCollisionWarning);
   const toolMode = useUiStore((state) => state.toolMode);
 
   const handleSelect = useCallback(
@@ -66,14 +65,13 @@ export const PlacedObjects: React.FC = () => {
     <group name="placed-objects">
       {objects.map((obj) => {
         const isSelected = selectedObjectIds.includes(obj.id) || selectedObjectId === obj.id;
-        const isColliding = isSelected && isCollisionWarning;
 
         return (
           <PlacedObjectItem
             key={obj.id}
             object={obj}
             isSelected={isSelected}
-            isColliding={isColliding}
+            isColliding={false}
             toolMode={toolMode}
             onSelect={handleSelect}
           />

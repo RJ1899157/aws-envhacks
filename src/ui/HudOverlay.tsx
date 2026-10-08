@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from 'react';
+import * as THREE from 'three';
 import { parseRoom } from '../core/parser';
 import { useSceneStore, useUiStore } from '../store';
+import { usePlacementIssuesStore } from '../store/placementIssuesStore';
+import type { PlacementIssue } from '../core/placementValidator';
+import { sharedOrbitControlsRef } from '../builder/Canvas';
 
 export interface HudOverlayProps {
   className?: string;
@@ -46,6 +50,51 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
   const voxelStats = useUiStore((state) => state.voxelStats);
 
   const [isIssuesOpen, setIsIssuesOpen] = useState(false);
+  const [isPlacementDrawerOpen, setIsPlacementDrawerOpen] = useState(false);
+
+  const placementIssuesMap = usePlacementIssuesStore((state) => state.issues);
+  const dismissedObjectIds = usePlacementIssuesStore((state) => state.dismissedObjectIds);
+
+  const activePlacementIssues = useMemo(() => {
+    const list: Array<{ issue: PlacementIssue; objectName: string }> = [];
+    for (const [objId, issuesList] of Object.entries(placementIssuesMap)) {
+      if (dismissedObjectIds.includes(objId)) continue;
+      const obj = room.objects.find((o) => o.id === objId);
+      const objectName = obj?.name || 'Object';
+      for (const issue of issuesList) {
+        list.push({ issue, objectName });
+      }
+    }
+    return list;
+  }, [placementIssuesMap, dismissedObjectIds, room.objects]);
+
+  const handlePlacementIssueClick = (objectId: string) => {
+    selectObject(objectId);
+
+    // Frame the object in the camera view
+    const targetObj = room.objects.find((o) => o.id === objectId);
+    if (targetObj && sharedOrbitControlsRef.current) {
+      const elev = targetObj.elevation ?? 0;
+      const targetPos = new THREE.Vector3(
+        targetObj.position[0],
+        (targetObj.position[1] ?? 0) + elev + targetObj.size[1] / 2,
+        targetObj.position[2]
+      );
+
+      const maxDim = Math.max(...targetObj.size, 1.0);
+      const dist = maxDim * 2.5;
+      const cam = sharedOrbitControlsRef.current.object;
+      if (cam) {
+        cam.position.set(
+          targetPos.x + dist * 0.7,
+          targetPos.y + dist * 0.6,
+          targetPos.z + dist * 0.7
+        );
+      }
+      sharedOrbitControlsRef.current.target.copy(targetPos);
+      sharedOrbitControlsRef.current.update();
+    }
+  };
 
   // Validate room using parseRoom
   const parseResult = useMemo(() => {
@@ -99,6 +148,52 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
       data-testid="hud-overlay"
       className={`fixed bottom-4 left-4 z-30 flex flex-col gap-2 font-mono text-xs select-none pointer-events-none ${className}`}
     >
+      {/* Expanded Placement Issues Drawer */}
+      {isPlacementDrawerOpen && activePlacementIssues.length > 0 && (
+        <div
+          data-testid="placement-issues-list"
+          className="pointer-events-auto w-88 max-h-72 bg-neutral-900/95 backdrop-blur-md border border-red-500/70 rounded-xl shadow-2xl p-3 flex flex-col gap-2 overflow-y-auto"
+        >
+          <div className="flex items-center justify-between border-b border-neutral-800 pb-1.5 font-sans">
+            <span className="font-semibold text-white text-xs flex items-center gap-1.5">
+              <span className="text-red-400">⚠️</span>
+              <span>Placement Issues</span>
+              <span className="text-[10px] text-red-300 font-mono">
+                ({activePlacementIssues.length})
+              </span>
+            </span>
+            <button
+              type="button"
+              data-testid="close-placement-issues-btn"
+              onClick={() => setIsPlacementDrawerOpen(false)}
+              className="text-neutral-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-neutral-800 text-xs transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5 font-sans">
+            {activePlacementIssues.map(({ issue, objectName }) => (
+              <button
+                key={issue.id}
+                type="button"
+                data-testid={`placement-issue-item-${issue.objectId}`}
+                onClick={() => handlePlacementIssueClick(issue.objectId)}
+                className="text-left p-2 rounded-lg border bg-red-950/40 border-red-800/60 hover:bg-red-900/40 hover:border-red-500 text-red-200 transition-all flex flex-col gap-1 cursor-pointer"
+              >
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="font-bold uppercase tracking-wider px-1 py-0.5 rounded text-[9px] bg-red-900 text-red-100">
+                    {objectName}
+                  </span>
+                  <span className="text-[10px] text-sky-400 hover:underline">Select & Frame →</span>
+                </div>
+                <span className="text-xs leading-snug">{issue.message}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Expanded Validation Issues Drawer */}
       {isIssuesOpen && (
         <div
@@ -217,6 +312,26 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
                 , <strong className="text-emerald-400">{voxelStats.computeTimeMs}ms</strong>)
               </span>
             </div>
+          </>
+        )}
+
+        {/* Phase B: Placement Issues Warning Badge */}
+        {activePlacementIssues.length > 0 && (
+          <>
+            <span className="text-neutral-700">|</span>
+            <button
+              type="button"
+              data-testid="hud-placement-badge"
+              onClick={() => setIsPlacementDrawerOpen(!isPlacementDrawerOpen)}
+              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border font-sans text-xs font-semibold bg-red-950/80 border-red-500 text-red-200 hover:bg-red-900/90 transition-all cursor-pointer shadow-lg animate-pulse"
+              title="Click to view placement issues"
+            >
+              <span className="text-sm">⚠️</span>
+              <span>
+                {activePlacementIssues.length} Placement Issue
+                {activePlacementIssues.length > 1 ? 's' : ''}
+              </span>
+            </button>
           </>
         )}
 

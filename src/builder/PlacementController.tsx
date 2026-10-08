@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getCatalogAsset } from '../core/catalog';
-import { pointInPolygon, wallSegment } from '../core/parser';
-import type { Opening, SceneObject, Vec2 } from '../core/schema';
+import { wallSegment } from '../core/parser';
+import type { Opening, SceneObject } from '../core/schema';
 import { snap } from '../core/units';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
@@ -11,68 +11,6 @@ import { AssetMesh } from './AssetMesh';
 
 function generateId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-}
-
-/**
- * Checks whether an oriented box is fully inside a 2D floor polygon
- */
-function isBoxInsidePolygon(
-  centerX: number,
-  centerZ: number,
-  width: number,
-  depth: number,
-  polygon: readonly Vec2[]
-): boolean {
-  if (polygon.length < 3) return false;
-
-  // Check center
-  if (!pointInPolygon([centerX, centerZ], polygon)) return false;
-
-  // Check 4 bounding corners
-  const hw = width / 2;
-  const hd = depth / 2;
-  const corners: Vec2[] = [
-    [centerX - hw, centerZ - hd],
-    [centerX + hw, centerZ - hd],
-    [centerX + hw, centerZ + hd],
-    [centerX - hw, centerZ + hd],
-  ];
-
-  return corners.every((c) => pointInPolygon(c, polygon));
-}
-
-/**
- * Checks whether a candidate object overlaps with existing objects
- */
-function checkObjectOverlap(
-  candidateX: number,
-  candidateZ: number,
-  candidateW: number,
-  candidateD: number,
-  candidateElev: number,
-  candidateH: number,
-  existingObjects: readonly SceneObject[]
-): boolean {
-  const cBottom = candidateElev;
-  const cTop = candidateElev + candidateH;
-
-  return existingObjects.some((obj) => {
-    const objW = obj.size[0] * (obj.scale?.[0] ?? 1);
-    const objH = obj.size[1] * (obj.scale?.[1] ?? 1);
-    const objD = obj.size[2] * (obj.scale?.[2] ?? 1);
-
-    const objBottom = obj.position[1] + (obj.elevation ?? 0);
-    const objTop = objBottom + objH;
-
-    // Horizontal overlap check
-    const overlapX = Math.abs(candidateX - obj.position[0]) < (candidateW + objW) / 2 - 0.02;
-    const overlapZ = Math.abs(candidateZ - obj.position[2]) < (candidateD + objD) / 2 - 0.02;
-
-    // Vertical elevation overlap check
-    const overlapY = Math.max(cBottom, objBottom) < Math.min(cTop, objTop) - 0.02;
-
-    return overlapX && overlapZ && overlapY;
-  });
 }
 
 /**
@@ -96,7 +34,6 @@ export const PlacementController: React.FC = () => {
 
   // Ghost placement position state
   const [ghostPos, setGhostPos] = useState<[number, number, number] | null>(null);
-  const [isValidPlacement, setIsValidPlacement] = useState<boolean>(true);
 
   // Wall-snapped opening state
   const [wallOpeningData, setWallOpeningData] = useState<{
@@ -196,23 +133,6 @@ export const PlacementController: React.FC = () => {
         const rotMatrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
         const quaternion = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
 
-        // Validation for wall opening
-        const fitsWallLength = seg.len >= w;
-        const fitsHeight = catalogDef.elevation + h <= room.wallHeight;
-
-        // Check opening overlap on closest wall
-        const hasOverlap = room.openings
-          .filter((op) => op.wallIndex === closestWallIndex)
-          .some((op) => {
-            const startA = offset;
-            const endA = offset + w;
-            const startB = op.offset;
-            const endB = op.offset + op.width;
-            return Math.max(startA, startB) < Math.min(endA, endB) - 0.05;
-          });
-
-        const valid = fitsWallLength && fitsHeight && !hasOverlap;
-
         setWallOpeningData({
           wallIndex: closestWallIndex,
           offset,
@@ -221,10 +141,9 @@ export const PlacementController: React.FC = () => {
           width: w,
           height: h,
         });
-        setIsValidPlacement(valid);
         setGhostPos([posX, 0, posZ]);
       } else {
-        // --- FLOOR OBJECT PLACEMENT ---
+        // --- FLOOR OBJECT PLACEMENT (Unobstructed in Phase A) ---
         let x = rawX;
         let z = rawZ;
         if (snapEnabled) {
@@ -232,17 +151,8 @@ export const PlacementController: React.FC = () => {
           z = snap(z, gridStep);
         }
 
-        const w = catalogDef.size[0];
-        const d = catalogDef.size[2];
-        const h = catalogDef.size[1];
         const elev = catalogDef.elevation;
-
-        // Validation: inside room polygon + no object overlap
-        const isInside = isBoxInsidePolygon(x, z, w, d, room.outline);
-        const isOverlapping = checkObjectOverlap(x, z, w, d, elev, h, room.objects);
-
         setGhostPos([x, elev, z]);
-        setIsValidPlacement(isInside && !isOverlapping);
         setWallOpeningData(null);
       }
     },
@@ -256,8 +166,6 @@ export const PlacementController: React.FC = () => {
       if (toolMode !== 'place' && toolMode !== 'opening') return;
 
       e.stopPropagation();
-
-      if (!isValidPlacement) return;
 
       if (isWallMounted && wallOpeningData) {
         // Add wall opening
@@ -303,7 +211,6 @@ export const PlacementController: React.FC = () => {
     [
       catalogDef,
       toolMode,
-      isValidPlacement,
       isWallMounted,
       wallOpeningData,
       ghostPos,
@@ -339,10 +246,10 @@ export const PlacementController: React.FC = () => {
               args={[wallOpeningData.width, wallOpeningData.height, room.wallThickness * 1.15]}
             />
             <meshStandardMaterial
-              color={isValidPlacement ? '#38bdf8' : '#ef4444'}
+              color="#38bdf8"
               transparent
               opacity={0.6}
-              emissive={isValidPlacement ? '#0284c7' : '#991b1b'}
+              emissive="#0284c7"
               emissiveIntensity={0.6}
             />
           </mesh>
@@ -363,7 +270,7 @@ export const PlacementController: React.FC = () => {
             color: catalogDef.color,
           }}
           isGhost
-          isValidPlacement={isValidPlacement}
+          isValidPlacement={true}
         />
       )}
     </group>

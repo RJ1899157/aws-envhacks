@@ -3,10 +3,9 @@ import { useThree } from '@react-three/fiber';
 import { TransformControls } from '@react-three/drei';
 import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
-import { checkObjectCollision, checkOpeningCollision } from '../core/collision';
 import { wallSegment } from '../core/parser';
 import { degToRad, snap } from '../core/units';
-import type { Opening, SceneObject, Vec3 } from '../core/schema';
+import type { Vec3 } from '../core/schema';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { sharedOrbitControlsRef } from './Canvas';
@@ -55,7 +54,6 @@ export const SelectionGizmo: React.FC = () => {
   const showPrecisionGizmo = useUiStore((state) => state.showPrecisionGizmo);
   const numericInputBuffer = useUiStore((state) => state.numericInputBuffer);
   const setNumericInputBuffer = useUiStore((state) => state.setNumericInputBuffer);
-  const setIsCollisionWarning = useUiStore((state) => state.setIsCollisionWarning);
 
   // 3D Anchor Pivot
   const pivotRef = useRef<THREE.Group>(null);
@@ -63,7 +61,6 @@ export const SelectionGizmo: React.FC = () => {
 
   // Drag Session tracking
   const isDraggingInternal = useRef<boolean>(false);
-  const isCollidingRef = useRef<boolean>(false);
   const dragStartPivotPos = useRef<THREE.Vector3>(new THREE.Vector3());
   const dragStartPivotRotY = useRef<number>(0);
   const dragStartObjectsRef = useRef<DragStartObjectState[]>([]);
@@ -287,20 +284,14 @@ export const SelectionGizmo: React.FC = () => {
                     obj.position[1],
                     obj.position[2],
                   ];
-                  const testObj: SceneObject = { ...obj, position: updatedPos };
-                  if (!checkObjectCollision(testObj, room, obj.id).colliding) {
-                    updateObject(obj.id, { position: updatedPos });
-                  }
+                  updateObject(obj.id, { position: updatedPos });
                 }
               } else if (selectedOpening) {
                 // Set offset directly to typed value in meters
                 const seg = wallSegment(room, selectedOpening.wallIndex);
                 const maxOffset = Math.max(0, seg.len - selectedOpening.width);
                 const clamped = Math.max(0, Math.min(maxOffset, val));
-                const testOp: Opening = { ...selectedOpening, offset: clamped };
-                if (!checkOpeningCollision(testOp, room, selectedOpening.id).colliding) {
-                  updateOpening(selectedOpening.id, { offset: clamped });
-                }
+                updateOpening(selectedOpening.id, { offset: clamped });
               }
             } else if (transformMode === 'rotate') {
               // Apply rotation delta in degrees
@@ -309,10 +300,7 @@ export const SelectionGizmo: React.FC = () => {
                 const currentRotY = obj.rotation?.[1] ?? 0;
                 const newRotY = Number((currentRotY + radDelta).toFixed(4));
                 const updatedRot: Vec3 = [0, newRotY, 0];
-                const testObj: SceneObject = { ...obj, rotation: updatedRot };
-                if (!checkObjectCollision(testObj, room, obj.id).colliding) {
-                  updateObject(obj.id, { rotation: updatedRot });
-                }
+                updateObject(obj.id, { rotation: updatedRot });
               }
             }
           }
@@ -348,8 +336,6 @@ export const SelectionGizmo: React.FC = () => {
   // Start and End Drag Handlers
   const handleDragStart = useCallback(() => {
     isDraggingInternal.current = true;
-    isCollidingRef.current = false;
-    setIsCollisionWarning(false);
 
     // Disable OrbitControls while dragging the gizmo
     if (sharedOrbitControlsRef.current) {
@@ -381,32 +367,10 @@ export const SelectionGizmo: React.FC = () => {
     } else {
       dragStartOpeningRef.current = null;
     }
-  }, [selectedObjects, selectedOpening, setIsCollisionWarning, setIsDragging]);
+  }, [selectedObjects, selectedOpening, setIsDragging]);
 
   const handleDragEnd = useCallback(() => {
     isDraggingInternal.current = false;
-
-    // Collision Check on Release: Revert if in collision violation!
-    if (isCollidingRef.current) {
-      // Revert objects to pre-drag transforms
-      for (const item of dragStartObjectsRef.current) {
-        updateObject(item.id, {
-          position: item.position,
-          rotation: item.rotation,
-        });
-      }
-
-      // Revert opening to pre-drag transform
-      if (dragStartOpeningRef.current) {
-        updateOpening(dragStartOpeningRef.current.id, {
-          offset: dragStartOpeningRef.current.offset,
-          sill: dragStartOpeningRef.current.sill,
-        });
-      }
-
-      isCollidingRef.current = false;
-      setIsCollisionWarning(false);
-    }
 
     // Re-enable OrbitControls
     if (sharedOrbitControlsRef.current) {
@@ -415,7 +379,7 @@ export const SelectionGizmo: React.FC = () => {
 
     // Finalize drag session in store (one drag = one undo step)
     setIsDragging(false);
-  }, [setIsCollisionWarning, setIsDragging, updateObject, updateOpening]);
+  }, [setIsDragging]);
 
   // Handle TransformControls Dragging Changed (Start & End)
   useEffect(() => {
@@ -451,8 +415,6 @@ export const SelectionGizmo: React.FC = () => {
       const deltaZ = pivotRef.current.position.z - dragStartPivotPos.current.z;
       const deltaRotY = pivotRef.current.rotation.y - dragStartPivotRotY.current;
 
-      let anyColliding = false;
-
       for (const startState of dragStartObjectsRef.current) {
         let newX = startState.position[0] + deltaX;
         let newY = startState.position[1] + deltaY;
@@ -469,25 +431,11 @@ export const SelectionGizmo: React.FC = () => {
         const origObj = room.objects.find((o) => o.id === startState.id);
         if (!origObj) continue;
 
-        const candidateObj: SceneObject = {
-          ...origObj,
-          position: [newX, newY, newZ],
-          rotation: [0, newRotY, 0],
-        };
-
-        const colResult = checkObjectCollision(candidateObj, room, startState.id);
-        if (colResult.colliding) {
-          anyColliding = true;
-        }
-
         updateObject(startState.id, {
           position: [newX, newY, newZ],
           rotation: [0, newRotY, 0],
         });
       }
-
-      isCollidingRef.current = anyColliding;
-      setIsCollisionWarning(anyColliding);
     } else if (selectedOpening && dragStartOpeningRef.current) {
       if (room.outline.length < 2) return;
       const seg = wallSegment(room, selectedOpening.wallIndex);
@@ -516,16 +464,6 @@ export const SelectionGizmo: React.FC = () => {
         newSill = Math.max(0, Math.min(maxSill, newSill));
       }
 
-      const candidateOp: Opening = {
-        ...selectedOpening,
-        offset: newOffset,
-        sill: newSill,
-      };
-
-      const colResult = checkOpeningCollision(candidateOp, room, selectedOpening.id);
-      isCollidingRef.current = colResult.colliding;
-      setIsCollisionWarning(colResult.colliding);
-
       updateOpening(selectedOpening.id, {
         offset: newOffset,
         sill: newSill,
@@ -537,7 +475,6 @@ export const SelectionGizmo: React.FC = () => {
     rotationSnapDeg,
     selectedObjects,
     selectedOpening,
-    setIsCollisionWarning,
     snapEnabled,
     transformY,
     updateObject,

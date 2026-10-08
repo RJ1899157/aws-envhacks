@@ -6,7 +6,6 @@ import * as THREE from 'three';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { computeSmartSnap, type AlignmentGuide } from '../core/smartSnap';
-import { checkObjectCollision } from '../core/collision';
 import { degToRad, radToDeg, snap } from '../core/units';
 import type { SceneObject, Vec3 } from '../core/schema';
 import { getObjectGroup } from './objectRegistry';
@@ -57,17 +56,16 @@ const AlignmentGuideLines: React.FC<{ guides: AlignmentGuide[] }> = ({ guides })
 };
 
 /**
- * Footprint Decal: renders a faint snapped cell footprint on the floor while dragging
+ * Footprint Decal: renders a faint snapped cell footprint on the floor while dragging (neutral blue)
  */
 const FootprintDecal: React.FC<{
   position: Vec3;
   rotationY: number;
   size: Vec3;
-  isColliding: boolean;
-}> = ({ position, rotationY, size, isColliding }) => {
+}> = ({ position, rotationY, size }) => {
   const [w, , d] = size;
-  const color = isColliding ? '#ef4444' : '#38bdf8';
-  const borderColor = isColliding ? '#dc2626' : '#0284c7';
+  const color = '#38bdf8';
+  const borderColor = '#0284c7';
 
   const edges = useMemo(() => {
     const hw = w / 2;
@@ -291,7 +289,6 @@ export const DirectObjectManipulator: React.FC = () => {
   const snapEnabled = useUiStore((state) => state.snapEnabled);
   const gridStep = useUiStore((state) => state.gridStep);
   const autoOrientToWall = useUiStore((state) => state.autoOrientToWall);
-  const setIsCollisionWarning = useUiStore((state) => state.setIsCollisionWarning);
 
   // Active Drag State Refs
   const isDraggingRef = useRef<boolean>(false);
@@ -310,12 +307,10 @@ export const DirectObjectManipulator: React.FC = () => {
     pos: Vec3;
     rotY: number;
     guides: AlignmentGuide[];
-    isColliding: boolean;
   }>({
     pos: [0, 0, 0],
     rotY: 0,
     guides: [],
-    isColliding: false,
   });
 
   // UI state for reactive overlay rendering
@@ -323,7 +318,6 @@ export const DirectObjectManipulator: React.FC = () => {
     position: Vec3;
     rotationY: number;
     size: Vec3;
-    isColliding: boolean;
   } | null>(null);
 
   const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
@@ -410,7 +404,6 @@ export const DirectObjectManipulator: React.FC = () => {
         pos: [obj.position[0], elev, obj.position[2]],
         rotY: currentRotY.current,
         guides: [],
-        isColliding: false,
       };
 
       isDraggingRef.current = true;
@@ -490,29 +483,17 @@ export const DirectObjectManipulator: React.FC = () => {
           transformY: isLift,
         });
 
-        // Collision check at snapped target
-        const testCandidate: SceneObject = {
-          ...obj,
-          position: [snapRes.snappedPos[0], 0, snapRes.snappedPos[2]],
-          elevation: snapRes.snappedPos[1],
-          rotation: [0, snapRes.snappedRotY, 0],
-        };
-        const col = checkObjectCollision(testCandidate, room, obj.id);
-
         snappedTargetRef.current = {
           pos: snapRes.snappedPos,
           rotY: snapRes.snappedRotY,
           guides: snapRes.alignmentGuides,
-          isColliding: col.colliding,
         };
 
-        setIsCollisionWarning(col.colliding);
         setActiveGuides(snapRes.alignmentGuides);
         setActiveDecal({
           position: snapRes.snappedPos,
           rotationY: snapRes.snappedRotY,
           size: dragTargetRef.current.objectSize,
-          isColliding: col.colliding,
         });
       };
 
@@ -633,7 +614,6 @@ export const DirectObjectManipulator: React.FC = () => {
       selectedObjectId,
       selectedObjectIds,
       selectObject,
-      setIsCollisionWarning,
       setIsDragging,
       snapEnabled,
       toolMode,
@@ -757,42 +737,27 @@ export const DirectObjectManipulator: React.FC = () => {
         const finalPos = animTargetPos.current;
         const finalRotY = animTargetRotY.current;
 
-        // Collision Check: revert if invalid collision violation
-        if (snappedTargetRef.current.isColliding) {
-          if (group) {
-            group.position.set(target.startPos[0], target.startElevation, target.startPos[2]);
-            group.rotation.y = target.startRotY;
-          }
-          for (const sec of secondaryObjectsRef.current) {
-            const secGroup = getObjectGroup(sec.id);
-            if (secGroup) {
-              secGroup.position.set(sec.startPos[0], sec.startElevation, sec.startPos[2]);
-              secGroup.rotation.y = sec.startRotY;
-            }
-          }
-        } else {
-          // Valid placement: commit single undo step to Zustand store!
-          updateObject(target.objectId, {
-            position: [Number(finalPos.x.toFixed(4)), 0, Number(finalPos.z.toFixed(4))],
-            elevation: Number(finalPos.y.toFixed(4)),
-            rotation: [0, Number(finalRotY.toFixed(4)), 0],
+        // Commit single undo step to Zustand store!
+        updateObject(target.objectId, {
+          position: [Number(finalPos.x.toFixed(4)), 0, Number(finalPos.z.toFixed(4))],
+          elevation: Number(finalPos.y.toFixed(4)),
+          rotation: [0, Number(finalRotY.toFixed(4)), 0],
+        });
+
+        // Also commit any secondary objects
+        const deltaX = finalPos.x - target.startPos[0];
+        const deltaY = finalPos.y - target.startElevation;
+        const deltaZ = finalPos.z - target.startPos[2];
+
+        for (const sec of secondaryObjectsRef.current) {
+          updateObject(sec.id, {
+            position: [
+              Number((sec.startPos[0] + deltaX).toFixed(4)),
+              0,
+              Number((sec.startPos[2] + deltaZ).toFixed(4)),
+            ],
+            elevation: Number((sec.startElevation + deltaY).toFixed(4)),
           });
-
-          // Also commit any secondary objects
-          const deltaX = finalPos.x - target.startPos[0];
-          const deltaY = finalPos.y - target.startElevation;
-          const deltaZ = finalPos.z - target.startPos[2];
-
-          for (const sec of secondaryObjectsRef.current) {
-            updateObject(sec.id, {
-              position: [
-                Number((sec.startPos[0] + deltaX).toFixed(4)),
-                0,
-                Number((sec.startPos[2] + deltaZ).toFixed(4)),
-              ],
-              elevation: Number((sec.startElevation + deltaY).toFixed(4)),
-            });
-          }
         }
 
         // Clean up session
@@ -800,7 +765,6 @@ export const DirectObjectManipulator: React.FC = () => {
         secondaryObjectsRef.current = [];
         setActiveDecal(null);
         setActiveGuides([]);
-        setIsCollisionWarning(false);
         setIsDragging(false);
 
         if (sharedOrbitControlsRef.current) {
@@ -821,7 +785,6 @@ export const DirectObjectManipulator: React.FC = () => {
           position={activeDecal.position}
           rotationY={activeDecal.rotationY}
           size={activeDecal.size}
-          isColliding={activeDecal.isColliding}
         />
       )}
 
