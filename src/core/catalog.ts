@@ -44,18 +44,24 @@ export const CATALOG_ASSETS: readonly AssetDef[] = [
   // DINING
   { id: 'dining-table', label: 'Dining Table', category: 'Dining', size: [1.6, 0.76, 0.9], elevation: 0, role: 'solid', color: '#7c2d12', variants: ['#7c2d12', '#d97706', '#f8fafc'] },
   { id: 'dining-chair', label: 'Dining Chair', category: 'Dining', size: [0.45, 0.95, 0.5], elevation: 0, role: 'porous', color: '#1e293b', variants: ['#1e293b', '#7c2d12', '#cbd5e1'] },
+  { id: 'round-dining-table', label: 'Round Dining Table', category: 'Dining', size: [1.1, 0.75, 1.1], elevation: 0, role: 'solid', color: '#92400e', variants: ['#92400e', '#f8fafc', '#1e293b'] },
   { id: 'sideboard', label: 'Sideboard', category: 'Dining', size: [1.4, 0.8, 0.45], elevation: 0, role: 'solid', color: '#92400e', variants: ['#92400e', '#475569', '#f1f5f9'] },
 
   // KITCHEN
   { id: 'kitchen-island', label: 'Kitchen Island', category: 'Kitchen', size: [2.0, 0.9, 0.9], elevation: 0, role: 'solid', color: '#1e293b', variants: ['#1e293b', '#f1f5f9', '#b45309'] },
   { id: 'fridge', label: 'Refrigerator', category: 'Kitchen', size: [0.9, 1.8, 0.7], elevation: 0, role: 'solid', color: '#cbd5e1', variants: ['#cbd5e1', '#0f172a', '#f8fafc'] },
   { id: 'oven', label: 'Oven Range', category: 'Kitchen', size: [0.6, 0.9, 0.6], elevation: 0, role: 'solid', color: '#94a3b8', variants: ['#94a3b8', '#1e293b', '#ffffff'] },
+  { id: 'kitchen-counter', label: 'Kitchen Counter', category: 'Kitchen', size: [2.4, 0.9, 0.6], elevation: 0, role: 'solid', color: '#e2e8f0', variants: ['#e2e8f0', '#1e293b', '#b45309'] },
+  { id: 'kitchen-sink', label: 'Kitchen Sink Unit', category: 'Kitchen', size: [1.0, 0.9, 0.6], elevation: 0, role: 'solid', color: '#cbd5e1', variants: ['#cbd5e1', '#f8fafc', '#1e293b'] },
+  { id: 'range-hood', label: 'Range Hood (Exhaust)', category: 'Kitchen', size: [0.9, 0.45, 0.5], elevation: 1.6, role: 'source', defaultAirflow: 400, color: '#94a3b8', variants: ['#94a3b8', '#1e293b', '#f8fafc'] },
   { id: 'dishwasher', label: 'Dishwasher', category: 'Kitchen', size: [0.6, 0.85, 0.6], elevation: 0, role: 'solid', color: '#e2e8f0', variants: ['#e2e8f0', '#475569', '#ffffff'] },
 
   // BATHROOM
   { id: 'bathtub', label: 'Bathtub', category: 'Bathroom', size: [1.7, 0.6, 0.8], elevation: 0, role: 'solid', color: '#ffffff', variants: ['#ffffff', '#f1f5f9'] },
   { id: 'toilet', label: 'Toilet', category: 'Bathroom', size: [0.4, 0.8, 0.7], elevation: 0, role: 'solid', color: '#ffffff', variants: ['#ffffff', '#f8fafc'] },
   { id: 'sink-vanity', label: 'Sink Vanity', category: 'Bathroom', size: [0.9, 0.85, 0.5], elevation: 0, role: 'solid', color: '#e2e8f0', variants: ['#e2e8f0', '#78350f', '#0f172a'] },
+  { id: 'washing-machine', label: 'Washing Machine', category: 'Bathroom', size: [0.6, 0.85, 0.6], elevation: 0, role: 'solid', color: '#f1f5f9', variants: ['#f1f5f9', '#94a3b8'] },
+  { id: 'towel-cabinet', label: 'Towel Cabinet', category: 'Bathroom', size: [0.6, 1.8, 0.35], elevation: 0, role: 'solid', color: '#f8fafc', variants: ['#f8fafc', '#78350f'] },
   { id: 'shower-cabin', label: 'Shower Cabin', category: 'Bathroom', size: [0.9, 2.0, 0.9], elevation: 0, role: 'porous', color: '#bae6fd', variants: ['#bae6fd', '#38bdf8'] },
 
   // OFFICE
@@ -80,7 +86,10 @@ export const CATALOG_ASSETS: readonly AssetDef[] = [
   { id: 'window', label: 'Window', category: 'Openings', size: [1.2, 1.2, 0.15], elevation: 0.9, role: 'porous', wallMounted: true, color: '#38bdf8', variants: ['#38bdf8', '#ffffff', '#1e293b'] },
   { id: 'wide-window', label: 'Wide Window', category: 'Openings', size: [1.8, 1.2, 0.15], elevation: 0.9, role: 'porous', wallMounted: true, color: '#38bdf8', variants: ['#38bdf8', '#ffffff', '#1e293b'] },
   { id: 'vent', label: 'Air Vent', category: 'Openings', size: [0.4, 0.4, 0.15], elevation: 2.0, role: 'porous', wallMounted: true, color: '#94a3b8', variants: ['#94a3b8', '#ffffff', '#1e293b'] },
-  { id: 'archway', label: 'Archway', category: 'Openings', size: [1.2, 2.1, 0.15], elevation: 0, role: 'none', wallMounted: true, color: '#e2e8f0', variants: ['#e2e8f0', '#ffffff', '#94a3b8'] },
+  { id: 'archway', label: 'Archway', category: 'Walls', size: [1.2, 2.2, 0.15], elevation: 0, role: 'none', wallMounted: true, color: '#e2e8f0', variants: ['#e2e8f0', '#ffffff', '#94a3b8'] },
+  { id: 'wide-archway', label: 'Wide Archway', category: 'Walls', size: [2.4, 2.4, 0.15], elevation: 0, role: 'none', wallMounted: true, color: '#e2e8f0', variants: ['#e2e8f0', '#ffffff'] },
+  { id: 'pass-through', label: 'Kitchen Pass-Through', category: 'Walls', size: [1.8, 1.2, 0.15], elevation: 1.0, role: 'none', wallMounted: true, color: '#e2e8f0', variants: ['#e2e8f0', '#ffffff'] },
+  { id: 'open-wall', label: 'Open Wall (remove wall)', category: 'Walls', size: [1.0, 2.7, 0.15], elevation: 0, role: 'none', wallMounted: true, color: '#94a3b8', variants: ['#94a3b8'] },
 
   // DECOR
   { id: 'plant', label: 'Potted Plant', category: 'Decor', size: [0.4, 0.8, 0.4], elevation: 0, role: 'porous', color: '#15803d', variants: ['#15803d', '#4ade80', '#065f46'] },

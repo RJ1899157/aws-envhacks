@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useSceneStore } from '../store/sceneStore';
+import { createVentilatedRoom } from '../test/fixtures';
 import { useUiStore } from '../store/uiStore';
 import { checkObjectCollision, checkOpeningCollision } from '../core/collision';
 import type { Opening, SceneObject } from '../core/schema';
@@ -30,7 +31,7 @@ describe('SelectionGizmo logic and keyboard handling', () => {
   };
 
   beforeEach(() => {
-    useSceneStore.getState().resetRoom();
+    useSceneStore.getState().loadRoom(createVentilatedRoom());
     useSceneStore.temporal.getState().clear();
     useUiStore.getState().resetUi();
   });

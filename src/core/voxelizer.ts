@@ -1,3 +1,4 @@
+import { sharedWallOpenings } from './rooms';
 import { polygonBounds, pointInPolygon, wallSegment } from './parser';
 import type { Room } from './schema';
 
@@ -61,11 +62,13 @@ export interface VoxelStats {
  * Rules:
  * - Interior polygon between y = 0 and y = wallHeight is FLUID.
  * - Cells outside the polygon or above/below the room are SOLID.
- * - Openings punch INLET / OUTLET cells through the wall thickness.
+ * - Openings punch INLET / OUTLET cells through the wall thickness. Closed (or 0% open) openings
+ *   stay SOLID. Openings that `neighbours` put on a wall shared with this room are punched too,
+ *   with the role reversed (air entering the neighbour leaves this room, and vice versa).
  * - Objects (rotated by rotationY, scaled, elevated) fill SOLID / POROUS / SOURCE.
  * - Loops are restricted to each object's axis-aligned bounding box.
  */
-export function voxelize(room: Room, dx = 0.1): VoxelGrid {
+export function voxelize(room: Room, dx = 0.1, neighbours: readonly Room[] = []): VoxelGrid {
   if (dx <= 0) {
     throw new Error('dx grid resolution must be positive');
   }
@@ -115,9 +118,16 @@ export function voxelize(room: Room, dx = 0.1): VoxelGrid {
   }
 
   // 3. Openings: Punch INLET/OUTLET cells through the wall thickness
-  for (const op of room.openings) {
+  const reversed = { inlet: 'outlet', outlet: 'inlet', closed: 'closed' } as const;
+  const allOpenings = [
+    ...room.openings,
+    ...room.outline.flatMap((_, wallIndex) =>
+      sharedWallOpenings(room, wallIndex, neighbours).map((o) => ({ ...o, wallIndex, role: reversed[o.role] }))
+    ),
+  ];
+  for (const op of allOpenings) {
     if (op.wallIndex < 0 || op.wallIndex >= room.outline.length) continue;
-    if (op.role === 'closed') continue;
+    if (op.role === 'closed' || op.openFraction <= 0) continue;
 
     const seg = wallSegment(room, op.wallIndex);
     const roleType: CellTypeValue =
@@ -356,7 +366,8 @@ let workerTaskId = 0;
  */
 export async function voxelizeAsync(
   room: Room,
-  dx = 0.1
+  dx = 0.1,
+  neighbours: readonly Room[] = []
 ): Promise<{ grid: VoxelGrid; timeMs: number }> {
   // Use Web Worker if available and execution previously exceeded 50 ms
   if (typeof window !== 'undefined' && typeof Worker !== 'undefined' && lastExecDurationMs > 50) {
@@ -391,7 +402,7 @@ export async function voxelizeAsync(
         };
 
         workerInstance?.addEventListener('message', handler);
-        workerInstance?.postMessage({ room, dx, id });
+        workerInstance?.postMessage({ room, dx, neighbours, id });
       });
 
       lastExecDurationMs = res.duration;
@@ -414,7 +425,7 @@ export async function voxelizeAsync(
   }
 
   const start = performance.now();
-  const grid = voxelize(room, dx);
+  const grid = voxelize(room, dx, neighbours);
   const timeMs = performance.now() - start;
   lastExecDurationMs = timeMs;
   return { grid, timeMs };

@@ -120,7 +120,14 @@ export function validateObject(obj: SceneObject, room: Room): PlacementIssue[] {
     const center: Vec2 = [obj.position[0], obj.position[2]];
     const centerIn = pointInPolygon(center, room.outline);
 
-    const corners = getObjectFootprintCorners(obj);
+    // Shrink by 1 mm so an object sitting flush against a wall doesn't count as touching it
+    const CONTACT_TOLERANCE = 0.001;
+    const halfW = (obj.size[0] * (obj.scale?.[0] ?? 1)) / 2;
+    const halfD = (obj.size[2] * (obj.scale?.[2] ?? 1)) / 2;
+    const shrink = Math.min(1, CONTACT_TOLERANCE / Math.max(1e-6, Math.min(halfW, halfD)));
+    const corners = getObjectFootprintCorners(obj).map(
+      ([cx, cz]): Vec2 => [cx + (center[0] - cx) * shrink, cz + (center[1] - cz) * shrink]
+    );
     const anyCornerOut = corners.some((c) => !pointInPolygon(c, room.outline));
 
     if (!centerIn || anyCornerOut) {

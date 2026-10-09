@@ -13,6 +13,7 @@ import { findNearestValidPosition, type PlacementIssue } from '../core/placement
 import { prefersReducedMotion } from '../core/motion';
 import { setCanvasCursor, resetCanvasCursor } from '../core/cursor';
 import { useDropFeedbackStore } from '../store/dropFeedbackStore';
+import { getFixture } from './ProceduralFixtures';
 
 interface GLTFModelProps {
   url: string;
@@ -301,6 +302,11 @@ export const RoundedBoxPlaceholder: React.FC<PlaceholderProps & { id?: string }>
   
   const mattressMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#f8fafc' }), []);
   React.useEffect(() => { return () => { mattressMat.dispose(); }; }, [mattressMat]);
+
+  const Fixture = getFixture(lid);
+  if (Fixture) {
+    return <Fixture size={size} material={material} outline={outline} isGhost={isGhost} />;
+  }
 
   if (lid.includes('bed')) {
     // Bed: Base + Mattress + Headboard
@@ -926,6 +932,10 @@ export const AssetMesh = React.memo(AssetMeshComponent, (prev, next) => {
     prev.isColliding === next.isColliding &&
     prev.isGhost === next.isGhost &&
     prev.isValidPlacement === next.isValidPlacement &&
+    prev.onPointerDown === next.onPointerDown &&
+    prev.onDoubleClick === next.onDoubleClick &&
+    prev.object.isLocked === next.object.isLocked &&
+    prev.object.isHidden === next.object.isHidden &&
     prev.object.id === next.object.id &&
     prev.object.assetId === next.object.assetId &&
     prev.object.position?.[0] === next.object.position?.[0] &&

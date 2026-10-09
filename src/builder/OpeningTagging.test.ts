@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useSceneStore } from '../store/sceneStore';
+import { createVentilatedRoom } from '../test/fixtures';
 import { wallSegment, pointInPolygon } from '../core/parser';
 
 describe('Opening Tagging UX and Ventilation Summary', () => {
   beforeEach(() => {
-    useSceneStore.getState().resetRoom();
+    useSceneStore.getState().loadRoom(createVentilatedRoom());
     useSceneStore.temporal.getState().clear();
   });
 
   describe('Default roles for windows and doors', () => {
-    it('defaults doors to "closed" with openFraction 0', () => {
+    it('defaults doors to an open "outlet" so air can flow through', () => {
       useSceneStore.getState().addOpening({
         id: 'test-door',
         type: 'door',
@@ -22,8 +23,8 @@ describe('Opening Tagging UX and Ventilation Summary', () => {
 
       const door = useSceneStore.getState().room.openings.find((op) => op.id === 'test-door');
       expect(door).toBeDefined();
-      expect(door?.role).toBe('closed');
-      expect(door?.openFraction).toBe(0);
+      expect(door?.role).toBe('outlet');
+      expect(door?.openFraction).toBe(0.5);
     });
 
     it('defaults windows to "inlet" with openFraction 0.5', () => {

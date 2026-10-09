@@ -1,3 +1,4 @@
+import { isPassage } from '../core/openingPresets';
 import React, { useCallback, useMemo } from 'react';
 import { Html } from '@react-three/drei';
 import { wallSegment } from '../core/parser';
@@ -129,7 +130,7 @@ export const OpeningTaggingPanel: React.FC = () => {
 
     return (
       <group position={panelPosition}>
-        <Html center distanceFactor={7} zIndexRange={[140, 0]}>
+        <Html center zIndexRange={[140, 0]}>
           <div
             data-testid="opening-tagging-panel"
             className="bg-neutral-900/95 backdrop-blur-md border border-neutral-700/80 shadow-2xl rounded-full px-3 py-1.5 text-neutral-200 select-none text-xs flex items-center gap-2.5 font-sans whitespace-nowrap"
@@ -216,15 +217,17 @@ export const OpeningTaggingPanel: React.FC = () => {
 
             {/* Compact Action Buttons: Flip, Duplicate, Delete */}
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                data-testid="flip-opening-btn"
-                onClick={() => flipOpening(singleOpening.id)}
-                className="px-2 py-1 rounded-md text-[11px] font-medium text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
-                title="Flip hinge side / swing direction"
-              >
-                Flip
-              </button>
+              {!isPassage(singleOpening.subType) && (
+                <button
+                  type="button"
+                  data-testid="flip-opening-btn"
+                  onClick={() => flipOpening(singleOpening.id)}
+                  className="px-2 py-1 rounded-md text-[11px] font-medium text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                  title="Flip hinge side / swing direction"
+                >
+                  Flip
+                </button>
+              )}
 
               <button
                 type="button"
@@ -265,7 +268,7 @@ export const OpeningTaggingPanel: React.FC = () => {
   if (isBulk) {
     return (
       <group position={panelPosition}>
-        <Html center distanceFactor={7} zIndexRange={[140, 0]}>
+        <Html center zIndexRange={[140, 0]}>
           <div
             data-testid="bulk-opening-tagging-panel"
             className="bg-neutral-900/95 backdrop-blur-md border border-neutral-700/80 shadow-2xl rounded-full px-3 py-1.5 text-neutral-200 select-none text-xs flex items-center gap-2.5 font-sans whitespace-nowrap"

@@ -7,6 +7,7 @@ export const AUTOSAVE_DEBOUNCE_MS = 500;
 
 export interface AutosaveData {
   room: Room;
+  otherRooms?: Room[];
   savedAt: number;
 }
 
@@ -25,11 +26,12 @@ export function getAutosavedSession(): AutosaveData | null {
   }
 }
 
-export function saveSessionToStorage(room: Room): void {
+export function saveSessionToStorage(room: Room, otherRooms: Room[] = []): void {
   if (typeof localStorage === 'undefined') return;
   try {
     const data: AutosaveData = {
       room,
+      otherRooms,
       savedAt: Date.now(),
     };
     localStorage.setItem(AUTOSAVE_STORAGE_KEY, JSON.stringify(data));
@@ -53,6 +55,7 @@ export function clearAutosavedSession(): void {
  */
 export function useAutosave() {
   const room = useSceneStore((state) => state.room);
+  const otherRooms = useSceneStore((state) => state.otherRooms);
   const loadRoom = useSceneStore((state) => state.loadRoom);
 
   const [pendingRestore, setPendingRestore] = useState<AutosaveData | null>(null);
@@ -80,7 +83,7 @@ export function useAutosave() {
     }
 
     timerRef.current = setTimeout(() => {
-      saveSessionToStorage(room);
+      saveSessionToStorage(room, otherRooms);
     }, AUTOSAVE_DEBOUNCE_MS);
 
     return () => {
@@ -88,11 +91,11 @@ export function useAutosave() {
         clearTimeout(timerRef.current);
       }
     };
-  }, [room]);
+  }, [room, otherRooms]);
 
   const restoreSession = () => {
     if (pendingRestore?.room) {
-      loadRoom(pendingRestore.room);
+      loadRoom(pendingRestore.room, pendingRestore.otherRooms ?? []);
       setPendingRestore(null);
     }
   };

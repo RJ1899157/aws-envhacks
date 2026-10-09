@@ -3,11 +3,14 @@ import { temporal } from 'zundo';
 import { immer } from 'zustand/middleware/immer';
 import { createDefaultRoom } from '../core/defaultRoom';
 import { parseRoom, type ParseIssue, wallSegment } from '../core/parser';
+import { createRoomOfType, withRoomId } from '../core/rooms';
+import { computeSmartSnap, objectsFlushAgainstWall } from '../core/smartSnap';
 import type {
   Opening,
   OpeningRole,
   Room,
   RoomParams,
+  RoomType,
   SceneObject,
   Vec2,
   WallOverride,
@@ -30,7 +33,10 @@ import {
 } from '../core/quickShapes';
 
 export interface SceneState {
+  /** The active room: every editing tool operates on this one */
   room: Room;
+  /** All other rooms of the floor plan, rendered around the active room */
+  otherRooms: Room[];
   selectedObjectId: string | null;
   selectedObjectIds: string[];
   selectedOpeningId: string | null;
@@ -38,8 +44,14 @@ export interface SceneState {
   isDragging: boolean;
 
   // Actions
-  loadRoom: (room: Room) => void;
+  /** Replaces the whole floor plan (other rooms default to none) */
+  loadRoom: (room: Room, otherRooms?: Room[]) => void;
   resetRoom: () => void;
+  /** Adds a room of `type`, at `outline` if given (otherwise beside the existing rooms), and makes it active */
+  addRoom: (type: RoomType, outline?: Vec2[], objects?: SceneObject[]) => void;
+  setActiveRoom: (id: string) => void;
+  removeRoom: (id: string) => void;
+  setRoomType: (type: RoomType) => void;
   setOutline: (outline: Vec2[]) => void;
   moveVertex: (index: number, position: Vec2) => void;
   insertVertex: (index: number, position: Vec2) => void;
@@ -109,27 +121,34 @@ export function resetDragTracking(): void {
 
 export interface HistoryState {
   room: Room;
+  otherRooms: Room[];
+}
+
+function clearSelectionDraft(state: SceneState): void {
+  state.selectedObjectId = null;
+  state.selectedObjectIds = [];
+  state.selectedOpeningId = null;
+  state.selectedOpeningIds = [];
+  state.isDragging = false;
 }
 
 export const useSceneStore = create<SceneState>()(
   temporal<SceneState, [], [['zustand/immer', never]], HistoryState>(
     immer((set, get) => ({
       room: createDefaultRoom(),
+      otherRooms: [],
       selectedObjectId: null,
       selectedObjectIds: [],
       selectedOpeningId: null,
       selectedOpeningIds: [],
       isDragging: false,
 
-      loadRoom: (room) => {
+      loadRoom: (room, otherRooms = []) => {
         resetDragTracking();
         set((state) => {
-          state.room = room;
-          state.selectedObjectId = null;
-          state.selectedObjectIds = [];
-          state.selectedOpeningId = null;
-          state.selectedOpeningIds = [];
-          state.isDragging = false;
+          state.room = withRoomId(room);
+          state.otherRooms = otherRooms.map(withRoomId);
+          clearSelectionDraft(state);
         });
       },
 
@@ -137,13 +156,54 @@ export const useSceneStore = create<SceneState>()(
         resetDragTracking();
         set((state) => {
           state.room = createDefaultRoom();
-          state.selectedObjectId = null;
-          state.selectedObjectIds = [];
-          state.selectedOpeningId = null;
-          state.selectedOpeningIds = [];
-          state.isDragging = false;
+          state.otherRooms = [];
+          clearSelectionDraft(state);
         });
       },
+
+      addRoom: (type, outline, objects) => {
+        resetDragTracking();
+        set((state) => {
+          const all = [state.room, ...state.otherRooms] as Room[];
+          const created = createRoomOfType(type, all, state.room as Room);
+          if (outline) created.outline = outline.map(([x, z]) => [x, z] as Vec2);
+          if (objects) created.objects = objects;
+          state.otherRooms.push(state.room);
+          state.room = created;
+          clearSelectionDraft(state);
+        });
+      },
+
+      setActiveRoom: (id) => {
+        if (get().room.id === id) return;
+        resetDragTracking();
+        set((state) => {
+          const index = state.otherRooms.findIndex((r) => r.id === id);
+          if (index === -1) return;
+          const next = state.otherRooms[index]!;
+          state.otherRooms[index] = state.room;
+          state.room = next;
+          clearSelectionDraft(state);
+        });
+      },
+
+      removeRoom: (id) => {
+        resetDragTracking();
+        set((state) => {
+          if (state.otherRooms.length === 0) return; // always keep one room
+          if (state.room.id === id) {
+            state.room = state.otherRooms.shift()!;
+          } else {
+            state.otherRooms = state.otherRooms.filter((r) => r.id !== id);
+          }
+          clearSelectionDraft(state);
+        });
+      },
+
+      setRoomType: (type) =>
+        set((state) => {
+          state.room.type = type;
+        }),
 
       setOutline: (outline) =>
         set((state) => {
@@ -182,7 +242,50 @@ export const useSceneStore = create<SceneState>()(
       moveWall: (wallIndex, delta) => {
         markDragMutation();
         set((state) => {
-          state.room.outline = moveWallPerpendicular(state.room.outline, wallIndex, delta);
+          const before = state.room.outline as Vec2[];
+          const n = before.length;
+          const nextIndex = (wallIndex + 1) % n;
+          const moved = wallSegment({ outline: before }, wallIndex);
+          const nextDir = wallSegment({ outline: before }, nextIndex).dir;
+          // Furniture standing against this wall travels with it
+          const attached = new Set(objectsFlushAgainstWall(state.room as Room, wallIndex));
+          state.room.outline = moveWallPerpendicular(before, wallIndex, delta);
+          for (const obj of state.room.objects) {
+            if (!attached.has(obj.id)) continue;
+            obj.position = [
+              Number((obj.position[0] + delta * moved.normal[0]).toFixed(4)),
+              obj.position[1],
+              Number((obj.position[2] + delta * moved.normal[1]).toFixed(4)),
+            ];
+          }
+
+          // The next wall's start corner moved; keep its doors/windows where they were in the world
+          const startShift = delta * (moved.normal[0] * nextDir[0] + moved.normal[1] * nextDir[1]);
+          const nextLen = wallSegment({ outline: state.room.outline }, nextIndex).len;
+          for (const op of state.room.openings) {
+            if (op.wallIndex !== nextIndex) continue;
+            op.offset = Math.max(0, Math.min(nextLen - op.width, op.offset - startShift));
+          }
+
+          // Shrinking the room pushes furniture back inside rather than leaving it in the wall
+          const room = state.room as Room;
+          for (const obj of state.room.objects) {
+            const { snappedPos } = computeSmartSnap({
+              candidatePos: obj.position,
+              candidateRotY: obj.rotation?.[1] ?? 0,
+              objectSize: [
+                obj.size[0] * (obj.scale?.[0] ?? 1),
+                obj.size[1] * (obj.scale?.[1] ?? 1),
+                obj.size[2] * (obj.scale?.[2] ?? 1),
+              ],
+              startPos: obj.position,
+              room,
+              gridStep: 0.1,
+              snapEnabled: true,
+              ctrlKey: true, // containment only, no snapping
+            });
+            obj.position = [snappedPos[0], obj.position[1], snappedPos[2]];
+          }
         });
       },
 
@@ -449,11 +552,12 @@ export const useSceneStore = create<SceneState>()(
 
       addOpening: (opening) =>
         set((state) => {
-          const defaultRole: OpeningRole = opening.type === 'door' ? 'closed' : 'inlet';
+          // Every opening lets air through by default: doors as outlets, windows as inlets
+          const defaultRole: OpeningRole = opening.type === 'door' ? 'outlet' : 'inlet';
           const finalOpening: Opening = {
             ...opening,
             role: opening.role ?? defaultRole,
-            openFraction: opening.openFraction ?? (defaultRole === 'closed' ? 0 : 0.5),
+            openFraction: opening.openFraction ?? 0.5,
           };
           state.room.openings.push(finalOpening);
           state.selectedOpeningId = finalOpening.id;
@@ -644,7 +748,12 @@ export const useSceneStore = create<SceneState>()(
             `Cannot export invalid room: ${parseResult.issues.map((i) => i.message).join('; ')}`
           );
         }
-        return JSON.stringify(parseResult.room, null, 2);
+        const otherRooms = get().otherRooms.map((r) => parseRoom(r).room ?? r);
+        return JSON.stringify(
+          otherRooms.length > 0 ? { ...parseResult.room, otherRooms } : parseResult.room,
+          null,
+          2
+        );
       },
 
       importRoom: (json) => {
@@ -669,14 +778,15 @@ export const useSceneStore = create<SceneState>()(
 
         const parseResult = parseRoom(raw);
         if (parseResult.room) {
+          const rawOthers = (raw as { otherRooms?: unknown }).otherRooms;
+          const otherRooms = Array.isArray(rawOthers)
+            ? rawOthers.map((r) => parseRoom(r).room).filter((r): r is Room => Boolean(r))
+            : [];
           resetDragTracking();
           set((state) => {
-            state.room = parseResult.room!;
-            state.selectedObjectId = null;
-            state.selectedObjectIds = [];
-            state.selectedOpeningId = null;
-            state.selectedOpeningIds = [];
-            state.isDragging = false;
+            state.room = withRoomId(parseResult.room!);
+            state.otherRooms = otherRooms.map(withRoomId);
+            clearSelectionDraft(state);
           });
           return { success: true, issues: parseResult.issues };
         }
@@ -686,9 +796,10 @@ export const useSceneStore = create<SceneState>()(
     })),
     {
       limit: 100,
-      equality: (pastState, currentState) => pastState.room === currentState.room,
+      equality: (pastState, currentState) =>
+        pastState.room === currentState.room && pastState.otherRooms === currentState.otherRooms,
       // Only room changes are undoable; selection changes are not
-      partialize: (state): HistoryState => ({ room: state.room }),
+      partialize: (state): HistoryState => ({ room: state.room, otherRooms: state.otherRooms }),
       handleSet: (handleSet) => (pastState, replace) => {
         const isDrag = isCurrentMutationDrag || isExplicitDragging;
         isCurrentMutationDrag = false;
@@ -723,3 +834,6 @@ export const useSceneStore = create<SceneState>()(
     }
   )
 );
+
+
+

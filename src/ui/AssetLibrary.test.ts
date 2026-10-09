@@ -37,6 +37,9 @@ describe('AssetLibrary and Placement Logic', () => {
 
     const openings = CATALOG_ASSETS.filter((a) => a.category === 'Openings');
     expect(openings.map((a) => a.id)).toContain('window');
+
+    const walls = CATALOG_ASSETS.filter((a) => a.category === 'Walls').map((a) => a.id);
+    expect(walls).toEqual(['archway', 'wide-archway', 'pass-through', 'open-wall']);
   });
 
   it('places a floor object with exact catalog size into sceneStore', () => {

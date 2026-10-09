@@ -1,10 +1,10 @@
 import { voxelize } from './voxelizer';
 import type { Room } from './schema';
 
-self.onmessage = (e: MessageEvent<{ room: Room; dx: number; id: number }>) => {
-  const { room, dx, id } = e.data;
+self.onmessage = (e: MessageEvent<{ room: Room; dx: number; neighbours?: Room[]; id: number }>) => {
+  const { room, dx, neighbours = [], id } = e.data;
   const start = performance.now();
-  const grid = voxelize(room, dx);
+  const grid = voxelize(room, dx, neighbours);
   const duration = performance.now() - start;
 
   // Zero-copy transfer of the cells Uint8Array buffer

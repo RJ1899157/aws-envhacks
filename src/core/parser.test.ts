@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDefaultRoom } from './defaultRoom';
+import { createVentilatedRoom } from '../test/fixtures';
 import {
   isPolygonSimple,
   parseRoom,
@@ -106,7 +106,7 @@ describe('Room Parser & Geometry Helpers', () => {
 
   describe('parseRoom', () => {
     it('successfully parses the default valid room with no issues', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const result = parseRoom(defaultRoom);
 
       expect(result.room).not.toBeNull();
@@ -116,7 +116,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('flips clockwise outline to counter-clockwise with a warning', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       // Reverse outline to clockwise
       const cwRoom = {
         ...defaultRoom,
@@ -135,7 +135,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('flags error and drops overlong opening exceeding wall length', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const overlongOpening: Opening = {
         id: 'overlong-win-1',
         wallIndex: 0, // Wall 0 is 4.0m long
@@ -166,7 +166,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('flags self-intersecting polygon as error and returns room = null', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const selfIntersecting = {
         ...defaultRoom,
         outline: [
@@ -188,7 +188,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('flags duplicate object IDs as error and drops them', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const chair1: SceneObject = {
         id: 'dup-chair',
         assetId: 'office-chair',
@@ -229,7 +229,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('flags unknown assetId as error and drops the object', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const badObject: SceneObject = {
         id: 'unknown-obj-1',
         assetId: 'space-shuttle-reactor', // Unknown asset
@@ -258,7 +258,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('errors if any wall length is less than 0.3m', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       // Introduce tiny 0.1m wall segment
       const roomWithShortWall = {
         ...defaultRoom,
@@ -282,7 +282,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('errors if floor area is zero or degenerate', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const collinearRoom = {
         ...defaultRoom,
         outline: [
@@ -304,7 +304,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('warns if floor area is less than 4 m²', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       // 1.5m x 1.5m room -> area = 2.25 m² (< 4 m²)
       const smallRoom = {
         ...defaultRoom,
@@ -329,7 +329,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('warns if object centre is outside the floor boundary', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const outsideObject: SceneObject = {
         id: 'outside-desk',
         assetId: 'desk',
@@ -358,7 +358,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('warns if there is no cross-ventilation (missing inlet or outlet)', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       // Remove door, leaving only window (inlet)
       const noCrossVentRoom = {
         ...defaultRoom,
@@ -376,7 +376,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('errors and drops openings exceeding wall height', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const tallWindow: Opening = {
         id: 'tall-win',
         wallIndex: 0,
@@ -405,7 +405,7 @@ describe('Room Parser & Geometry Helpers', () => {
     });
 
     it('errors and drops openings referencing a missing wall index', () => {
-      const defaultRoom = createDefaultRoom();
+      const defaultRoom = createVentilatedRoom();
       const badWallOpening: Opening = {
         id: 'win-missing-wall',
         wallIndex: 10, // Default room has only 4 walls (0-3)

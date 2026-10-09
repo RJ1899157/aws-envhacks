@@ -20,7 +20,7 @@ const ONBOARDING_STEPS: StepContent[] = [
   {
     icon: '🧭', stepNumber: 1, title: 'Orbit the room', subtitle: 'Change the view from any angle',
     description: 'Drag empty space to orbit, use the view cube or angle presets, and scroll or pinch to zoom. Double-click an object to frame it.',
-    tips: ['Shift-drag pans the view', 'Top view keeps rotation locked', 'Home fits the whole room'],
+    tips: ['WASD or arrow keys move across the floor (Shift = faster)', 'Drag to orbit, scroll to zoom', 'Home fits the whole room'],
   },
   {
     icon: '🪑', stepNumber: 2, title: 'Place an object', subtitle: 'Build out your room at real scale',

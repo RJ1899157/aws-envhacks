@@ -31,6 +31,7 @@ import { parseRoom, type ParseIssue } from '../core/parser';
 import { captureCanvasScreenshot } from '../builder/screenshot';
 import { ImportIssuesModal } from './ImportIssuesModal';
 import { Tooltip } from './components/Tooltip';
+import { RoomSwitcher } from './RoomSwitcher';
 
 export interface ToolbarProps {
   className?: string;
@@ -82,25 +83,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
   const room = useSceneStore((state) => state.room);
   const resetRoom = useSceneStore((state) => state.resetRoom);
   const loadRoom = useSceneStore((state) => state.loadRoom);
-  const setRoomName = useSceneStore((state) => state.setRoomName);
   const setFloorMaterial = useSceneStore((state) => state.setFloorMaterial);
   const setWallMaterial = useSceneStore((state) => state.setWallMaterial);
-
-  // Inline Room Name Editing
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [draftName, setDraftName] = useState(room.name);
-  useEffect(() => {
-    setDraftName(room.name);
-  }, [room.name]);
-
-  const commitRoomName = () => {
-    setIsEditingName(false);
-    if (draftName.trim() && draftName.trim() !== room.name) {
-      setRoomName(draftName.trim());
-    } else {
-      setDraftName(room.name);
-    }
-  };
 
   // UI state
   const toolMode = useUiStore((state) => state.toolMode);
@@ -277,33 +261,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
 
           <div className="h-4 w-px bg-white/10 hidden sm:block" />
 
-          {/* Editable Room Name Badge */}
-          {isEditingName ? (
-            <input
-              type="text"
-              value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              onBlur={commitRoomName}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitRoomName();
-                if (e.key === 'Escape') {
-                  setDraftName(room.name);
-                  setIsEditingName(false);
-                }
-              }}
-              autoFocus
-              className="bg-black/30 dark:bg-white/10 border border-indigo-500 rounded px-2 py-0.5 text-xs text-white outline-none w-36 font-medium"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsEditingName(true)}
-              className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-[6px] hover:bg-white/5 border border-transparent hover:border-white/10 text-neutral-300 hover:text-white transition-colors text-xs font-medium max-w-[180px] truncate"
-              title="Click to rename room"
-            >
-              <span className="truncate">{room.name}</span>
-            </button>
-          )}
+          <RoomSwitcher />
         </div>
 
         {/* 2. CENTRE: Segmented Tool Switcher [Select | Draw Room | Place | Measure] */}

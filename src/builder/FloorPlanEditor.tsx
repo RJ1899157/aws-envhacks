@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ThreeEvent } from '@react-three/fiber';
+import { flushSync, type ThreeEvent } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { isPolygonSimple, polygonBounds, signedArea, wallSegment } from '../core/parser';
 import type { OpeningSubType, Vec2 } from '../core/schema';
 import {
   createOpeningFromPreset,
+  fitOpeningToWall,
   OPENING_PRESETS,
   resolveOpeningOverlapOnWall,
 } from '../core/openingPresets';
 import { snap } from '../core/units';
+import { snapRoomMove, snapWallMove } from '../core/rooms';
+import { objectsFlushAgainstWall } from '../core/smartSnap';
 import {
   moveWallPerpendicular,
   extrudeWallAlcove,
@@ -20,8 +23,19 @@ import { useUiStore } from '../store/uiStore';
 import { sharedOrbitControlsRef } from './Canvas';
 import { setCanvasCursor, resetCanvasCursor } from '../core/cursor';
 
+/** True in 3D when the camera is outside this wall, i.e. the wall is faded out between camera and room. */
+function isWallFacingAwayFromCamera(
+  w: { midX: number; midZ: number; normalX: number; normalZ: number },
+  camera: THREE.Camera,
+  view: '2d' | '3d'
+): boolean {
+  if (view !== '3d') return false;
+  return (camera.position.x - w.midX) * w.normalX + (camera.position.z - w.midZ) * w.normalZ > 0;
+}
+
 export const FloorPlanEditor: React.FC = () => {
   const room = useSceneStore((state) => state.room);
+  const otherRooms = useSceneStore((state) => state.otherRooms);
   const outline = useSceneStore((state) => state.room.outline);
   const moveVertex = useSceneStore((state) => state.moveVertex);
   const setOutline = useSceneStore((state) => state.setOutline);
@@ -37,6 +51,7 @@ export const FloorPlanEditor: React.FC = () => {
   const scaleRoom = useSceneStore((state) => state.scaleRoom);
 
   const toolMode = useUiStore((state) => state.toolMode);
+  const view = useUiStore((state) => state.view);
   const setToolMode = useUiStore((state) => state.setToolMode);
   const snapEnabled = useUiStore((state) => state.snapEnabled);
   const gridStep = useUiStore((state) => state.gridStep);
@@ -70,6 +85,58 @@ export const FloorPlanEditor: React.FC = () => {
   // -------------------------------------------------------------
   // SELECT MODE: WALL DRAG (BODY OR ALT-EXTRUDE)
   // -------------------------------------------------------------
+  const [hoveredStretchIndex, setHoveredStretchIndex] = useState<number | null>(null);
+
+  // Room selection (via the centre handle): Delete/Backspace removes the room
+  const roomSelected = useUiStore((state) => state.roomSelected);
+  const selectedObjectCount = useSceneStore((state) => state.selectedObjectIds.length + state.selectedOpeningIds.length);
+  const deleteActiveRoom = useCallback(() => {
+    const scene = useSceneStore.getState();
+    const ui = useUiStore.getState();
+    ui.setRoomSelected(false);
+    if (scene.otherRooms.length === 0) {
+      ui.setToastMessage('This is the only room, so it can’t be deleted');
+      return;
+    }
+    const name = scene.room.name;
+    if (scene.room.id) scene.removeRoom(scene.room.id);
+    ui.setToastMessage(`Deleted ${name}`, true);
+  }, []);
+  useEffect(() => {
+    // Any other selection, or switching rooms, deselects the room
+    if (selectedObjectCount > 0 || selectedWallIndex !== null || toolMode !== 'select') {
+      useUiStore.getState().setRoomSelected(false);
+    }
+  }, [selectedObjectCount, selectedWallIndex, toolMode]);
+  useEffect(() => {
+    useUiStore.getState().setRoomSelected(false);
+  }, [room.id]);
+  useEffect(() => {
+    if (!roomSelected) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteActiveRoom();
+      } else if (e.key === 'Escape') {
+        useUiStore.getState().setRoomSelected(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [roomSelected, deleteActiveRoom]);
+  const attachedObjects = useRef<{ id: string; position: [number, number, number] }[]>([]);
+  const previewAttachedObjects = useCallback((normal: readonly [number, number], delta: number) => {
+    const originals = attachedObjects.current;
+    if (originals.length === 0) return;
+    useSceneStore.setState((state) => {
+      for (const { id, position } of originals) {
+        const obj = state.room.objects.find((o) => o.id === id);
+        if (obj) obj.position = [position[0] + delta * normal[0], position[1], position[2] + delta * normal[1]];
+      }
+    });
+  }, []);
   const [draggingWallState, setDraggingWallState] = useState<{
     index: number;
     startPoint: Vec2;
@@ -388,6 +455,10 @@ export const FloorPlanEditor: React.FC = () => {
         if (snapEnabled) {
           deltaNormal = snap(deltaNormal, gridStep);
         }
+        if (!isExtrude) {
+          // Snap flush to a neighbouring room's wall and never stretch into it
+          deltaNormal = snapWallMove(originalOutline.current, index, deltaNormal, otherRooms, room.wallThickness);
+        }
 
         const candidate = isExtrude
           ? extrudeWallAlcove(originalOutline.current, index, deltaNormal)
@@ -401,6 +472,7 @@ export const FloorPlanEditor: React.FC = () => {
           setHasSelfIntersection(true);
         }
 
+        if (!isExtrude) previewAttachedObjects(seg.normal, isSimple ? deltaNormal : 0);
         setDraggingWallState((prev) => (prev ? { ...prev, accumulatedDelta: deltaNormal } : null));
         return;
       }
@@ -415,6 +487,8 @@ export const FloorPlanEditor: React.FC = () => {
         if (snapEnabled) {
           deltaX = snap(deltaX, gridStep);
           deltaZ = snap(deltaZ, gridStep);
+          // Pull the room flush against neighbouring rooms so walls are shared
+          [deltaX, deltaZ] = snapRoomMove(originalOutline.current, [deltaX, deltaZ], otherRooms, room.wallThickness);
         }
 
         const candidate = originalOutline.current.map(
@@ -452,6 +526,7 @@ export const FloorPlanEditor: React.FC = () => {
       }
     },
     [
+      previewAttachedObjects,
       toolMode,
       drawingPoints,
       draggingVertexIndex,
@@ -464,6 +539,8 @@ export const FloorPlanEditor: React.FC = () => {
       setOutline,
       snapEnabled,
       gridStep,
+      otherRooms,
+      room.wallThickness,
     ]
   );
 
@@ -526,7 +603,7 @@ export const FloorPlanEditor: React.FC = () => {
 
       setSelectedVertexIndex(index);
       setSelectedWallIndex(null);
-      setDraggingVertexIndex(index);
+      flushSync(() => setDraggingVertexIndex(index));
       dragVertexStartPos.current = [...outline[index]!];
       originalOutline.current = outline.map((pt) => [...pt]);
       setIsDragging(true);
@@ -546,17 +623,24 @@ export const FloorPlanEditor: React.FC = () => {
       if (e.button !== 0 || toolMode !== 'select') return;
       e.stopPropagation();
 
+      useSceneStore.getState().clearSelection();
       setSelectedWallIndex(index);
       setSelectedVertexIndex(null);
       originalOutline.current = outline.map((pt) => [...pt]);
 
       const isExtrude = e.altKey || isAltPressed.current;
-      setDraggingWallState({
+      // Remember the furniture against this wall so it can follow the wall live while dragging
+      const currentRoom = useSceneStore.getState().room;
+      const attachedIds = new Set(isExtrude ? [] : objectsFlushAgainstWall(currentRoom, index));
+      attachedObjects.current = currentRoom.objects
+        .filter((o) => attachedIds.has(o.id))
+        .map((o) => ({ id: o.id, position: [...o.position] as [number, number, number] }));
+      flushSync(() => setDraggingWallState({
         index,
         startPoint: [e.point.x, e.point.z],
         isExtrude,
         accumulatedDelta: 0,
-      });
+      }));
 
       setIsDragging(true);
       setHasSelfIntersection(false);
@@ -597,17 +681,18 @@ export const FloorPlanEditor: React.FC = () => {
       let targetOffset = wallQuickMenu.clickOffset - preset.width / 2;
       targetOffset = Math.max(0, Math.min(maxOffset, targetOffset));
 
+      const isOpenWall = subType === 'open-wall';
       const resolution = resolveOpeningOverlapOnWall(
         room,
         targetWall,
-        targetOffset,
-        preset.width
+        isOpenWall ? 0 : targetOffset,
+        isOpenWall ? seg.len : preset.width
       );
 
       if (!resolution.canPlace) {
         setToastMessage(resolution.errorMessage ?? 'Openings cannot overlap on the same wall');
       } else {
-        const opening = createOpeningFromPreset(subType, targetWall, resolution.finalOffset);
+        const opening = fitOpeningToWall(createOpeningFromPreset(subType, targetWall, resolution.finalOffset), room);
         addOpening(opening);
         for (const pushed of resolution.pushedOpenings) {
           updateOpening(pushed.id, { offset: pushed.offset });
@@ -641,6 +726,9 @@ export const FloorPlanEditor: React.FC = () => {
     // 2. End wall drag
     if (draggingWallState !== null) {
       const { index, isExtrude, accumulatedDelta } = draggingWallState;
+      // Put the previewed furniture back; moveWall re-applies the move as one undo step
+      previewAttachedObjects([0, 0], 0);
+      attachedObjects.current = [];
       if (hasSelfIntersection && originalOutline.current) {
         setOutline(originalOutline.current);
         triggerRedFlash();
@@ -690,6 +778,7 @@ export const FloorPlanEditor: React.FC = () => {
       }
     }
   }, [
+    previewAttachedObjects,
     draggingVertexIndex,
     draggingWallState,
     draggingRoomCenter,
@@ -709,11 +798,6 @@ export const FloorPlanEditor: React.FC = () => {
     window.addEventListener('pointerup', handlePointerUp);
     return () => window.removeEventListener('pointerup', handlePointerUp);
   }, [handlePointerUp]);
-
-  // Dimensions & bounds for HUD room area & handles
-  const roomArea = useMemo(() => {
-    return Math.abs(signedArea(outline));
-  }, [outline]);
 
   const bounds = useMemo(() => {
     return polygonBounds(outline);
@@ -816,11 +900,30 @@ export const FloorPlanEditor: React.FC = () => {
     const res = setWallLength(popoverWallIndex, targetLen, popoverAnchor);
     if (res.removedOpenings.length > 0) {
       setToastMessage(
-        `${res.removedOpenings.length} opening(s) removed (wall too short) — press Ctrl+Z to undo`
+        `${res.removedOpenings.length} opening(s) removed (wall too short)`,
+        true
       );
     }
     setPopoverWallIndex(null);
   }, [popoverWallIndex, popoverLength, popoverAnchor, setWallLength, setToastMessage]);
+
+  // End drags on any mouse-up, even outside the canvas. Runs a frame later so React has rendered the
+  // state set by the matching pointer-down (a very fast click would otherwise see stale state).
+  const roomDiscPressed = useRef(false);
+  useEffect(() => {
+    const reset = () => {
+      roomDiscPressed.current = false;
+    };
+    window.addEventListener('pointerdown', reset, true);
+    return () => window.removeEventListener('pointerdown', reset, true);
+  }, []);
+  const handlePointerUpRef = useRef(handlePointerUp);
+  handlePointerUpRef.current = handlePointerUp;
+  useEffect(() => {
+    const onUp = () => requestAnimationFrame(() => handlePointerUpRef.current());
+    window.addEventListener('pointerup', onUp);
+    return () => window.removeEventListener('pointerup', onUp);
+  }, []);
 
   return (
     <group name="floor-plan-editor">
@@ -831,7 +934,6 @@ export const FloorPlanEditor: React.FC = () => {
         visible={false}
         onPointerMove={handleGroundPointerMove}
         onPointerDown={handleGroundPointerDown}
-        onPointerUp={handlePointerUp}
       >
         <planeGeometry args={[2000, 2000]} />
       </mesh>
@@ -935,9 +1037,11 @@ export const FloorPlanEditor: React.FC = () => {
             return (
               <mesh
                 key={`wall-hit-${w.index}`}
-                position={[w.midX, 0.04, w.midZ]}
+                // Offset outward so the grab strip covers the wall, not the floor inside the room
+                position={[w.midX + w.normalX * 0.175, 0.04, w.midZ + w.normalZ * 0.175]}
                 rotation={[0, -w.angle, 0]}
                 onPointerOver={(e) => {
+                  if (isWallFacingAwayFromCamera(w, e.camera, view)) return;
                   e.stopPropagation();
                   setHoveredWallIndex(w.index);
                   setCanvasCursor('move');
@@ -948,6 +1052,8 @@ export const FloorPlanEditor: React.FC = () => {
                   resetCanvasCursor();
                 }}
                 onPointerDown={(e) => {
+                  // Walls between the camera and the room are faded out; let clicks/orbits pass through
+                  if (isWallFacingAwayFromCamera(w, e.camera, view)) return;
                   setCanvasCursor('grabbing');
                   handleWallPointerDown(w.index, e);
                 }}
@@ -969,6 +1075,59 @@ export const FloorPlanEditor: React.FC = () => {
                   opacity={isSelected || isDraggingThis || isError ? 0.4 : isHovered ? 0.25 : 0.001}
                 />
               </mesh>
+            );
+          })}
+
+          {/* 1b. Stretch handles: drag a wall in or out to resize the room */}
+          {wallData.map((w) => {
+            const isDraggingThis = draggingWallState?.index === w.index && !draggingWallState.isExtrude;
+            const isHovered = hoveredStretchIndex === w.index;
+            const offset = room.wallThickness + 0.28;
+            const hx = w.midX + w.normalX * offset;
+            const hz = w.midZ + w.normalZ * offset;
+            // Rotate so the handle's local +X points along the wall's outward normal
+            const rotY = Math.atan2(-w.normalZ, w.normalX);
+            const color = isDraggingThis ? '#10b981' : isHovered ? '#818cf8' : '#6366f1';
+            const sizeAcross = wallData[(w.index + 1) % wallData.length]?.len ?? 0;
+
+            return (
+              <group key={`stretch-${w.index}`} position={[hx, 0.06, hz]} rotation={[0, rotY, 0]}>
+                <mesh
+                  onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setHoveredStretchIndex(w.index);
+                    setCanvasCursor(Math.abs(w.normalX) > Math.abs(w.normalZ) ? 'ew-resize' : 'ns-resize');
+                  }}
+                  onPointerOut={() => {
+                    setHoveredStretchIndex(null);
+                    resetCanvasCursor();
+                  }}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    handleWallPointerDown(w.index, e);
+                  }}
+                  onPointerUp={() => resetCanvasCursor()}
+                >
+                  <boxGeometry args={[0.42, 0.05, 0.26]} />
+                  <meshBasicMaterial color={color} />
+                </mesh>
+                {/* Double arrow: out and in */}
+                <mesh position={[0.17, 0.04, 0]} rotation={[0, 0, -Math.PI / 2]} raycast={() => null}>
+                  <coneGeometry args={[0.07, 0.12, 3]} />
+                  <meshBasicMaterial color="#ffffff" />
+                </mesh>
+                <mesh position={[-0.17, 0.04, 0]} rotation={[0, 0, Math.PI / 2]} raycast={() => null}>
+                  <coneGeometry args={[0.07, 0.12, 3]} />
+                  <meshBasicMaterial color="#ffffff" />
+                </mesh>
+                {(isDraggingThis || isHovered) && (
+                  <Html center position={[0, 0.3, 0]} className="pointer-events-none select-none" zIndexRange={[30, 0]}>
+                    <div className="whitespace-nowrap rounded bg-neutral-950/90 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-emerald-300 shadow">
+                      {isDraggingThis ? `${sizeAcross.toFixed(2)} m` : 'Drag to stretch'}
+                    </div>
+                  </Html>
+                )}
+              </group>
             );
           })}
 
@@ -1209,27 +1368,66 @@ export const FloorPlanEditor: React.FC = () => {
               onPointerDown={(e) => {
                 if (e.button !== 0) return;
                 e.stopPropagation();
+                roomDiscPressed.current = true;
                 setCanvasCursor('grabbing');
                 originalOutline.current = outline.map((pt) => [...pt]);
-                setDraggingRoomCenter({
+                flushSync(() => setDraggingRoomCenter({
                   startPoint: [e.point.x, e.point.z],
                   accumulatedDelta: [0, 0],
-                });
+                }));
                 setIsDragging(true);
                 if (sharedOrbitControlsRef.current) {
                   sharedOrbitControlsRef.current.enabled = false;
                 }
               }}
               onPointerUp={() => resetCanvasCursor()}
+              onClick={(e) => {
+                // A click without dragging selects the room itself (only if the press began on the disc,
+                // not on furniture standing over it)
+                if (e.delta > 4 || !roomDiscPressed.current) return;
+                e.stopPropagation();
+                useSceneStore.getState().clearSelection();
+                setSelectedWallIndex(null);
+                setSelectedVertexIndex(null);
+                useUiStore.getState().setRoomSelected(true);
+              }}
             >
               <cylinderGeometry args={[0.26, 0.26, 0.03, 24]} />
               <meshStandardMaterial
-                color="#6366f1"
-                emissive="#4338ca"
-                emissiveIntensity={draggingRoomCenter ? 0.8 : 0.3}
+                color={roomSelected ? '#f59e0b' : '#6366f1'}
+                emissive={roomSelected ? '#b45309' : '#4338ca'}
+                emissiveIntensity={draggingRoomCenter || roomSelected ? 0.8 : 0.3}
                 roughness={0.4}
               />
             </mesh>
+            {roomSelected && !draggingRoomCenter && (
+              <Html center position={[0, 0.5, 0]} className="select-none" zIndexRange={[60, 0]}>
+                <div
+                  data-testid="room-selected-panel"
+                  className="flex items-center gap-2 whitespace-nowrap rounded-full border border-neutral-700/80 bg-neutral-900/95 px-3 py-1.5 text-xs text-neutral-200 shadow-2xl backdrop-blur-md"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <span className="font-semibold text-white">{room.name}</span>
+                  <button
+                    type="button"
+                    data-testid="delete-room-btn"
+                    onClick={deleteActiveRoom}
+                    className="rounded-md px-2 py-0.5 font-medium text-red-400 hover:bg-red-500/15 hover:text-red-300"
+                    title="Delete room (Delete)"
+                  >
+                    Delete room
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => useUiStore.getState().setRoomSelected(false)}
+                    className="text-neutral-500 hover:text-white"
+                    aria-label="Deselect room"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </Html>
+            )}
             <Html center position={[0, 0.12, 0]} className="pointer-events-none select-none">
               <span className="text-white text-xs select-none pointer-events-none font-bold">
                 ✥
@@ -1251,13 +1449,13 @@ export const FloorPlanEditor: React.FC = () => {
                 setCanvasCursor('nwse-resize');
                 const curW = bounds.max[0] - bounds.min[0];
                 const curD = bounds.max[1] - bounds.min[1];
-                setDraggingRoomScale({
+                flushSync(() => setDraggingRoomScale({
                   startPoint: [e.point.x, e.point.z],
                   startWidth: curW,
                   startDepth: curD,
                   accumulatedWidth: curW,
                   accumulatedDepth: curD,
-                });
+                }));
                 setIsDragging(true);
                 if (sharedOrbitControlsRef.current) {
                   sharedOrbitControlsRef.current.enabled = false;
@@ -1423,23 +1621,6 @@ export const FloorPlanEditor: React.FC = () => {
             </React.Fragment>
           );
         })}
-
-        {/* Room Area Floor Badge */}
-        {showDimensions && (
-          <Html
-            center
-            position={[
-              (bounds.min[0] + bounds.max[0]) / 2,
-              0.02,
-              (bounds.min[1] + bounds.max[1]) / 2,
-            ]}
-            className="pointer-events-none select-none"
-          >
-            <div className="bg-neutral-950/75 backdrop-blur-sm border border-neutral-800 text-neutral-400 text-[11px] font-mono px-2 py-1 rounded shadow">
-              Area: <span className="font-bold text-neutral-100">{roomArea.toFixed(2)} m²</span>
-            </div>
-          </Html>
-        )}
       </group>
     </group>
   );

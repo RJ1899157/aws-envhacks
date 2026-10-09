@@ -79,7 +79,7 @@ describe('Toolbar, Inspector, and HUD Overlay Integration', () => {
       useUiStore.getState().toggleDimensions();
       expect(useUiStore.getState().showDimensions).toBe(false);
       useUiStore.getState().toggleCeiling();
-      expect(useUiStore.getState().showCeiling).toBe(true);
+      expect(useUiStore.getState().showCeiling).toBe(false);
     });
 
     it('executes New Room, Load Sample Room, Undo, Redo, and JSON Import/Export', () => {

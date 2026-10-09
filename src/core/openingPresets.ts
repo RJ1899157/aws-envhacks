@@ -23,7 +23,7 @@ export const OPENING_PRESETS: Record<OpeningSubType, OpeningPresetDef> = {
     width: 0.9,
     height: 2.1,
     sill: 0,
-    defaultRole: 'closed',
+    defaultRole: 'outlet',
     description: 'Standard residential single leaf entry door',
   },
   'double-door': {
@@ -33,7 +33,7 @@ export const OPENING_PRESETS: Record<OpeningSubType, OpeningPresetDef> = {
     width: 1.6,
     height: 2.1,
     sill: 0,
-    defaultRole: 'closed',
+    defaultRole: 'outlet',
     description: 'Wide double swinging French interior or exterior door',
   },
   'sliding-door': {
@@ -43,18 +43,48 @@ export const OPENING_PRESETS: Record<OpeningSubType, OpeningPresetDef> = {
     width: 1.8,
     height: 2.1,
     sill: 0,
-    defaultRole: 'closed',
+    defaultRole: 'outlet',
     description: 'Bypass patio or balcony glass sliding door',
   },
   'archway': {
     subType: 'archway',
     type: 'door',
     label: 'Archway',
-    width: 1.0,
+    width: 1.2,
     height: 2.2,
     sill: 0,
     defaultRole: 'outlet',
-    description: 'Full-height open architectural pass-through archway',
+    description: 'Open doorway with no door',
+  },
+  'wide-archway': {
+    subType: 'wide-archway',
+    type: 'door',
+    label: 'Wide Archway',
+    width: 2.4,
+    height: 2.4,
+    sill: 0,
+    defaultRole: 'outlet',
+    description: 'Wide open passage between rooms (e.g. living into dining)',
+  },
+  'pass-through': {
+    subType: 'pass-through',
+    type: 'window',
+    label: 'Kitchen Pass-Through',
+    width: 1.8,
+    height: 1.2,
+    sill: 1.0,
+    defaultRole: 'outlet',
+    description: 'Counter-height opening between kitchen and dining/living',
+  },
+  'open-wall': {
+    subType: 'open-wall',
+    type: 'door',
+    label: 'Open Wall',
+    width: 1.0, // stretched to the whole wall when placed
+    height: 2.7,
+    sill: 0,
+    defaultRole: 'outlet',
+    description: 'Removes the entire wall for an open-plan layout',
   },
   'window': {
     subType: 'window',
@@ -98,6 +128,21 @@ export const OPENING_PRESETS: Record<OpeningSubType, OpeningPresetDef> = {
   },
 };
 
+/** Openings with nothing to close (no door leaf or glass): always fully open */
+export const PASSAGE_SUBTYPES: ReadonlySet<OpeningSubType> = new Set(['archway', 'wide-archway', 'pass-through', 'open-wall']);
+
+export function isPassage(subType: OpeningSubType | undefined): boolean {
+  return subType !== undefined && PASSAGE_SUBTYPES.has(subType);
+}
+
+/** An Open Wall spans the whole wall, floor to top, whatever its length. */
+export function fitOpeningToWall(opening: Opening, room: Room): Opening {
+  if (opening.subType !== 'open-wall') return opening;
+  const seg = wallSegment(room, opening.wallIndex);
+  const height = room.wallOverrides?.[opening.wallIndex]?.height ?? room.wallHeight;
+  return { ...opening, offset: 0, width: seg.len, height, sill: 0 };
+}
+
 /**
  * Creates an Opening object initialized from a preset
  */
@@ -108,6 +153,7 @@ export function createOpeningFromPreset(
   customId?: string
 ): Opening {
   const preset = OPENING_PRESETS[subType];
+  const passage = isPassage(subType);
   const id = customId ?? `op-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
   return {
     id,
@@ -119,7 +165,7 @@ export function createOpeningFromPreset(
     height: preset.height,
     sill: preset.sill,
     role: preset.defaultRole,
-    openFraction: preset.defaultRole === 'closed' ? 0 : 0.5,
+    openFraction: passage ? 1 : preset.defaultRole === 'closed' ? 0 : 0.5,
     flipHinge: false,
     flipSwing: false,
   };
@@ -370,5 +416,47 @@ export function resolveOpeningOverlapOnWall(
     finalOffset: clampedTarget,
     pushedOpenings: [],
     errorMessage: 'Openings cannot overlap on the same wall',
+  };
+}
+
+/**
+ * The opening preset a catalog asset creates, or null when the asset is not an opening (e.g. a
+ * wall-mounted AC or exhaust fan, which are objects hung on the wall, not holes in it).
+ */
+export function openingSubTypeFor(assetId: string): OpeningSubType | null {
+  if (assetId in OPENING_PRESETS) return assetId as OpeningSubType;
+  if (assetId === 'door') return 'single-door'; // legacy alias
+  return null;
+}
+
+/**
+ * Where a wall-mounted object (AC, exhaust fan, curtains) hangs when the cursor is at (x, z):
+ * on the nearest wall's inner face, fully along that wall, facing into the room.
+ */
+export function placeOnNearestWall(
+  x: number,
+  z: number,
+  room: Room,
+  size: readonly [number, number, number],
+  gridStep?: number
+): { position: [number, number, number]; rotY: number; wallIndex: number } | null {
+  const nearest = findNearestWallForPoint(x, z, room);
+  if (!nearest) return null;
+  const { seg, wallIndex } = nearest;
+  const hw = size[0] / 2;
+  const hd = size[2] / 2;
+  let t = nearest.t;
+  if (gridStep) t = snap(t - hw, gridStep) + hw;
+  t = Math.max(hw, Math.min(seg.len - hw, t));
+  const inward: [number, number] = [-seg.normal[0], -seg.normal[1]];
+  return {
+    position: [
+      Number((seg.a[0] + t * seg.dir[0] + inward[0] * hd).toFixed(4)),
+      0,
+      Number((seg.a[1] + t * seg.dir[1] + inward[1] * hd).toFixed(4)),
+    ],
+    // Local +Z (the front) points into the room; the back sits against the wall
+    rotY: Number(Math.atan2(inward[0], inward[1]).toFixed(4)),
+    wallIndex,
   };
 }

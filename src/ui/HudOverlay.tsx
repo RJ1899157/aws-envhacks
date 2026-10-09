@@ -1,13 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import * as THREE from 'three';
-import {
-  MapPin,
-  Magnet,
-  AlertTriangle,
-  CheckCircle2,
-  X,
-  Undo2,
-} from 'lucide-react';
+import { MapPin, Magnet, AlertTriangle, CheckCircle2, X, Undo2 } from 'lucide-react';
 import { parseRoom } from '../core/parser';
 import { useSceneStore, useUiStore } from '../store';
 import { usePlacementIssuesStore } from '../store/placementIssuesStore';
@@ -35,6 +28,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
   const gridStep = useUiStore((state) => state.gridStep);
   const cursorCoords = useUiStore((state) => state.cursorCoords);
   const toastMessage = useUiStore((state) => state.toastMessage);
+  const toastUndoable = useUiStore((state) => state.toastUndoable);
   const setToastMessage = useUiStore((state) => state.setToastMessage);
 
   // Issues drawers
@@ -105,8 +99,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
 
   // Selection count label for tests
   const selectionLabel = useMemo(() => {
-    const objCount = selectedObjectIds.length > 0 ? selectedObjectIds.length : selectedObjectId ? 1 : 0;
-    const opCount = selectedOpeningIds.length > 0 ? selectedOpeningIds.length : selectedOpeningId ? 1 : 0;
+    const objCount =
+      selectedObjectIds.length > 0 ? selectedObjectIds.length : selectedObjectId ? 1 : 0;
+    const opCount =
+      selectedOpeningIds.length > 0 ? selectedOpeningIds.length : selectedOpeningId ? 1 : 0;
     if (objCount > 0 && opCount > 0) return `${objCount} obj, ${opCount} op`;
     if (objCount > 0) return `${objCount} object${objCount > 1 ? 's' : ''}`;
     if (opCount > 0) return `${opCount} opening${opCount > 1 ? 's' : ''}`;
@@ -128,6 +124,14 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
         return (
           <>
             <span className="text-white font-medium">Click / Drag</span> to place •{' '}
+            <kbd className="bg-white/10 px-1 py-0.2 rounded text-[10px]">R</kbd> rotate •{' '}
+            <kbd className="bg-white/10 px-1 py-0.2 rounded text-[10px]">Esc</kbd> cancel
+          </>
+        );
+      case 'room':
+        return (
+          <>
+            <span className="text-white font-medium">Click</span> to place room •{' '}
             <kbd className="bg-white/10 px-1 py-0.2 rounded text-[10px]">R</kbd> rotate •{' '}
             <kbd className="bg-white/10 px-1 py-0.2 rounded text-[10px]">Esc</kbd> cancel
           </>
@@ -162,7 +166,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
           className="bg-neutral-900/85 dark:bg-[#121826]/85 backdrop-blur-md px-2.5 py-1.5 rounded-[8px] border border-neutral-300/20 dark:border-white/10 shadow-lg flex items-center gap-2.5 text-xs text-neutral-300"
         >
           {/* Cursor Coords */}
-          <div data-testid="hud-cursor-coords" className="flex items-center gap-1 font-mono text-[11px]">
+          <div
+            data-testid="hud-cursor-coords"
+            className="flex items-center gap-1 font-mono text-[11px]"
+          >
             <MapPin size={13} className="text-indigo-400" />
             <span>
               {cursorCoords ? (
@@ -185,10 +192,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
               onClick={toggleSnap}
               className="flex items-center gap-1 text-[11px] font-mono hover:text-white transition-colors cursor-pointer"
             >
-              <Magnet
-                size={13}
-                className={snapEnabled ? 'text-emerald-400' : 'text-neutral-500'}
-              />
+              <Magnet size={13} className={snapEnabled ? 'text-emerald-400' : 'text-neutral-500'} />
               <span className={snapEnabled ? 'text-emerald-400' : 'text-neutral-500'}>
                 {snapEnabled ? `${gridStep}m` : 'Off'}
               </span>
@@ -217,7 +221,9 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
                 title="Click to view issues"
               >
                 <AlertTriangle size={12} className="shrink-0" />
-                <span>{totalIssuesCount} Issue{totalIssuesCount !== 1 ? 's' : ''}</span>
+                <span>
+                  {totalIssuesCount} Issue{totalIssuesCount !== 1 ? 's' : ''}
+                </span>
               </button>
             </>
           ) : (
@@ -261,17 +267,19 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
             className="bg-neutral-900/95 dark:bg-[#121826]/95 border border-indigo-500/40 text-neutral-200 px-3.5 py-2 rounded-[8px] shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs font-medium animate-in fade-in slide-in-from-bottom-2 duration-150"
           >
             <span>{toastMessage}</span>
-            <button
-              type="button"
-              onClick={() => {
-                useSceneStore.temporal.getState().undo();
-                setToastMessage(null);
-              }}
-              className="px-2 py-0.5 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 font-semibold text-[11px] border border-indigo-500/30 transition-colors flex items-center gap-1"
-            >
-              <Undo2 size={12} />
-              <span>Undo</span>
-            </button>
+            {toastUndoable && (
+              <button
+                type="button"
+                onClick={() => {
+                  useSceneStore.temporal.getState().undo();
+                  setToastMessage(null);
+                }}
+                className="px-2 py-0.5 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 font-semibold text-[11px] border border-indigo-500/30 transition-colors flex items-center gap-1"
+              >
+                <Undo2 size={12} />
+                <span>Undo</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setToastMessage(null)}
@@ -290,7 +298,9 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
           className="pointer-events-auto fixed bottom-14 left-3 z-[30] w-80 max-h-64 bg-neutral-900/95 dark:bg-[#121826]/95 backdrop-blur-md border border-white/10 rounded-[10px] shadow-2xl p-3 flex flex-col gap-2 overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
         >
           <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
-            <span className="font-semibold text-white text-xs">Validation Issues ({issues.length})</span>
+            <span className="font-semibold text-white text-xs">
+              Validation Issues ({issues.length})
+            </span>
             <button
               type="button"
               data-testid="close-issues-btn"
@@ -314,7 +324,8 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({ className = '' }) => {
                   onClick={() => {
                     if (iss.ref) {
                       if (room.objects.some((o) => o.id === iss.ref)) selectObject(iss.ref);
-                      else if (room.openings.some((op) => op.id === iss.ref)) selectOpening(iss.ref);
+                      else if (room.openings.some((op) => op.id === iss.ref))
+                        selectOpening(iss.ref);
                     }
                   }}
                   className={`text-left p-2 rounded-[6px] border text-xs flex flex-col gap-0.5 ${

@@ -5,6 +5,7 @@ import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
+import { roomGridOrigin } from '../core/rooms';
 import { computeSmartSnap, type AlignmentGuide } from '../core/smartSnap';
 import { degToRad, radToDeg, snap } from '../core/units';
 import type { SceneObject, Vec3 } from '../core/schema';
@@ -478,6 +479,7 @@ export const DirectObjectManipulator: React.FC = () => {
           room,
           objectId: dragTargetRef.current.objectId,
           gridStep,
+          gridOrigin: roomGridOrigin(room),
           snapEnabled,
           ctrlKey: evt.ctrlKey,
           shiftKey: evt.shiftKey,
@@ -518,6 +520,7 @@ export const DirectObjectManipulator: React.FC = () => {
             room,
             objectId: dragTargetRef.current.objectId,
             gridStep,
+            gridOrigin: roomGridOrigin(room),
             snapEnabled,
             autoOrientToWall,
           });
@@ -546,6 +549,7 @@ export const DirectObjectManipulator: React.FC = () => {
               room,
               objectId: dragTargetRef.current.objectId,
               gridStep,
+              gridOrigin: roomGridOrigin(room),
               snapEnabled,
               autoOrientToWall,
             });

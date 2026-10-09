@@ -8,9 +8,17 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Home,
+  Armchair,
   type LucideIcon,
 } from 'lucide-react';
 import { CATALOG_ASSETS, type AssetDef } from '../core/catalog';
+import { ROOM_TYPES, ROOM_TYPE_ORDER, roomGridOrigin, roomTypeOf } from '../core/rooms';
+import { presetSummary } from '../core/roomPresets';
+import { openingSubTypeFor } from '../core/openingPresets';
+import type { RoomType } from '../core/schema';
+import { polygonBounds } from '../core/parser';
+import { computeSmartSnap } from '../core/smartSnap';
 import { useUiStore } from '../store/uiStore';
 import { useSceneStore } from '../store/sceneStore';
 import { useAssetLibraryStore, useLibraryPrefsStore } from '../store/assetLibraryStore';
@@ -36,6 +44,7 @@ const CATEGORIES = [
   'Office',
   'Appliances and Airflow',
   'Openings',
+  'Walls',
   'Decor',
 ];
 
@@ -47,7 +56,12 @@ const Turntable = ({ asset }: { asset: AssetDef }) => {
   });
   return (
     <group ref={ref} position={[0, -asset.size[1] / 2, 0]}>
-      <RoundedBoxPlaceholder id={asset.id} size={asset.size} color={asset.color} role={asset.role} />
+      <RoundedBoxPlaceholder
+        id={asset.id}
+        size={asset.size}
+        color={asset.color}
+        role={asset.role}
+      />
       <ambientLight intensity={0.6} />
       <directionalLight position={[5, 10, 5]} intensity={1.5} />
     </group>
@@ -120,12 +134,43 @@ export const AssetLibrary: React.FC = () => {
   const [activeCat, setActiveCat] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [panel, setPanel] = useState<'assets' | 'rooms'>('assets');
+  const pendingRoomType = useUiStore((state) => state.pendingRoomType);
+
+  // "+ Add room" elsewhere in the UI opens this panel on the Rooms side
+  useEffect(() => {
+    const open = () => {
+      setPanel('rooms');
+      setIsCollapsed(false);
+    };
+    window.addEventListener('airforce:open-rooms', open);
+    return () => window.removeEventListener('airforce:open-rooms', open);
+  }, []);
+
+  // Like placing an asset: pick a spot for the new room in the plan view
+  const startRoomPlacement = (type: RoomType) => {
+    const ui = useUiStore.getState();
+    ui.setSelectedWallIndex(null);
+    ui.setActiveAssetId(null);
+    ui.setPendingRoomType(type);
+    ui.setToolMode('room');
+  };
   const [hoveredAsset, setHoveredAsset] = useState<AssetDef | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; asset: AssetDef } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; asset: AssetDef } | null>(
+    null
+  );
 
   const activeAssetId = useUiStore((state) => state.activeAssetId);
   const setActiveAssetId = useUiStore((state) => state.setActiveAssetId);
   const setToolMode = useUiStore((state) => state.setToolMode);
+
+  // Open on the active room's own category (Bathroom -> toilet, sink...) whenever the room changes
+  const activeRoomId = useSceneStore((state) => state.room.id);
+  const roomCategory = useSceneStore((state) => ROOM_TYPES[roomTypeOf(state.room)].assetCategory);
+  useEffect(() => {
+    setActiveTab('categories');
+    setActiveCat(roomCategory);
+  }, [activeRoomId, roomCategory]);
 
   useEffect(() => {
     loadAssets();
@@ -143,7 +188,7 @@ export const AssetLibrary: React.FC = () => {
           color: '#4ade80',
           size: a.dimensions,
           thumbnailDataUrl: a.thumbnailDataUrl,
-        } as AssetDef)
+        }) as AssetDef
     );
     return [...CATALOG_ASSETS, ...prefs.customVariants, ...custom];
   }, [myAssets, prefs.customVariants]);
@@ -152,7 +197,9 @@ export const AssetLibrary: React.FC = () => {
     let list = allAssets;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      list = list.filter((a) => a.label.toLowerCase().includes(q) || a.id.toLowerCase().includes(q));
+      list = list.filter(
+        (a) => a.label.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)
+      );
     } else {
       if (activeTab === 'favorites') list = list.filter((a) => prefs.favorites.includes(a.id));
       else if (activeTab === 'recent')
@@ -161,9 +208,23 @@ export const AssetLibrary: React.FC = () => {
           .filter(Boolean) as AssetDef[];
       else if (activeTab === 'my-assets') list = list.filter((a) => a.category === 'my-assets');
       else if (activeCat !== 'All') list = list.filter((a) => a.category === activeCat);
+      // In "All", list the active room's own assets first
+      else if (roomCategory !== 'All')
+        list = [
+          ...list.filter((a) => a.category === roomCategory),
+          ...list.filter((a) => a.category !== roomCategory),
+        ];
     }
     return list;
-  }, [allAssets, searchQuery, activeTab, activeCat, prefs.favorites, prefs.recentlyUsed]);
+  }, [
+    allAssets,
+    searchQuery,
+    activeTab,
+    activeCat,
+    roomCategory,
+    prefs.favorites,
+    prefs.recentlyUsed,
+  ]);
 
   const handleSelectAsset = (asset: AssetDef) => {
     prefs.addRecentlyUsed(asset.id);
@@ -172,23 +233,45 @@ export const AssetLibrary: React.FC = () => {
       setToolMode('select');
     } else {
       setActiveAssetId(asset.id);
-      setToolMode(asset.wallMounted ? 'opening' : 'place');
+      setToolMode(openingSubTypeFor(asset.id) ? 'opening' : 'place');
     }
   };
 
   const handleDoubleClickPlace = (asset: AssetDef) => {
     prefs.addRecentlyUsed(asset.id);
+    // Doors, windows and wall appliances need a wall: start placing instead of dropping mid-room
+    if (asset.wallMounted) {
+      setActiveAssetId(asset.id);
+      setToolMode(openingSubTypeFor(asset.id) ? 'opening' : 'place');
+      return;
+    }
+    // Drop it in the middle of the active room (not the world origin, which may be another room)
+    const { room, snapEnabled, gridStep } = {
+      ...useSceneStore.getState(),
+      ...useUiStore.getState(),
+    };
+    const b = polygonBounds(room.outline);
+    const { snappedPos } = computeSmartSnap({
+      candidatePos: [(b.min[0] + b.max[0]) / 2, 0, (b.min[1] + b.max[1]) / 2],
+      candidateRotY: 0,
+      objectSize: asset.size,
+      startPos: [0, 0, 0],
+      room,
+      gridStep,
+      gridOrigin: roomGridOrigin(room),
+      snapEnabled,
+    });
     const centerObj = {
       id: `asset-${Date.now()}`,
       assetId: asset.id,
       name: asset.label,
-      position: [0, asset.elevation || 0, 0] as [number, number, number],
+      position: [snappedPos[0], 0, snappedPos[2]] as [number, number, number],
       rotation: [0, 0, 0] as [number, number, number],
       size: asset.size,
       role: asset.role,
       color: asset.color,
       elevation: asset.elevation || 0,
-      wallMounted: asset.wallMounted || false,
+      wallMounted: false,
     };
     useSceneStore.getState().addObject(centerObj);
   };
@@ -199,7 +282,7 @@ export const AssetLibrary: React.FC = () => {
     e.dataTransfer.setData('application/json', JSON.stringify(asset));
     e.dataTransfer.effectAllowed = 'copy';
     setActiveAssetId(asset.id);
-    setToolMode(asset.wallMounted ? 'opening' : 'place');
+    setToolMode(openingSubTypeFor(asset.id) ? 'opening' : 'place');
   };
 
   return (
@@ -207,9 +290,7 @@ export const AssetLibrary: React.FC = () => {
       <aside
         data-testid="asset-library-sidebar"
         className={`pointer-events-auto fixed top-14 left-3 z-[15] flex flex-col bg-neutral-900/85 dark:bg-[#121826]/85 backdrop-blur-md border border-neutral-300/20 dark:border-white/10 rounded-[10px] shadow-2xl transition-all duration-150 text-neutral-200 select-none overflow-hidden ${
-          isCollapsed
-            ? 'w-12 h-auto py-2.5 items-center'
-            : 'w-[280px] max-h-[calc(100vh-4.5rem)]'
+          isCollapsed ? 'w-12 h-auto py-2.5 items-center' : 'w-[280px] max-h-[calc(100vh-4.5rem)]'
         }`}
       >
         {/* Rail Mode (Collapsed: 48px width) */}
@@ -228,6 +309,20 @@ export const AssetLibrary: React.FC = () => {
 
             <div className="w-6 h-px bg-white/10" />
 
+            <Tooltip label="Add a room" side="right">
+              <button
+                type="button"
+                onClick={() => {
+                  setPanel('rooms');
+                  setIsCollapsed(false);
+                }}
+                className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-colors text-neutral-400 hover:text-white hover:bg-white/10"
+                aria-label="Rooms"
+              >
+                <Home size={18} strokeWidth={1.75} />
+              </button>
+            </Tooltip>
+
             {TABS.map((t) => {
               const Icon = t.icon;
               return (
@@ -235,6 +330,7 @@ export const AssetLibrary: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
+                      setPanel('assets');
                       setActiveTab(t.id);
                       setIsCollapsed(false);
                     }}
@@ -255,8 +351,33 @@ export const AssetLibrary: React.FC = () => {
           <>
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2.5 border-b border-neutral-200/10 dark:border-white/10">
-              <div className="flex items-center gap-1.5 font-semibold text-white text-xs tracking-wide">
-                <span>Asset Library</span>
+              <div
+                className="flex items-center rounded-[7px] bg-black/30 p-0.5 text-xs font-medium"
+                role="tablist"
+              >
+                {(
+                  [
+                    ['assets', 'Assets', Armchair],
+                    ['rooms', 'Rooms', Home],
+                  ] as const
+                ).map(([id, label, Icon]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={panel === id}
+                    data-testid={`library-panel-${id}`}
+                    onClick={() => setPanel(id)}
+                    className={`flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 transition-colors ${
+                      panel === id
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    <Icon size={13} strokeWidth={1.9} />
+                    {label}
+                  </button>
+                ))}
               </div>
               <Tooltip label="Collapse to rail">
                 <button
@@ -270,144 +391,195 @@ export const AssetLibrary: React.FC = () => {
               </Tooltip>
             </div>
 
-            {/* Search Input */}
-            <div className="px-2.5 pt-2.5 pb-2 border-b border-neutral-200/10 dark:border-white/10 relative">
-              <div className="relative flex items-center">
-                <Search size={14} strokeWidth={1.75} className="absolute left-2.5 text-neutral-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search assets..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-black/20 dark:bg-white/5 border border-neutral-300/30 dark:border-white/10 rounded-[6px] pl-8 pr-7 py-1 text-xs text-white placeholder-neutral-500 outline-none focus:border-indigo-500"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2 text-neutral-400 hover:text-white"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Tab Selector */}
-            {!searchQuery && (
-              <div className="flex bg-black/20 dark:bg-white/5 border-b border-neutral-200/10 dark:border-white/10 p-1 gap-1">
-                {TABS.map((t) => {
-                  const Icon = t.icon;
-                  const isActive = activeTab === t.id;
+            {panel === 'rooms' ? (
+              <div
+                className="flex-1 overflow-y-auto p-2 space-y-1.5 max-h-[calc(100vh-9rem)]"
+                data-testid="rooms-panel"
+              >
+                <p className="px-1 pb-1 text-[11px] text-neutral-400">
+                  Pick a room, then click in the plan to place it.{' '}
+                  <kbd className="rounded bg-white/10 px-1 text-[10px]">R</kbd> rotates.
+                </p>
+                {ROOM_TYPE_ORDER.map((type) => {
+                  const info = ROOM_TYPES[type];
+                  const isPending = pendingRoomType === type;
                   return (
-                    <Tooltip key={t.id} label={t.label}>
-                      <button
-                        type="button"
-                        aria-label={t.label}
-                        onClick={() => setActiveTab(t.id)}
-                        className={`flex-1 py-1 rounded-[4px] flex items-center justify-center transition-colors ${
-                          isActive
-                            ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                            : 'text-neutral-400 hover:text-white hover:bg-white/5'
-                        }`}
-                      >
-                        <Icon size={14} strokeWidth={1.75} />
-                      </button>
-                    </Tooltip>
+                    <button
+                      key={type}
+                      type="button"
+                      data-testid={`room-card-${type}`}
+                      onClick={() => startRoomPlacement(type)}
+                      className={`w-full rounded-[8px] border p-2.5 text-left transition-colors ${
+                        isPending
+                          ? 'border-indigo-500 bg-indigo-500/15'
+                          : 'border-white/10 bg-black/20 hover:border-indigo-500/60 hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs font-semibold text-white">{info.label}</span>
+                        <span className="font-mono text-[10px] text-neutral-500">
+                          {info.size[0]} × {info.size[1]} m
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[11px] leading-snug text-neutral-400">
+                        {presetSummary(type)}
+                      </div>
+                    </button>
                   );
                 })}
               </div>
-            )}
-
-            {/* Category Pills */}
-            {!searchQuery && activeTab === 'categories' && (
-              <div className="flex flex-wrap gap-1 p-2 border-b border-neutral-200/10 dark:border-white/10 max-h-24 overflow-y-auto">
-                {CATEGORIES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setActiveCat(c)}
-                    className={`px-2 py-0.5 rounded-[4px] text-[10px] font-medium transition-colors ${
-                      activeCat === c
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-black/20 dark:bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Assets List */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-1.5 max-h-[50vh]">
-              {filtered.length === 0 ? (
-                <div className="py-6 text-center text-xs text-neutral-400">No assets found</div>
-              ) : (
-                filtered.map((asset) => (
-                  <div
-                    key={asset.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, asset)}
-                    onClick={() => handleSelectAsset(asset)}
-                    onDoubleClick={() => handleDoubleClickPlace(asset)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({ x: e.clientX, y: e.clientY, asset });
-                    }}
-                    onMouseEnter={() => setHoveredAsset(asset)}
-                    onMouseLeave={() => setHoveredAsset(null)}
-                    className={`group relative flex items-center gap-2.5 p-2 rounded-[8px] cursor-grab active:cursor-grabbing border transition-colors ${
-                      activeAssetId === asset.id
-                        ? 'bg-indigo-950/60 border-indigo-500'
-                        : 'bg-black/10 dark:bg-white/5 border-neutral-300/20 dark:border-white/5 hover:bg-black/20 dark:hover:bg-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {/* Visual Thumbnail */}
-                    <div className="w-8 h-8 rounded-[6px] bg-black/40 border border-white/10 flex items-center justify-center shrink-0">
-                      <div
-                        className="w-4 h-4 rounded-sm shadow-sm"
-                        style={{
-                          backgroundColor: asset.color,
-                          transform: 'rotate(-15deg)',
-                          border: '1px solid rgba(255,255,255,0.2)',
-                        }}
-                      />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-xs text-white truncate">{asset.label}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            prefs.favorites.includes(asset.id)
-                              ? prefs.removeFavorite(asset.id)
-                              : prefs.addFavorite(asset.id);
-                          }}
-                          className="text-neutral-400 hover:text-amber-400 p-0.5"
-                          title="Toggle favorite"
-                        >
-                          <Star
-                            size={12}
-                            className={prefs.favorites.includes(asset.id) ? 'text-amber-400 fill-amber-400' : ''}
-                          />
-                        </button>
-                      </div>
-                      <div className="text-[10px] text-neutral-400 font-mono mt-0.5">
-                        {asset.size.map((s) => s.toFixed(2)).join(' × ')} m
-                      </div>
-                    </div>
+            ) : (
+              <>
+                {/* Search Input */}
+                <div className="px-2.5 pt-2.5 pb-2 border-b border-neutral-200/10 dark:border-white/10 relative">
+                  <div className="relative flex items-center">
+                    <Search
+                      size={14}
+                      strokeWidth={1.75}
+                      className="absolute left-2.5 text-neutral-400 pointer-events-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search assets..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-black/20 dark:bg-white/5 border border-neutral-300/30 dark:border-white/10 rounded-[6px] pl-8 pr-7 py-1 text-xs text-white placeholder-neutral-500 outline-none focus:border-indigo-500"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-2 text-neutral-400 hover:text-white"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
                   </div>
-                ))
-              )}
-            </div>
+                </div>
 
-            <div className="px-3 py-1.5 border-t border-neutral-200/10 dark:border-white/10 text-[10px] text-neutral-500 flex justify-between items-center">
-              <span>Right-click to edit</span>
-              <span>Double-click to add</span>
-            </div>
+                {/* Tab Selector */}
+                {!searchQuery && (
+                  <div className="flex bg-black/20 dark:bg-white/5 border-b border-neutral-200/10 dark:border-white/10 p-1 gap-1">
+                    {TABS.map((t) => {
+                      const Icon = t.icon;
+                      const isActive = activeTab === t.id;
+                      return (
+                        <Tooltip key={t.id} label={t.label}>
+                          <button
+                            type="button"
+                            aria-label={t.label}
+                            onClick={() => setActiveTab(t.id)}
+                            className={`flex-1 py-1 rounded-[4px] flex items-center justify-center transition-colors ${
+                              isActive
+                                ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                                : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                            }`}
+                          >
+                            <Icon size={14} strokeWidth={1.75} />
+                          </button>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Category Pills */}
+                {!searchQuery && activeTab === 'categories' && (
+                  <div className="flex flex-wrap gap-1 p-2 border-b border-neutral-200/10 dark:border-white/10 max-h-24 overflow-y-auto">
+                    {CATEGORIES.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setActiveCat(c)}
+                        className={`px-2 py-0.5 rounded-[4px] text-[10px] font-medium transition-colors ${
+                          activeCat === c
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-black/20 dark:bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Assets List */}
+                <div className="flex-1 overflow-y-auto p-2 space-y-1.5 max-h-[50vh]">
+                  {filtered.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-neutral-400">No assets found</div>
+                  ) : (
+                    filtered.map((asset) => (
+                      <div
+                        key={asset.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, asset)}
+                        onClick={() => handleSelectAsset(asset)}
+                        onDoubleClick={() => handleDoubleClickPlace(asset)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({ x: e.clientX, y: e.clientY, asset });
+                        }}
+                        onMouseEnter={() => setHoveredAsset(asset)}
+                        onMouseLeave={() => setHoveredAsset(null)}
+                        className={`group relative flex items-center gap-2.5 p-2 rounded-[8px] cursor-grab active:cursor-grabbing border transition-colors ${
+                          activeAssetId === asset.id
+                            ? 'bg-indigo-950/60 border-indigo-500'
+                            : 'bg-black/10 dark:bg-white/5 border-neutral-300/20 dark:border-white/5 hover:bg-black/20 dark:hover:bg-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        {/* Visual Thumbnail */}
+                        <div className="w-8 h-8 rounded-[6px] bg-black/40 border border-white/10 flex items-center justify-center shrink-0">
+                          <div
+                            className="w-4 h-4 rounded-sm shadow-sm"
+                            style={{
+                              backgroundColor: asset.color,
+                              transform: 'rotate(-15deg)',
+                              border: '1px solid rgba(255,255,255,0.2)',
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-xs text-white truncate">
+                              {asset.label}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                prefs.favorites.includes(asset.id)
+                                  ? prefs.removeFavorite(asset.id)
+                                  : prefs.addFavorite(asset.id);
+                              }}
+                              className="text-neutral-400 hover:text-amber-400 p-0.5"
+                              title="Toggle favorite"
+                            >
+                              <Star
+                                size={12}
+                                className={
+                                  prefs.favorites.includes(asset.id)
+                                    ? 'text-amber-400 fill-amber-400'
+                                    : ''
+                                }
+                              />
+                            </button>
+                          </div>
+                          <div className="text-[10px] text-neutral-400 font-mono mt-0.5">
+                            {asset.size.map((s) => s.toFixed(2)).join(' × ')} m
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="px-3 py-1.5 border-t border-neutral-200/10 dark:border-white/10 text-[10px] text-neutral-500 flex justify-between items-center">
+                  <span>Right-click to edit</span>
+                  <span>Double-click to add</span>
+                </div>
+              </>
+            )}
           </>
         )}
       </aside>

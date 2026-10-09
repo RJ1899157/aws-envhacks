@@ -8,6 +8,8 @@ import { degToRad, snap } from '../core/units';
 import type { Vec3 } from '../core/schema';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
+import { copySelection, cutSelection, pasteClipboard } from '../store/clipboard';
+import { rotateSelection } from '../store/selectionActions';
 import { sharedOrbitControlsRef } from './Canvas';
 
 interface DragStartObjectState {
@@ -181,6 +183,27 @@ export const SelectionGizmo: React.FC = () => {
         return;
       }
 
+      // Copy / Cut / Paste (Ctrl or Cmd + C / X / V)
+      if (isCtrlOrCmd && !e.shiftKey && !e.altKey && ['c', 'x', 'v'].includes(key.toLowerCase())) {
+        const toast = useUiStore.getState().setToastMessage;
+        const plural = (n: number) => `${n} item${n === 1 ? '' : 's'}`;
+        const k = key.toLowerCase();
+        if (k === 'v') {
+          const n = pasteClipboard(useUiStore.getState().cursorCoords);
+          if (n > 0) {
+            e.preventDefault();
+            toast(`Pasted ${plural(n)}`, true);
+          }
+        } else {
+          const n = k === 'c' ? copySelection() : cutSelection();
+          if (n > 0) {
+            e.preventDefault();
+            toast(`${k === 'c' ? 'Copied' : 'Cut'} ${plural(n)}`, k === 'x');
+          }
+        }
+        return;
+      }
+
       // 2. Select All (Ctrl+A / Cmd+A)
       if (isCtrlOrCmd && (key === 'a' || key === 'A')) {
         e.preventDefault();
@@ -236,11 +259,16 @@ export const SelectionGizmo: React.FC = () => {
         return;
       }
 
-      // 8. R: Rotate mode
-      if (key === 'r' || key === 'R') {
+      // 8. R: rotate the selection 90° (Shift+R the other way). While placing, R rotates the
+      // placement preview instead (handled by the placement controllers).
+      if ((key === 'r' || key === 'R') && !isCtrlOrCmd && toolMode !== 'place' && toolMode !== 'opening' && toolMode !== 'room') {
         e.preventDefault();
-        setToolMode('select');
-        setTransformMode('rotate');
+        if (useSceneStore.getState().isDragging) return; // mid-drag, R turns in 15° steps instead
+        if (rotateSelection(e.shiftKey ? -Math.PI / 2 : Math.PI / 2) === 0) {
+          // Nothing to turn: keep the old behaviour of switching the precision gizmo to rotate
+          setToolMode('select');
+          setTransformMode('rotate');
+        }
         return;
       }
 

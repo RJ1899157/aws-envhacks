@@ -48,6 +48,9 @@ export const OpeningSubTypeSchema = z.enum([
   'double-door',
   'sliding-door',
   'archway',
+  'wide-archway',
+  'pass-through',
+  'open-wall',
   'window',
   'wide-window',
   'french-window',
@@ -135,11 +138,16 @@ export const WallOverrideSchema = z.object({
 });
 export type WallOverride = z.infer<typeof WallOverrideSchema>;
 
+export const RoomTypeSchema = z.enum(['basic', 'bedroom', 'living', 'kitchen', 'dining', 'bathroom']);
+export type RoomType = z.infer<typeof RoomTypeSchema>;
+
 /**
  * Complete Room specification for 3D modeling and IAQ simulation
  */
 export const RoomSchema = z.object({
   version: z.literal(1).default(1),
+  id: z.string().min(1).optional(),
+  type: RoomTypeSchema.optional(),
   name: z.string().min(1).default('Default Room'),
   wallHeight: z
     .number()

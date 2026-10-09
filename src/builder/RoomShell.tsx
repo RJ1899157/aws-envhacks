@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { wallQuaternion } from './wallRotation';
 import { wallSegment } from '../core/parser';
-import type { Opening, Vec2 } from '../core/schema';
+import type { Opening, Room, Vec2 } from '../core/schema';
+import { sharedWallOpenings, type SharedWallOpening } from '../core/rooms';
 import { computeMiterCorner } from '../core/wallOperations';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore, type ViewMode } from '../store/uiStore';
@@ -29,6 +31,11 @@ export interface WallPiece {
  * 3. Lintel piece above the opening (if opening doesn't touch the ceiling).
  * 4. Full-height solid wall after the last opening.
  */
+function isPlacingAsset(): boolean {
+  const { toolMode } = useUiStore.getState();
+  return toolMode === 'place' || toolMode === 'opening';
+}
+
 function round6(val: number): number {
   return Number(val.toFixed(6));
 }
@@ -148,6 +155,11 @@ interface WallSegmentMeshProps {
   view: ViewMode;
   wallOpacityMode: WallOpacityMode;
   wallMaterialProps: ReturnType<typeof getWallMaterialProps>;
+  /** Openings from a neighbouring room on this shared wall: cut the hole, but render no door */
+  sharedOpenings?: readonly SharedWallOpening[];
+  /** False for rooms that aren't active: no selection or dragging, a click activates the room */
+  interactive?: boolean;
+  onActivateRoom?: () => void;
   onSelectWall?: (index: number) => void;
   onHoverWall?: (index: number | null) => void;
 }
@@ -251,7 +263,7 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
     if (!cornerPos || !normalOut) return;
 
     if (view === '2d') {
-      cornerMaterial.opacity = THREE.MathUtils.lerp(cornerMaterial.opacity, 0.85, delta * 10);
+      cornerMaterial.opacity = THREE.MathUtils.lerp(cornerMaterial.opacity, 0.85, Math.min(1, delta * 10));
       cornerMaterial.depthWrite = true;
     } else {
       const toCamX = camera.position.x - cornerPos.x;
@@ -274,7 +286,7 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
         cornerMaterial.opacity = THREE.MathUtils.lerp(
           cornerMaterial.opacity,
           targetOpacity,
-          delta * 8
+          Math.min(1, delta * 8)
         );
         cornerMaterial.depthWrite = cornerMaterial.opacity > 0.45;
       }
@@ -313,6 +325,9 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
     view,
     wallOpacityMode,
     wallMaterialProps,
+    sharedOpenings,
+    interactive = true,
+    onActivateRoom,
     onSelectWall,
     onHoverWall,
   }) => {
@@ -349,15 +364,10 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
     const wallBoxes = useMemo(() => {
       if (!segment) return [];
 
-      const pieces = computeWallPieces(segment.len, wallHeight, wallOpenings);
+      const pieces = computeWallPieces(segment.len, wallHeight, [...wallOpenings, ...(sharedOpenings ?? [])]);
       const thickness = wallThickness;
 
-      // Basis quaternion for the wall orientation
-      const xAxis = new THREE.Vector3(segment.dir[0], 0, segment.dir[1]).normalize();
-      const yAxis = new THREE.Vector3(0, 1, 0);
-      const zAxis = new THREE.Vector3(segment.normal[0], 0, segment.normal[1]).normalize();
-      const rotMatrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
-      const quaternion = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+      const quaternion = wallQuaternion(segment.dir);
 
       return pieces.map((piece) => {
         const uMid = (piece.uStart + piece.uEnd) / 2;
@@ -375,7 +385,7 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
           quaternion,
         };
       });
-    }, [segment, wallHeight, wallThickness, wallOpenings, wallIndex]);
+    }, [segment, wallHeight, wallThickness, wallOpenings, sharedOpenings, wallIndex]);
 
     // Wall center point on floor for camera orientation tests
     const wallCenter = useMemo(() => {
@@ -396,7 +406,7 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
 
       if (view === '2d') {
         // In 2D top-down mode, keep walls crisp and solid
-        wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, 0.85, delta * 10);
+        wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, 0.85, Math.min(1, delta * 10));
         wallMaterial.depthWrite = true;
       } else {
         // Vector from wall center to camera
@@ -427,28 +437,42 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
           wallMaterial.opacity = THREE.MathUtils.lerp(
             wallMaterial.opacity,
             targetOpacity,
-            delta * 8
+            Math.min(1, delta * 8)
           );
           wallMaterial.depthWrite = wallMaterial.opacity > 0.45;
         }
       }
     });
 
-    if (!segment || wallBoxes.length === 0) return null;
+    // A fully opened wall has no boxes but still renders its openings (e.g. an Open Wall threshold)
+    if (!segment || (wallBoxes.length === 0 && wallOpenings.length === 0)) return null;
 
     return (
       <group
         name={`wall-segment-${wallIndex}`}
         userData={{ isExportable: true, exportType: 'wall' }}
         onPointerDown={(e) => {
+          // A wall faded out for the camera lets clicks through to the furniture behind it
+          if (isPlacingAsset() || wallMaterial.opacity < 0.5) return;
+          if (!interactive) {
+            e.stopPropagation();
+            return;
+          }
           if (e.button === 0) {
             e.stopPropagation();
+            useSceneStore.getState().clearSelection();
             onSelectWall?.(wallIndex);
           }
         }}
         onPointerOver={(e) => {
+          if (!interactive || isPlacingAsset() || wallMaterial.opacity < 0.5) return;
           e.stopPropagation();
           onHoverWall?.(wallIndex);
+        }}
+        onClick={(e) => {
+          if (interactive || isPlacingAsset() || wallMaterial.opacity < 0.5 || e.delta > 4) return;
+          e.stopPropagation();
+          onActivateRoom?.();
         }}
         onPointerOut={() => {
           onHoverWall?.(null);
@@ -474,6 +498,7 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
             opening={opening}
             segment={segment}
             wallThickness={wallThickness}
+            interactive={interactive}
           />
         ))}
       </group>
@@ -491,6 +516,9 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
       prev.isHovered !== next.isHovered ||
       prev.view !== next.view ||
       prev.outline !== next.outline ||
+      prev.sharedOpenings !== next.sharedOpenings ||
+      prev.interactive !== next.interactive ||
+      prev.onActivateRoom !== next.onActivateRoom ||
       prev.wallOpenings.length !== next.wallOpenings.length
     ) {
       return false;
@@ -516,6 +544,11 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
 
 export interface RoomShellProps {
   className?: string;
+  /** Room to draw; defaults to the active room from the store */
+  room?: Room;
+  /** False for a non-active room: drawn read-only, a click on it calls onActivate */
+  interactive?: boolean;
+  onActivate?: () => void;
 }
 
 /**
@@ -524,15 +557,29 @@ export interface RoomShellProps {
  * - Extruded wall segments with CSG-free opening cutouts and camera-facing fade
  * - Optional ceiling mesh toggled via uiStore
  */
-export const RoomShell: React.FC<RoomShellProps> = () => {
-  const outline = useSceneStore((state) => state.room.outline);
-  const wallHeight = useSceneStore((state) => state.room.wallHeight);
-  const wallThickness = useSceneStore((state) => state.room.wallThickness);
-  const wallOverrides = useSceneStore((state) => state.room.wallOverrides || {});
-  const openings = useSceneStore((state) => state.room.openings);
-  const floorMaterialType = useSceneStore((state) => state.room.floorMaterial ?? 'wood');
-  const wallMaterialType = useSceneStore((state) => state.room.wallMaterial ?? 'paint');
-  
+const NO_OVERRIDES: NonNullable<Room['wallOverrides']> = {};
+
+export const RoomShell: React.FC<RoomShellProps> = ({ room: roomProp, interactive = true, onActivate }) => {
+  const activeRoom = useSceneStore((state) => state.room);
+  const otherRooms = useSceneStore((state) => state.otherRooms);
+  const room = roomProp ?? activeRoom;
+  const outline = room.outline;
+  const wallHeight = room.wallHeight;
+  const wallThickness = room.wallThickness;
+  const wallOverrides = room.wallOverrides ?? NO_OVERRIDES;
+  const openings = room.openings;
+  const floorMaterialType = room.floorMaterial ?? 'wood';
+  const wallMaterialType = room.wallMaterial ?? 'paint';
+
+  // Holes cut by doors/windows that neighbouring rooms put on a wall shared with this one
+  const sharedOpeningsByWall = useMemo(() => {
+    const neighbours = [activeRoom, ...otherRooms].filter((r) => r.id !== room.id);
+    return outline.map((_, i) => {
+      const shared = sharedWallOpenings(room, i, neighbours);
+      return shared.length > 0 ? shared : undefined;
+    });
+  }, [room, outline, activeRoom, otherRooms]);
+
   const view = useUiStore((state) => state.view);
   const showCeiling = useUiStore((state) => state.showCeiling);
   const selectedWallIndex = useUiStore((state) => state.selectedWallIndex);
@@ -581,9 +628,23 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
   if (outline.length < 3) return null;
 
   return (
-    <group name="room-shell">
+    <group name={interactive ? 'room-shell' : `room-shell-${room.id ?? 'inactive'}`}>
       {/* 1. Floor Mesh */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow userData={{ isExportable: true, exportType: 'wall' }}>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.001, 0]}
+        receiveShadow
+        userData={{ isExportable: true, exportType: 'wall' }}
+        onClick={
+          interactive
+            ? undefined
+            : (e) => {
+                if (e.delta > 4 || isPlacingAsset()) return;
+                e.stopPropagation();
+                onActivate?.();
+              }
+        }
+      >
         <shapeGeometry args={[floorShape]} />
         <meshStandardMaterial
           {...floorProps}
@@ -615,9 +676,12 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
             outline={outline}
             wallHeight={segHeight}
             wallThickness={segThickness}
-            isSelected={selectedWallIndex === index}
-            isHovered={hoveredWallIndex === index}
+            isSelected={interactive && selectedWallIndex === index}
+            isHovered={interactive && hoveredWallIndex === index}
             wallOpenings={wallOpenings}
+            sharedOpenings={sharedOpeningsByWall[index]}
+            interactive={interactive}
+            onActivateRoom={onActivate}
             view={view}
             wallOpacityMode={wallOpacityMode}
             wallMaterialProps={wallMaterialProps}
@@ -660,12 +724,11 @@ export const RoomShell: React.FC<RoomShellProps> = () => {
       {showCeiling && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, wallHeight, 0]} receiveShadow userData={{ isExportable: true, exportType: 'wall' }}>
           <shapeGeometry args={[floorShape]} />
+          {/* BackSide: visible from inside the room, invisible when orbiting from above */}
           <meshStandardMaterial
-            color="#52525b"
+            color="#e4e4e7"
             roughness={0.9}
-            side={THREE.DoubleSide}
-            transparent
-            opacity={0.7}
+            side={THREE.BackSide}
           />
         </mesh>
       )}

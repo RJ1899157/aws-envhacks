@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { DEFAULT_TRANSLATION_SNAP_METERS } from '../core/constants';
 import type { Vec3 } from '../core/types';
 
-export type ToolMode = 'select' | 'draw-floor' | 'place' | 'opening';
+export type ToolMode = 'select' | 'draw-floor' | 'place' | 'opening' | 'room';
 export type TransformMode = 'translate' | 'rotate';
 export type ViewMode = '3d' | '2d';
 
@@ -19,6 +19,10 @@ export interface DraggedOpeningPreview {
 
 export interface UiState {
   toolMode: ToolMode;
+  /** The active room itself is selected (via its centre handle): Delete removes the room */
+  roomSelected: boolean;
+  /** Room type being placed while toolMode is 'room' */
+  pendingRoomType: import('../core/schema').RoomType | null;
   transformMode: TransformMode;
   view: ViewMode;
   snapEnabled: boolean;
@@ -30,6 +34,8 @@ export interface UiState {
   selectedWallIndex: number | null;
   hoveredWallIndex: number | null;
   toastMessage: string | null;
+  /** Show an Undo button on the toast (only for messages about a change that can be undone) */
+  toastUndoable: boolean;
   activeAssetId: string | null;
   ghostPosition: Vec3 | null;
   draggedOpeningPreview: DraggedOpeningPreview | null;
@@ -50,6 +56,8 @@ export interface UiState {
 
   // Actions
   setToolMode: (mode: ToolMode) => void;
+  setRoomSelected: (selected: boolean) => void;
+  setPendingRoomType: (type: import('../core/schema').RoomType | null) => void;
   setTransformMode: (mode: TransformMode) => void;
   setView: (view: ViewMode) => void;
   setSnapEnabled: (enabled: boolean) => void;
@@ -74,7 +82,7 @@ export interface UiState {
   setSelectedVertexIndex: (index: number | null) => void;
   setSelectedWallIndex: (index: number | null) => void;
   setHoveredWallIndex: (index: number | null) => void;
-  setToastMessage: (msg: string | null) => void;
+  setToastMessage: (msg: string | null, undoable?: boolean) => void;
   setActiveAssetId: (id: string | null) => void;
   setGhostPosition: (pos: Vec3 | null) => void;
   setDraggedOpeningPreview: (preview: DraggedOpeningPreview | null) => void;
@@ -91,21 +99,24 @@ export interface UiState {
 
 export const initialUiState = {
   toolMode: 'select' as ToolMode,
+  roomSelected: false,
+  pendingRoomType: null as import('../core/schema').RoomType | null,
   transformMode: 'translate' as TransformMode,
   view: '3d' as ViewMode,
   snapEnabled: true,
-  gridStep: DEFAULT_TRANSLATION_SNAP_METERS, // 0.05m
+  gridStep: DEFAULT_TRANSLATION_SNAP_METERS,
   rotationSnapDeg: 15, // 15 degrees
   transformY: false,
   numericInputBuffer: null as string | null,
   isCollisionWarning: false,
   showDimensions: true,
   showAllWallDimensions: false,
-  showCeiling: false,
+  showCeiling: true,
   selectedVertexIndex: null as number | null,
   selectedWallIndex: null as number | null,
   hoveredWallIndex: null as number | null,
   toastMessage: null as string | null,
+  toastUndoable: false,
   activeAssetId: null as string | null,
   ghostPosition: null as Vec3 | null,
   draggedOpeningPreview: null as DraggedOpeningPreview | null,
@@ -125,6 +136,8 @@ export const useUiStore = create<UiState>()((set) => ({
   ...initialUiState,
 
   setToolMode: (toolMode) => set({ toolMode }),
+  setRoomSelected: (roomSelected) => set({ roomSelected }),
+  setPendingRoomType: (pendingRoomType) => set({ pendingRoomType }),
   setTransformMode: (transformMode) => set({ transformMode }),
   setView: (view) => set({ view }),
   setSnapEnabled: (snapEnabled) => set({ snapEnabled }),
@@ -149,7 +162,7 @@ export const useUiStore = create<UiState>()((set) => ({
   setSelectedVertexIndex: (selectedVertexIndex) => set({ selectedVertexIndex }),
   setSelectedWallIndex: (selectedWallIndex) => set({ selectedWallIndex }),
   setHoveredWallIndex: (hoveredWallIndex) => set({ hoveredWallIndex }),
-  setToastMessage: (toastMessage) => set({ toastMessage }),
+  setToastMessage: (toastMessage, undoable = false) => set({ toastMessage, toastUndoable: undoable }),
   setActiveAssetId: (activeAssetId) => set({ activeAssetId }),
   setGhostPosition: (ghostPosition) => set({ ghostPosition }),
   setDraggedOpeningPreview: (draggedOpeningPreview) => set({ draggedOpeningPreview }),
@@ -163,3 +176,4 @@ export const useUiStore = create<UiState>()((set) => ({
   setVoxelStats: (voxelStats) => set({ voxelStats }),
   resetUi: () => set(initialUiState),
 }));
+

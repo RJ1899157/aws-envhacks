@@ -2,11 +2,13 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
+import { wallQuaternion } from './wallRotation';
 import { wallSegment } from '../core/parser';
 import type { Opening } from '../core/schema';
 import {
   computeOpeningSnapGuides,
   findNearestWallForPoint,
+  isPassage,
   resolveOpeningOverlapOnWall,
   type SnapGuideType,
   type WallSegment,
@@ -20,6 +22,8 @@ export interface OpeningVisualProps {
   opening: Opening;
   segment?: WallSegment;
   wallThickness: number;
+  /** False for doors/windows of a room that isn't active: display only */
+  interactive?: boolean;
 }
 
 /**
@@ -120,7 +124,7 @@ const DoorSwingArc: React.FC<{
  * - Direct manipulation (gliding drag along wall + wall transferring + smart snap guides)
  * - Resize handles (width, height, sill) + door swing flip handle with live meter readouts
  */
-export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, wallThickness }) => {
+export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, wallThickness, interactive = true }) => {
   const room = useSceneStore((state) => state.room);
   const selectedOpeningId = useSceneStore((state) => state.selectedOpeningId);
   const selectedOpeningIds = useSceneStore((state) => state.selectedOpeningIds);
@@ -130,7 +134,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
   const toolMode = useUiStore((state) => state.toolMode);
   const setToastMessage = useUiStore((state) => state.setToastMessage);
 
-  const isSelected = selectedOpeningIds.includes(opening.id) || selectedOpeningId === opening.id;
+  const isSelected = interactive && (selectedOpeningIds.includes(opening.id) || selectedOpeningId === opening.id);
 
   // --------------------------------------------------------------------------
   // DRAG STATE (Direct Manipulation along wall & between walls)
@@ -169,11 +173,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
     const posY = vMid;
     const posZ = currentSeg.a[1] + uMid * currentSeg.dir[1] + tMid * currentSeg.normal[1];
 
-    const xAxis = new THREE.Vector3(currentSeg.dir[0], 0, currentSeg.dir[1]).normalize();
-    const yAxis = new THREE.Vector3(0, 1, 0);
-    const zAxis = new THREE.Vector3(currentSeg.normal[0], 0, currentSeg.normal[1]).normalize();
-    const rotMatrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
-    const rot = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+    const rot = wallQuaternion(currentSeg.dir);
 
     return {
       position: [posX, posY, posZ] as [number, number, number],
@@ -408,7 +408,10 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
   const jambDepth = wallThickness * 1.02;
 
   // Door leaf hinge pivot calculation
-  const isDoor = opening.type === 'door';
+  // Passages (archways, pass-throughs, open walls) have no leaf or glass, and nothing to flip
+  const passage = isPassage(opening.subType);
+  const isDoor = opening.type === 'door' && !passage;
+  const isWindow = opening.type === 'window' && !passage;
   const flipHinge = Boolean(opening.flipHinge);
   const flipSwing = Boolean(opening.flipSwing);
   const openFraction = opening.openFraction ?? 0;
@@ -419,7 +422,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
     : 0;
 
   // Window casement sash angle
-  const windowAngle = !isDoor && openFraction > 0 ? openFraction * (Math.PI / 3) * (flipHinge ? -1 : 1) : 0;
+  const windowAngle = isWindow && openFraction > 0 ? openFraction * (Math.PI / 3) * (flipHinge ? -1 : 1) : 0;
 
   if (opening.isHidden) {
     return null;
@@ -442,7 +445,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
         position={position}
         quaternion={quaternion}
         onPointerOver={(e) => {
-          if (!isDragging && !opening.isLocked) {
+          if (interactive && !isDragging && !opening.isLocked) {
             e.stopPropagation();
             setCanvasCursor('grab');
           }
@@ -451,7 +454,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
           if (!isDragging) resetCanvasCursor();
         }}
         onPointerDown={(e) => {
-          if (opening.isLocked) return;
+          if (!interactive || opening.isLocked) return;
           setCanvasCursor('grabbing');
           handleOpeningPointerDown(e);
         }}
@@ -466,7 +469,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
         }}
       >
         {/* 1. ARCHITECTURAL CUTOUT FRAME (Jambs, Lintel, Sill Lining) */}
-        <group name="opening-frame">
+        <group name="opening-frame" visible={opening.subType !== 'open-wall'}>
           {/* Left Jamb */}
           <mesh position={[-opening.width / 2 + frameThickness / 2, 0, 0]}>
             <boxGeometry args={[frameThickness, opening.height, jambDepth]} />
@@ -490,7 +493,7 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
         </group>
 
         {/* 2. WINDOW VISUALS: GLASS & ROTATING SASH */}
-        {!isDoor && (
+        {isWindow && (
           <group
             name="window-sash"
             position={[flipHinge ? opening.width / 2 : -opening.width / 2, 0, 0]}
@@ -566,6 +569,14 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
               </group>
             </group>
           </group>
+        )}
+
+        {/* Open wall: no frame, just a clickable threshold strip on the floor */}
+        {opening.subType === 'open-wall' && (
+          <mesh position={[0, -opening.height / 2 + 0.006, 0]}>
+            <boxGeometry args={[opening.width, 0.012, wallThickness]} />
+            <meshStandardMaterial color={isSelected ? '#f59e0b' : '#cbd5e1'} roughness={0.8} />
+          </mesh>
         )}
 
         {/* 4. SELECTION OUTLINE */}

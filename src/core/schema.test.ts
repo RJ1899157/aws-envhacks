@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDefaultRoom } from './defaultRoom';
+import { createVentilatedRoom } from '../test/fixtures';
 import {
   AirflowRoleSchema,
   ObjectSchema,
@@ -11,7 +11,7 @@ import {
 
 describe('RoomSchema & Data Validation', () => {
   it('parses the default room successfully without errors', () => {
-    const defaultRoom = createDefaultRoom();
+    const defaultRoom = createVentilatedRoom();
     const result = RoomSchema.safeParse(defaultRoom);
 
     expect(result.success).toBe(true);
@@ -80,7 +80,7 @@ describe('RoomSchema & Data Validation', () => {
   });
 
   it('rejects wallHeight outside 2.0m - 6.0m bounds', () => {
-    const defaultRoom = createDefaultRoom();
+    const defaultRoom = createVentilatedRoom();
 
     expect(RoomSchema.safeParse({ ...defaultRoom, wallHeight: 1.8 }).success).toBe(false);
     expect(RoomSchema.safeParse({ ...defaultRoom, wallHeight: 6.5 }).success).toBe(false);
@@ -88,7 +88,7 @@ describe('RoomSchema & Data Validation', () => {
   });
 
   it('rejects wallThickness outside 0.05m - 0.5m bounds', () => {
-    const defaultRoom = createDefaultRoom();
+    const defaultRoom = createVentilatedRoom();
 
     expect(RoomSchema.safeParse({ ...defaultRoom, wallThickness: 0.02 }).success).toBe(false);
     expect(RoomSchema.safeParse({ ...defaultRoom, wallThickness: 0.6 }).success).toBe(false);
@@ -96,7 +96,7 @@ describe('RoomSchema & Data Validation', () => {
   });
 
   it('rejects outlines with fewer than 3 vertices', () => {
-    const defaultRoom = createDefaultRoom();
+    const defaultRoom = createVentilatedRoom();
 
     expect(
       RoomSchema.safeParse({

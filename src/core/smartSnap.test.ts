@@ -216,4 +216,67 @@ describe('computeSmartSnap', () => {
 
     expect(res.snappedRotY).toBeCloseTo(degToRad(15), 3);
   });
+
+  it('tucks a footprint flush into a corner, catching both walls', () => {
+    const res = computeSmartSnap({
+      candidatePos: [0.6, 0, 1.1],
+      candidateRotY: 0,
+      objectSize: [1.0, 0.5, 2.0],
+      startPos: [2, 0, 1.5],
+      room: sampleRoom,
+      gridStep: 0.1,
+      snapEnabled: true,
+    });
+
+    expect(res.snappedPos[0]).toBeCloseTo(0.5);
+    expect(res.snappedPos[2]).toBeCloseTo(1.0);
+    expect(res.isWallSnapped).toBe(true);
+    expect(res.alignmentGuides.filter((g) => g.type === 'wall')).toHaveLength(2);
+  });
+
+  it('uses the rotated footprint when snapping to a wall', () => {
+    // Rotated 90°, the 2 m long bed spans 2 m along X, so its centre sits 1 m from the x = 4 wall.
+    const res = computeSmartSnap({
+      candidatePos: [2.9, 0, 1.5],
+      candidateRotY: Math.PI / 2,
+      objectSize: [1.0, 0.5, 2.0],
+      startPos: [2, 0, 1.5],
+      room: sampleRoom,
+      gridStep: 0.1,
+      snapEnabled: true,
+    });
+
+    expect(res.snappedPos[0]).toBeCloseTo(3.0);
+    expect(res.isWallSnapped).toBe(true);
+  });
+
+  it('never lets the footprint penetrate a wall, even when the cursor is past it', () => {
+    const res = computeSmartSnap({
+      candidatePos: [2.0, 0, -0.7],
+      candidateRotY: 0,
+      objectSize: [1.0, 1.0, 1.0],
+      startPos: [2, 0, 1.5],
+      room: sampleRoom,
+      gridStep: 0.1,
+      snapEnabled: true,
+    });
+
+    expect(res.snappedPos[2]).toBeCloseTo(0.5);
+  });
+
+  it('still keeps the footprint out of walls when snapping is disabled with Ctrl', () => {
+    const res = computeSmartSnap({
+      candidatePos: [2.03, 0, 0.2],
+      candidateRotY: 0,
+      objectSize: [1.0, 1.0, 1.0],
+      startPos: [2, 0, 1.5],
+      room: sampleRoom,
+      gridStep: 0.1,
+      snapEnabled: true,
+      ctrlKey: true,
+    });
+
+    expect(res.snappedPos[0]).toBeCloseTo(2.03);
+    expect(res.snappedPos[2]).toBeCloseTo(0.5);
+  });
 });

@@ -12,9 +12,9 @@ describe('useUiStore', () => {
     expect(state.transformMode).toBe('translate');
     expect(state.view).toBe('3d');
     expect(state.snapEnabled).toBe(true);
-    expect(state.gridStep).toBe(0.05);
+    expect(state.gridStep).toBe(0.1);
     expect(state.showDimensions).toBe(true);
-    expect(state.showCeiling).toBe(false);
+    expect(state.showCeiling).toBe(true);
     expect(state.selectedVertexIndex).toBeNull();
     expect(state.activeAssetId).toBeNull();
     expect(state.ghostPosition).toBeNull();
@@ -33,10 +33,10 @@ describe('useUiStore', () => {
 
   it('toggles and sets ceiling and selected vertex index', () => {
     useUiStore.getState().toggleCeiling();
-    expect(useUiStore.getState().showCeiling).toBe(true);
-
-    useUiStore.getState().setShowCeiling(false);
     expect(useUiStore.getState().showCeiling).toBe(false);
+
+    useUiStore.getState().setShowCeiling(true);
+    expect(useUiStore.getState().showCeiling).toBe(true);
 
     useUiStore.getState().setSelectedVertexIndex(2);
     expect(useUiStore.getState().selectedVertexIndex).toBe(2);
@@ -52,8 +52,8 @@ describe('useUiStore', () => {
     useUiStore.getState().setSnapEnabled(true);
     expect(useUiStore.getState().snapEnabled).toBe(true);
 
-    useUiStore.getState().setGridStep(0.1);
-    expect(useUiStore.getState().gridStep).toBe(0.1);
+    useUiStore.getState().setGridStep(0.25);
+    expect(useUiStore.getState().gridStep).toBe(0.25);
   });
 
   it('manages activeAssetId and ghostPosition', () => {

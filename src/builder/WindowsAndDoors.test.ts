@@ -6,12 +6,14 @@ import {
   findNearestWallForPoint,
   computeOpeningSnapGuides,
   resolveOpeningOverlapOnWall,
+  fitOpeningToWall,
+  isPassage,
 } from '../core/openingPresets';
-import { createDefaultRoom } from '../core/defaultRoom';
+import { createVentilatedRoom } from '../test/fixtures';
 
 describe('Windows and Doors Rework', () => {
   beforeEach(() => {
-    useSceneStore.getState().resetRoom();
+    useSceneStore.getState().loadRoom(createVentilatedRoom());
     useSceneStore.temporal.getState().clear();
   });
 
@@ -52,7 +54,7 @@ describe('Windows and Doors Rework', () => {
       expect(OPENING_PRESETS['sliding-door'].height).toBe(2.1);
       expect(OPENING_PRESETS['sliding-door'].sill).toBe(0);
 
-      expect(OPENING_PRESETS['archway'].width).toBe(1.0);
+      expect(OPENING_PRESETS['archway'].width).toBe(1.2);
       expect(OPENING_PRESETS['archway'].height).toBe(2.2);
       expect(OPENING_PRESETS['archway'].sill).toBe(0);
 
@@ -91,7 +93,7 @@ describe('Windows and Doors Rework', () => {
 
   describe('Wall Projection & Snapping (findNearestWallForPoint & computeOpeningSnapGuides)', () => {
     it('projects point onto the closest room wall', () => {
-      const room = createDefaultRoom();
+      const room = createVentilatedRoom();
       // Default room corners: [-2, -1.5], [2, -1.5], [2, 1.5], [-2, 1.5]
       // Bottom wall (0): [-2, -1.5] to [2, -1.5] (length 4.0, along X)
       // Right wall (1): [2, -1.5] to [2, 1.5] (length 3.0, along Z)
@@ -111,7 +113,7 @@ describe('Windows and Doors Rework', () => {
     });
 
     it('snaps opening to wall center when within threshold', () => {
-      const room = createDefaultRoom();
+      const room = createVentilatedRoom();
       // Bottom wall length 4.0m. Window width 1.2m. Center offset = (4.0 - 1.2) / 2 = 1.4m.
       const snapRes = computeOpeningSnapGuides(room, 0, 1.2, 1.43);
       expect(snapRes.guideType).toBe('wall-center');
@@ -119,7 +121,7 @@ describe('Windows and Doors Rework', () => {
     });
 
     it('snaps opening to 0.1m corner margin when near wall ends', () => {
-      const room = createDefaultRoom();
+      const room = createVentilatedRoom();
       // Left corner: 0.1m
       const snapLeft = computeOpeningSnapGuides(room, 0, 1.2, 0.08);
       expect(snapLeft.guideType).toBe('corner-margin');
@@ -132,7 +134,7 @@ describe('Windows and Doors Rework', () => {
     });
 
     it('defaults to 0.05m grid snapping when not near center or corner', () => {
-      const room = createDefaultRoom();
+      const room = createVentilatedRoom();
       const snapGrid = computeOpeningSnapGuides(room, 0, 1.2, 0.83);
       expect(snapGrid.guideType).toBe('grid');
       expect(snapGrid.snappedOffset).toBe(0.85); // 0.83 snaps to 0.85 on 0.05 grid
@@ -141,7 +143,7 @@ describe('Windows and Doors Rework', () => {
 
   describe('Non-overlapping Hard Rule & Gentle Pushing', () => {
     it('allows placement when there is no overlap', () => {
-      const room = createDefaultRoom();
+      const room = createVentilatedRoom();
       // Wall 0 (len 4.0): default window is at offset 1.4, width 1.2 (occupies 1.4 to 2.6)
       // Test placing door at 0.1 (occupies 0.1 to 1.0, before 1.4)
       const res = resolveOpeningOverlapOnWall(room, 0, 0.1, 0.9);
@@ -151,7 +153,7 @@ describe('Windows and Doors Rework', () => {
     });
 
     it('gently pushes adjacent opening aside when space permits', () => {
-      const room = createDefaultRoom();
+      const room = createVentilatedRoom();
       // Default window on wall 0 is at offset 1.4, width 1.2 (occupies 1.4 to 2.6)
       // Moving a new opening to offset 1.2 with width 0.9
       // Moving opening center is at 1.2 + 0.45 = 1.65; window center is at 1.4 + 0.6 = 2.0 (to the right)
@@ -165,7 +167,7 @@ describe('Windows and Doors Rework', () => {
     });
 
     it('fails and reports error when gentle push is impossible due to wall boundary', () => {
-      const room = createDefaultRoom();
+      const room = createVentilatedRoom();
       // Wall 2 (top wall, len 4.0): default window is at offset 1.0, width 1.2 (occupies 1.0 to 2.2)
       // Let's position an opening near the right edge of wall, and another huge opening that overlaps
       const bigWidth = 2.5;
@@ -216,5 +218,29 @@ describe('Windows and Doors Rework', () => {
       current = useSceneStore.getState().room.openings.find((o) => o.id === doorOp.id)!;
       expect(current.flipSwing).toBe(true);
     });
+  });
+});
+
+describe('Open-plan passages', () => {
+  it('stretches an Open Wall across the whole wall, floor to top', () => {
+    const room = createVentilatedRoom();
+    const opening = fitOpeningToWall(createOpeningFromPreset('open-wall', 1, 0.7), room);
+    expect(opening.offset).toBe(0);
+    expect(opening.width).toBeCloseTo(3); // wall 1 is 3 m long
+    expect(opening.height).toBeCloseTo(room.wallHeight);
+    expect(opening.sill).toBe(0);
+  });
+
+  it('leaves other openings unchanged when fitting', () => {
+    const room = createVentilatedRoom();
+    const arch = createOpeningFromPreset('wide-archway', 1, 0.3);
+    expect(fitOpeningToWall(arch, room)).toEqual(arch);
+  });
+
+  it('creates passages fully open', () => {
+    expect(createOpeningFromPreset('archway', 0, 0).openFraction).toBe(1);
+    expect(createOpeningFromPreset('pass-through', 0, 0).openFraction).toBe(1);
+    expect(isPassage('wide-archway')).toBe(true);
+    expect(isPassage('single-door')).toBe(false);
   });
 });

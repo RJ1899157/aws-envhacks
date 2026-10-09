@@ -7,6 +7,7 @@ import {
 } from './placementValidator';
 import { usePlacementIssuesStore } from '../store/placementIssuesStore';
 import type { Room, SceneObject, Vec2 } from './schema';
+import { createDefaultRoom } from './defaultRoom';
 
 describe('Phase B Placement Validator', () => {
   const baseRoom: Room = {
@@ -390,5 +391,23 @@ describe('Phase B Placement Validator', () => {
       expect(usePlacementIssuesStore.getState().flaggedTimestamps['obj1']).toBeUndefined();
       expect(usePlacementIssuesStore.getState().dismissedObjectIds).not.toContain('obj1');
     });
+  });
+});
+
+describe('validateObject wall contact', () => {
+  it('does not flag an object sitting flush in a corner', () => {
+    const room = createDefaultRoom();
+    const bed: SceneObject = {
+      id: 'bed',
+      assetId: 'single-bed',
+      name: 'Single Bed',
+      position: [-1.5, 0, -0.5],
+      rotation: [0, 0, 0],
+      size: [1.0, 0.5, 2.0],
+      elevation: 0,
+      role: 'solid',
+      wallMounted: false,
+    };
+    expect(validateObject(bed, room)).toEqual([]);
   });
 });

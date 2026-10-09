@@ -16,6 +16,7 @@ import { useUiStore } from '../store/uiStore';
  */
 export const VoxelDebugMesh: React.FC = () => {
   const room = useSceneStore((state) => state.room);
+  const otherRooms = useSceneStore((state) => state.otherRooms);
   const showVoxelDebug = useUiStore((state) => state.showVoxelDebug);
   const voxelSliceY = useUiStore((state) => state.voxelSliceY);
   const voxelOpacity = useUiStore((state) => state.voxelOpacity);
@@ -36,7 +37,7 @@ export const VoxelDebugMesh: React.FC = () => {
 
     timerRef.current = setTimeout(async () => {
       try {
-        const { grid: newGrid, timeMs } = await voxelizeAsync(room, 0.1);
+        const { grid: newGrid, timeMs } = await voxelizeAsync(room, 0.1, otherRooms);
         setGrid(newGrid);
         setVoxelStats(computeVoxelStats(newGrid, timeMs));
       } catch (err) {
@@ -49,7 +50,7 @@ export const VoxelDebugMesh: React.FC = () => {
         clearTimeout(timerRef.current);
       }
     };
-  }, [room, showVoxelDebug, setVoxelStats]);
+  }, [room, otherRooms, showVoxelDebug, setVoxelStats]);
 
   // Update instanced mesh transforms and colors
   useEffect(() => {
