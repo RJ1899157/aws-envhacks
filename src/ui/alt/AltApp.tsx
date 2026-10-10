@@ -59,6 +59,12 @@ export const AltApp: React.FC = () => {
 
   useAltSessionAutosave();
 
+  // A selected wall is a wall of the active room: forget it when another room becomes active
+  const activeRoomId = useSceneStore((s) => s.room.id);
+  useEffect(() => {
+    useUiStore.getState().setSelectedWallIndex(null);
+  }, [activeRoomId]);
+
   // Ctrl/⌘+S saves the build (instead of the browser's "save page")
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

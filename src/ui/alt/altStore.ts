@@ -42,6 +42,7 @@ export function cancelPlacement(): void {
   ui.setPendingRoomType(null);
   ui.setDraggedOpeningPreview(null);
   ui.setGhostPosition(null);
+  ui.setDividerAxis(null);
   if (ui.toolMode !== 'select') ui.setToolMode('select');
 }
 

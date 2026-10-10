@@ -228,6 +228,7 @@ const RoomsStep: React.FC = () => {
   const setRoomType = useSceneStore((s) => s.setRoomType);
   const scaleRoom = useSceneStore((s) => s.scaleRoom);
   const pendingRoomType = useUiStore((s) => s.pendingRoomType);
+  const dividing = useUiStore((s) => s.dividerAxis !== null);
   const project = useAltStore((s) => s.project);
   const rooms = useMemo(() => [room, ...otherRooms].sort((a, b) => a.name.localeCompare(b.name)), [room, otherRooms]);
   const b = polygonBounds(room.outline);
@@ -330,12 +331,30 @@ const RoomsStep: React.FC = () => {
       </Section>
 
       <Section title="Walls inside the room">
+        <button
+          type="button"
+          data-testid="alt-divide-room"
+          onClick={() => {
+            const on = useUiStore.getState().dividerAxis !== null;
+            cancelPlacement();
+            if (!on) useUiStore.getState().setDividerAxis('x');
+          }}
+          className={`w-full flex items-center gap-2 p-2 rounded-[8px] border text-left transition-colors ${
+            dividing ? 'border-indigo-400 bg-indigo-500/20' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/20'
+          }`}
+        >
+          <span className="w-3.5 h-3.5 rounded-[3px] shrink-0 border border-white/20 bg-neutral-300" />
+          <span className="min-w-0">
+            <span className="block text-[12px] font-medium text-white">Divide the room with a wall</span>
+            <span className="block text-[10px] text-neutral-400 leading-tight">Makes two rooms; put a door on the new wall</span>
+          </span>
+        </button>
+        {dividing && <Tip>Click in the room where the wall goes. R turns it 90°, Esc cancels.</Tip>}
         <Grid>
           {PARTITION_ITEMS.map((i) => (
             <AssetButton key={i.assetId} item={i} />
           ))}
         </Grid>
-        <Tip>Partitions block air; leave a gap (or add a door) where people walk through.</Tip>
       </Section>
 
       <Section title={project === 'house' || rooms.length > 1 ? 'Add a room' : 'Add another room'}>

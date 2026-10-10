@@ -93,10 +93,8 @@ export const FURNITURE_ITEMS: AltItem[] = [
   { assetId: 'bookshelf', label: 'Bookshelf', hint: 'Tall, partly open' },
 ];
 
-export const PARTITION_ITEMS: AltItem[] = [
-  { assetId: 'partition-wall', label: 'Partition wall', hint: 'Full height, splits a room' },
-  { assetId: 'half-partition', label: 'Half wall', hint: '1.2 m high, air flows over it' },
-];
+/** Free-standing low walls (a full-height wall divides the room instead: see the Rooms step). */
+export const PARTITION_ITEMS: AltItem[] = [{ assetId: 'half-partition', label: 'Half wall', hint: '1.2 m high, air flows over it' }];
 
 const PICKED = new Set(
   [...VENTILATION_GROUPS, ...POLLUTION_GROUPS].flatMap((g) => g.items.map((i) => i.assetId)).concat(FURNITURE_ITEMS.map((i) => i.assetId))

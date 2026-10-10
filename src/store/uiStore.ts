@@ -55,6 +55,9 @@ export interface UiState {
   showWindIndicator: boolean;
   showPrecisionGizmo: boolean;
   autoOrientToWall: boolean;
+  /** Dividing-wall tool: the direction of the wall being placed (null = off) */
+  dividerAxis: 'x' | 'z' | null;
+  setDividerAxis: (axis: 'x' | 'z' | null) => void;
 
   // Actions
   setToolMode: (mode: ToolMode) => void;
@@ -134,6 +137,7 @@ export const initialUiState = {
   showWindIndicator: false,
   showPrecisionGizmo: false, // Default OFF as requested
   autoOrientToWall: false, // Opt-in toggle as requested
+  dividerAxis: null as 'x' | 'z' | null,
 };
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -179,6 +183,7 @@ export const useUiStore = create<UiState>()((set) => ({
   setVoxelOpacity: (voxelOpacity) => set({ voxelOpacity }),
   setShowSolidVoxels: (showSolidVoxels) => set({ showSolidVoxels }),
   setVoxelStats: (voxelStats) => set({ voxelStats }),
+  setDividerAxis: (dividerAxis) => set({ dividerAxis }),
   resetUi: () => set(initialUiState),
 }));
 

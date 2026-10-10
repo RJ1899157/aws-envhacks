@@ -3,7 +3,7 @@ import { temporal } from 'zundo';
 import { immer } from 'zustand/middleware/immer';
 import { createDefaultRoom } from '../core/defaultRoom';
 import { parseRoom, polygonBounds, type ParseIssue, wallSegment } from '../core/parser';
-import { createRoomOfType, withRoomId } from '../core/rooms';
+import { createRoomOfType, divideRoom as divideRoomOutline, sharedWallOpenings, withRoomId } from '../core/rooms';
 import { computeSmartSnap, objectsFlushAgainstWall } from '../core/smartSnap';
 import { settleSources } from '../core/surfaces';
 import type {
@@ -76,6 +76,15 @@ export interface SceneState {
    * longer fit their wall are removed (their count is returned). One undo step.
    */
   reshapeRoom: (type: QuickShapeType) => number;
+  /**
+   * Removes wall `wallIndex` of the active room by opening it completely (an "open wall": outdoors
+   * for an outside wall, open plan for a wall shared with another room). One undo step.
+   */
+  deleteWall: (wallIndex: number) => void;
+  /** Puts a deleted wall back (removes the open wall on it, from either side of a shared wall) */
+  restoreWall: (wallIndex: number) => void;
+  /** Splits the active room with a wall along x = at or z = at; null on success, else why not */
+  divideRoom: (axis: 'x' | 'z', at: number) => string | null;
   setWallHeight: (height: number) => void;
   setWallThickness: (thickness: number) => void;
   setRoomName: (name: string) => void;
@@ -414,6 +423,54 @@ export const useSceneStore = create<SceneState>()(
           state.room.objects = objects;
           settleSources(state.room);
         });
+      },
+
+      deleteWall: (wallIndex) => {
+        set((state) => {
+          const room = state.room as Room;
+          if (wallIndex < 0 || wallIndex >= room.outline.length) return;
+          const seg = wallSegment(room, wallIndex);
+          const height = room.wallOverrides?.[wallIndex]?.height ?? room.wallHeight;
+          // Anything already on the wall goes: the whole wall is open now
+          state.room.openings = state.room.openings.filter((o) => o.wallIndex !== wallIndex);
+          state.room.openings.push({
+            id: `open-wall-${Date.now().toString(36)}`,
+            wallIndex,
+            type: 'door',
+            subType: 'open-wall',
+            offset: 0,
+            width: Number(seg.len.toFixed(4)),
+            height,
+            sill: 0,
+            role: 'outlet',
+            openFraction: 1,
+          });
+          clearSelectionDraft(state);
+        });
+      },
+
+      restoreWall: (wallIndex) => {
+        set((state) => {
+          const room = state.room as Room;
+          state.room.openings = state.room.openings.filter((o) => !(o.wallIndex === wallIndex && o.subType === 'open-wall'));
+          // The same wall may have been opened from the neighbouring room's side
+          const fromOthers = new Set(sharedWallOpenings(room, wallIndex, state.otherRooms as Room[]).map((o) => o.id.replace(/^shared-/, '')));
+          for (const other of state.otherRooms) other.openings = other.openings.filter((o) => !(fromOthers.has(o.id) && o.subType === 'open-wall'));
+          clearSelectionDraft(state);
+        });
+      },
+
+      divideRoom: (axis, at) => {
+        const { room, otherRooms } = get();
+        const res = divideRoomOutline(room, axis, at, otherRooms);
+        if (!res.ok) return res.reason;
+        resetDragTracking();
+        set((state) => {
+          state.room = res.first;
+          state.otherRooms.push(res.second);
+          clearSelectionDraft(state);
+        });
+        return null;
       },
 
       reshapeRoom: (type) => {

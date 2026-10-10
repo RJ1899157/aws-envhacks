@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import type { ThreeEvent } from '@react-three/fiber';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { wallQuaternion } from './wallRotation';
@@ -331,74 +331,65 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
   // --------------------------------------------------------------------------
   // RESIZE HANDLES (Width Left/Right, Height Top, Sill Bottom)
   // --------------------------------------------------------------------------
-  const [resizingHandle, setResizingHandle] = useState<'left' | 'right' | 'top' | 'sill' | null>(
-    null
-  );
   const [handleReadout, setHandleReadout] = useState<string | null>(null);
 
-  const handleResizePointerDown = (
-    handle: 'left' | 'right' | 'top' | 'sill',
-    e: ThreeEvent<PointerEvent>
-  ) => {
-    e.stopPropagation();
-    setResizingHandle(handle);
-    if (sharedOrbitControlsRef.current) {
-      sharedOrbitControlsRef.current.enabled = false;
-    }
-  };
+  const { camera, gl } = useThree();
 
-  const handleResizePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (!resizingHandle) return;
-    e.stopPropagation();
-
+  /** Applies a handle drag to the point on the wall plane under the cursor. */
+  const applyResize = (handle: 'left' | 'right' | 'top' | 'sill', point: THREE.Vector3, start: Opening) => {
     const seg = currentSeg;
     const wallLen = seg.len;
-
-    if (resizingHandle === 'right') {
-      // Adjust width from right edge
-      const toCursorX = e.point.x - seg.a[0];
-      const toCursorZ = e.point.z - seg.a[1];
-      const cursorT = toCursorX * seg.dir[0] + toCursorZ * seg.dir[1];
-      const newWidth = Math.max(0.3, Math.min(wallLen - opening.offset, cursorT - opening.offset));
-      const rounded = Number(newWidth.toFixed(2));
-      updateOpening(opening.id, { width: rounded });
-      setHandleReadout(`Width: ${rounded.toFixed(2)} m`);
-    } else if (resizingHandle === 'left') {
-      // Adjust width and offset from left edge
-      const toCursorX = e.point.x - seg.a[0];
-      const toCursorZ = e.point.z - seg.a[1];
-      const cursorT = toCursorX * seg.dir[0] + toCursorZ * seg.dir[1];
-      const currentRight = opening.offset + opening.width;
-      const newOffset = Math.max(0, Math.min(currentRight - 0.3, cursorT));
-      const newWidth = currentRight - newOffset;
-      const roundedOffset = Number(newOffset.toFixed(2));
-      const roundedWidth = Number(newWidth.toFixed(2));
-      updateOpening(opening.id, { offset: roundedOffset, width: roundedWidth });
-      setHandleReadout(`Width: ${roundedWidth.toFixed(2)} m`);
-    } else if (resizingHandle === 'top') {
-      // Adjust height from top edge
-      const cursorY = Math.max(opening.sill + 0.3, Math.min(room.wallHeight, e.point.y));
-      const newHeight = cursorY - opening.sill;
-      const rounded = Number(newHeight.toFixed(2));
-      updateOpening(opening.id, { height: rounded });
-      setHandleReadout(`Height: ${rounded.toFixed(2)} m`);
-    } else if (resizingHandle === 'sill') {
-      // Adjust sill height from bottom edge
-      const cursorY = Math.max(0, Math.min(room.wallHeight - opening.height, e.point.y));
-      const rounded = Number(cursorY.toFixed(2));
-      updateOpening(opening.id, { sill: rounded });
-      setHandleReadout(`Sill: ${rounded.toFixed(2)} m`);
+    const cursorT = (point.x - seg.a[0]) * seg.dir[0] + (point.z - seg.a[1]) * seg.dir[1];
+    if (handle === 'right') {
+      const width = Number(Math.max(0.3, Math.min(wallLen - start.offset, cursorT - start.offset)).toFixed(2));
+      updateOpening(start.id, { width });
+      setHandleReadout(`Width: ${width.toFixed(2)} m`);
+    } else if (handle === 'left') {
+      const right = start.offset + start.width;
+      const offset = Number(Math.max(0, Math.min(right - 0.3, cursorT)).toFixed(2));
+      const width = Number((right - offset).toFixed(2));
+      updateOpening(start.id, { offset, width });
+      setHandleReadout(`Width: ${width.toFixed(2)} m`);
+    } else if (handle === 'top') {
+      const height = Number((Math.max(start.sill + 0.3, Math.min(room.wallHeight, point.y)) - start.sill).toFixed(2));
+      updateOpening(start.id, { height });
+      setHandleReadout(`Height: ${height.toFixed(2)} m`);
+    } else {
+      const sill = Number(Math.max(0, Math.min(room.wallHeight - start.height, point.y)).toFixed(2));
+      updateOpening(start.id, { sill });
+      setHandleReadout(`From floor: ${sill.toFixed(2)} m`);
     }
   };
 
-  const handleResizePointerUp = (e: ThreeEvent<PointerEvent>) => {
-    if (!resizingHandle) return;
+  /**
+   * Starts a handle drag that follows the pointer anywhere until release (not only while it is over
+   * the small handle): the pointer is projected onto the wall's plane.
+   */
+  const handleResizePointerDown = (handle: 'left' | 'right' | 'top' | 'sill', e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    setResizingHandle(null);
-    setHandleReadout(null);
-    if (sharedOrbitControlsRef.current) {
-      sharedOrbitControlsRef.current.enabled = true;
-    }
+    if (e.button !== 0) return;
+    if (sharedOrbitControlsRef.current) sharedOrbitControlsRef.current.enabled = false;
+    const seg = currentSeg;
+    const start = { ...opening };
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(seg.normal[0], 0, seg.normal[1]), new THREE.Vector3(seg.a[0], 0, seg.a[1]));
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const hit = new THREE.Vector3();
+    const move = (ev: PointerEvent) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      ndc.set(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      if (raycaster.ray.intersectPlane(plane, hit)) applyResize(handle, hit, start);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setHandleReadout(null);
+      resetCanvasCursor();
+      if (sharedOrbitControlsRef.current) sharedOrbitControlsRef.current.enabled = true;
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   };
 
   // --------------------------------------------------------------------------
@@ -458,14 +449,10 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
           setCanvasCursor('grabbing');
           handleOpeningPointerDown(e);
         }}
-        onPointerMove={(e) => {
-          handlePointerMove(e);
-          handleResizePointerMove(e);
-        }}
+        onPointerMove={(e) => handlePointerMove(e)}
         onPointerUp={(e) => {
           resetCanvasCursor();
           handlePointerUp(e);
-          handleResizePointerUp(e);
         }}
       >
         {/* 1. ARCHITECTURAL CUTOUT FRAME (Jambs, Lintel, Sill Lining) */}
@@ -607,77 +594,33 @@ export const OpeningVisual: React.FC<OpeningVisualProps> = ({ opening, segment, 
         {/* 6. RESIZE HANDLES (Visible when opening is selected) */}
         {isSelected && toolMode === 'select' && (
           <group name="opening-resize-handles">
-            {/* Left Edge Handle (Width) */}
-            <mesh
-              position={[-opening.width / 2, 0, 0]}
-              onPointerOver={(e) => {
-                e.stopPropagation();
-                setCanvasCursor('ew-resize');
-              }}
-              onPointerOut={() => resetCanvasCursor()}
-              onPointerDown={(e) => handleResizePointerDown('left', e)}
-            >
-              <sphereGeometry args={[0.08, 16, 16]} />
-              <meshStandardMaterial
-                color="#f59e0b"
-                emissive="#d97706"
-                emissiveIntensity={0.6}
-              />
-            </mesh>
-
-            {/* Right Edge Handle (Width) */}
-            <mesh
-              position={[opening.width / 2, 0, 0]}
-              onPointerOver={(e) => {
-                e.stopPropagation();
-                setCanvasCursor('ew-resize');
-              }}
-              onPointerOut={() => resetCanvasCursor()}
-              onPointerDown={(e) => handleResizePointerDown('right', e)}
-            >
-              <sphereGeometry args={[0.08, 16, 16]} />
-              <meshStandardMaterial
-                color="#f59e0b"
-                emissive="#d97706"
-                emissiveIntensity={0.6}
-              />
-            </mesh>
-
-            {/* Top Edge Handle (Height) */}
-            <mesh
-              position={[0, opening.height / 2, 0]}
-              onPointerOver={(e) => {
-                e.stopPropagation();
-                setCanvasCursor('ns-resize');
-              }}
-              onPointerOut={() => resetCanvasCursor()}
-              onPointerDown={(e) => handleResizePointerDown('top', e)}
-            >
-              <sphereGeometry args={[0.08, 16, 16]} />
-              <meshStandardMaterial
-                color="#38bdf8"
-                emissive="#0284c7"
-                emissiveIntensity={0.6}
-              />
-            </mesh>
-
-            {/* Bottom Edge Handle (Sill Height) */}
-            <mesh
-              position={[0, -opening.height / 2, 0]}
-              onPointerOver={(e) => {
-                e.stopPropagation();
-                setCanvasCursor('ns-resize');
-              }}
-              onPointerOut={() => resetCanvasCursor()}
-              onPointerDown={(e) => handleResizePointerDown('sill', e)}
-            >
-              <sphereGeometry args={[0.08, 16, 16]} />
-              <meshStandardMaterial
-                color="#38bdf8"
-                emissive="#0284c7"
-                emissiveIntensity={0.6}
-              />
-            </mesh>
+            {/* Width (sides) and height / sill (top, bottom) handles, on both faces of the wall so
+                they stand clear of the frame and can be grabbed from inside or outside the room */}
+            {(
+              [
+                ['left', [-opening.width / 2, 0], 'ew-resize', '#f59e0b'],
+                ['right', [opening.width / 2, 0], 'ew-resize', '#f59e0b'],
+                ['top', [0, opening.height / 2], 'ns-resize', '#38bdf8'],
+                ['sill', [0, -opening.height / 2], 'ns-resize', '#38bdf8'],
+              ] as const
+            ).flatMap(([handle, [hx, hy], cursor, color]) =>
+              [-1, 1].map((face) => (
+                <mesh
+                  key={`${handle}${face}`}
+                  position={[hx, hy, face * (wallThickness / 2 + 0.07)]}
+                  renderOrder={30}
+                  onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setCanvasCursor(cursor);
+                  }}
+                  onPointerOut={() => resetCanvasCursor()}
+                  onPointerDown={(e) => handleResizePointerDown(handle, e)}
+                >
+                  <sphereGeometry args={[0.1, 16, 16]} />
+                  <meshBasicMaterial color={color} depthTest={false} toneMapped={false} />
+                </mesh>
+              ))
+            )}
 
             {/* Swing Flip Handle (Single Click Toggles Door Hinge Side) */}
             {isDoor && (

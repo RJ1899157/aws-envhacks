@@ -268,3 +268,123 @@ export function roomOverlapsOthers(outline: readonly Vec2[], others: readonly Ro
     return b.min[0] < o.max[0] + gap && b.max[0] > o.min[0] - gap && b.min[1] < o.max[1] + gap && b.max[1] > o.min[1] - gap;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Dividing a room with a wall
+// ---------------------------------------------------------------------------
+
+/** Keeps the part of a polygon on one side of the line coordinate[axis] = limit (Sutherland–Hodgman). */
+function clipHalf(poly: readonly Vec2[], axis: 0 | 1, limit: number, keepBelow: boolean): Vec2[] {
+  const inside = (p: Vec2) => (keepBelow ? p[axis] <= limit + 1e-9 : p[axis] >= limit - 1e-9);
+  const cross = (a: Vec2, b: Vec2): Vec2 => {
+    const t = (limit - a[axis]) / (b[axis] - a[axis]);
+    return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+  };
+  const out: Vec2[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const cur = poly[i]!;
+    const prev = poly[(i + poly.length - 1) % poly.length]!;
+    if (inside(cur)) {
+      if (!inside(prev)) out.push(cross(prev, cur));
+      out.push(cur);
+    } else if (inside(prev)) out.push(cross(prev, cur));
+  }
+  return tidyOutline(out);
+}
+
+/** Drops repeated and collinear vertices (rounded to 0.1 mm). */
+function tidyOutline(poly: Vec2[]): Vec2[] {
+  let pts = poly.map(([x, z]) => [Number(x.toFixed(4)), Number(z.toFixed(4))] as Vec2);
+  pts = pts.filter((p, i) => {
+    const q = pts[(i + 1) % pts.length]!;
+    return Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-4;
+  });
+  let changed = true;
+  while (changed && pts.length > 3) {
+    changed = false;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i + pts.length - 1) % pts.length]!;
+      const b = pts[i]!;
+      const c = pts[(i + 1) % pts.length]!;
+      if (Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) < 1e-6) {
+        pts.splice(i, 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return pts;
+}
+
+/** How many times the line coordinate[axis] = at crosses the outline. */
+function crossings(poly: readonly Vec2[], axis: 0 | 1, at: number): number {
+  let n = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]![axis];
+    const b = poly[(i + 1) % poly.length]![axis];
+    if ((a < at && b > at) || (a > at && b < at)) n++;
+  }
+  return n;
+}
+
+const polyArea = (p: readonly Vec2[]) => Math.abs(p.reduce((s, a, i) => { const b = p[(i + 1) % p.length]!; return s + a[0] * b[1] - b[0] * a[1]; }, 0)) / 2;
+
+/** Wall of `room` that the stretch [u0, u1] along a world line through p (direction d) lies on, with the offset of u0. */
+function wallOnLine(room: Pick<Room, 'outline'>, p: Vec2, d: Vec2, halfWidth: number): { wallIndex: number; offset: number } | null {
+  for (let i = 0; i < room.outline.length; i++) {
+    const seg = wallSegment(room, i);
+    const parallel = Math.abs(seg.dir[0] * d[1] - seg.dir[1] * d[0]) < 1e-6;
+    if (!parallel) continue;
+    const dist = Math.abs((p[0] - seg.a[0]) * seg.normal[0] + (p[1] - seg.a[1]) * seg.normal[1]);
+    if (dist > 0.01) continue;
+    const u = (p[0] - seg.a[0]) * seg.dir[0] + (p[1] - seg.a[1]) * seg.dir[1];
+    if (u - halfWidth < -1e-3 || u + halfWidth > seg.len + 1e-3) continue;
+    return { wallIndex: i, offset: Math.max(0, u - halfWidth) };
+  }
+  return null;
+}
+
+export type DivideResult = { ok: true; first: Room; second: Room } | { ok: false; reason: string };
+
+/**
+ * Splits a room with a wall along x = at (axis 'x') or z = at (axis 'z'). The two parts sit one wall
+ * thickness apart, so the new wall is a shared wall that takes a door like any other. Furniture
+ * goes with the part its centre is in; windows and doors stay on their walls when they still fit.
+ */
+export function divideRoom(room: Room, axis: 'x' | 'z', at: number, existing: readonly Room[]): DivideResult {
+  const ax: 0 | 1 = axis === 'x' ? 0 : 1;
+  const half = room.wallThickness / 2;
+  if (crossings(room.outline, ax, at) !== 2) return { ok: false, reason: 'A dividing wall here would cross the room more than once.' };
+  const a = clipHalf(room.outline, ax, at - half, true);
+  const b = clipHalf(room.outline, ax, at + half, false);
+  if (a.length < 3 || b.length < 3 || polyArea(a) < 1 || polyArea(b) < 1) return { ok: false, reason: 'Each part needs at least 1 m² of floor.' };
+
+  const parts = [a, b].map((outline) => ({ outline, openings: [] as Opening[] }));
+  for (const op of room.openings) {
+    const seg = wallSegment(room, op.wallIndex);
+    const u = op.offset + op.width / 2;
+    const p: Vec2 = [seg.a[0] + seg.dir[0] * u, seg.a[1] + seg.dir[1] * u];
+    for (const part of parts) {
+      const hit = wallOnLine({ outline: part.outline }, p, seg.dir, op.width / 2);
+      if (hit) {
+        part.openings.push({ ...op, wallIndex: hit.wallIndex, offset: Number(hit.offset.toFixed(4)) });
+        break;
+      }
+    }
+  }
+  const side = (x: number) => x < at;
+  const objectsA = room.objects.filter((o) => side(o.position[ax === 0 ? 0 : 2]));
+  const objectsB = room.objects.filter((o) => !side(o.position[ax === 0 ? 0 : 2]));
+  const base = { ...room, wallOverrides: undefined };
+  const first = RoomSchema.parse({ ...base, outline: parts[0]!.outline, openings: parts[0]!.openings, objects: objectsA });
+  const second = RoomSchema.parse({
+    ...base,
+    id: generateRoomId(),
+    name: uniqueRoomName(`${room.name} 2`, [room, ...existing]),
+    outline: parts[1]!.outline,
+    openings: parts[1]!.openings,
+    objects: objectsB,
+    scenarios: undefined,
+  });
+  return { ok: true, first, second };
+}

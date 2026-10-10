@@ -70,6 +70,8 @@ import { registerShowcaseCamera } from '../store/showcaseStore';
 import { focusSimulationRoom } from './simulation/simulationCamera';
 import { SourceWisps } from './simulation/SourceWisps';
 import { ScaleReference } from './ScaleReference';
+import { Scenery } from './Scenery';
+import { RoomDivider } from './RoomDivider';
 import { usePlacementValidation } from './usePlacementValidation';
 import { SceneExporter } from './SceneExporter';
 
@@ -1149,8 +1151,12 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false 
           <directionalLight position={[12, 20, 10]} intensity={1.2} />
           <directionalLight position={[-12, 10, -10]} intensity={0.35} />
 
+          {/* Guided app in 3D: surroundings that follow the home's answers instead of an empty grid */}
+          {minimal && view === '3d' && <Scenery />}
+          {minimal && <RoomDivider />}
+
           {/* Ground grid (1 m major, 0.1 m minor) sized to the floor plan, extending past every room */}
-          <Grid
+          {(!minimal || view === '2d') && <Grid
             position={[groundGrid.center[0], 0, groundGrid.center[1]]}
             args={groundGrid.size}
             cellSize={0.1}
@@ -1161,13 +1167,13 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false 
             sectionColor={simActive ? fadeToward('#52525e', SIM_BACKGROUND, SIM_GRID_STRENGTH) : '#52525e'}
             fadeDistance={1000}
             fadeStrength={0}
-          />
+          />}
 
           {/* Placement grid drawn over the active room's floor */}
           {isPlacing && <PlacementGrid />}
 
           {/* Blender X (Red) and Z (Blue) floor axis lines */}
-          <BlenderAxisLines faded={simActive} />
+          {!minimal && <BlenderAxisLines faded={simActive} />}
 
           {/* Ground click & double click detector to clear selection or re-center orbit pivot */}
           <GroundPlaneDetector controlsRef={controlsRef} />

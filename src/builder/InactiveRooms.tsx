@@ -12,7 +12,11 @@ import { RoomShell } from './RoomShell';
 
 const InactiveRoom: React.FC<{ room: Room }> = ({ room }) => {
   const setActiveRoom = useSceneStore((state) => state.setActiveRoom);
-  const activate = useMemo(() => () => room.id && setActiveRoom(room.id), [room.id, setActiveRoom]);
+  // A click on the active room's wall (e.g. a shared wall) is for that wall, not for this room
+  const activate = useMemo(() => () => {
+    if (useUiStore.getState().hoveredWallIndex !== null) return;
+    if (room.id) setActiveRoom(room.id);
+  }, [room.id, setActiveRoom]);
   const simChips = useSimulationStore((s) => s.viz.show && s.viz.roomLabels && s.result !== null);
 
   const center = useMemo(() => {

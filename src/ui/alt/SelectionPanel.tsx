@@ -4,7 +4,8 @@ import { getCatalogAsset } from '../../core/catalog';
 import { DEFAULT_DEVICE_FLOW_M3H, PM25_SOURCE_PRESETS, type Pm25SourcePresetId } from '../../simulation/constants';
 import { deviceFor } from '../../simulation/devices';
 import { isPm25SourceObject, placedSourceParams } from '../../simulation/sources';
-import type { Opening, SceneObject } from '../../core/schema';
+import type { Opening, Room, SceneObject } from '../../core/schema';
+import { sharedWallOpenings } from '../../core/rooms';
 import { useSceneStore } from '../../store/sceneStore';
 import { altLabel } from './altCatalog';
 import { openingFlowFactor, windowSettings } from '../../simulation/geometry';
@@ -18,7 +19,7 @@ import { usePlacementIssuesStore } from '../../store/placementIssuesStore';
 import { useUiStore } from '../../store/uiStore';
 import { wallHeightAt } from '../../simulation/geometry';
 
-const Shell: React.FC<{ title: string; kind: string; onDelete: () => void; onRotate?: () => void; top?: React.ReactNode; children?: React.ReactNode }> = ({ title, kind, onDelete, onRotate, top, children }) => (
+const Shell: React.FC<{ title: string; kind: string; onDelete?: () => void; onRotate?: () => void; top?: React.ReactNode; children?: React.ReactNode }> = ({ title, kind, onDelete, onRotate, top, children }) => (
   <aside
     data-testid="alt-selection-panel"
     data-viewport-right
@@ -37,16 +38,18 @@ const Shell: React.FC<{ title: string; kind: string; onDelete: () => void; onRot
       {top}
       {children}
     </div>
-    <div className="px-3.5 pb-3 flex gap-2">
+    {(onRotate || onDelete) && <div className="px-3.5 pb-3 flex gap-2">
       {onRotate && (
         <button type="button" onClick={onRotate} className="flex-1 py-1.5 rounded-[8px] bg-white/10 hover:bg-white/15 text-[12px] flex items-center justify-center gap-1.5">
           <RotateCw size={12} /> Rotate
         </button>
       )}
-      <button type="button" onClick={onDelete} data-testid="alt-delete-selected" className="flex-1 py-1.5 rounded-[8px] bg-red-500/15 hover:bg-red-500/25 text-red-200 text-[12px] flex items-center justify-center gap-1.5">
-        <Trash2 size={12} /> Delete
-      </button>
-    </div>
+      {onDelete && (
+        <button type="button" onClick={onDelete} data-testid="alt-delete-selected" className="flex-1 py-1.5 rounded-[8px] bg-red-500/15 hover:bg-red-500/25 text-red-200 text-[12px] flex items-center justify-center gap-1.5">
+          <Trash2 size={12} /> Delete
+        </button>
+      )}
+    </div>}
   </aside>
 );
 
@@ -330,6 +333,88 @@ const ObjectSelection: React.FC<{ object: SceneObject }> = ({ object }) => {
   );
 };
 
+/** What a wall separates: an outside wall, or the neighbouring room on the other side. */
+function wallNeighbour(room: Room, wallIndex: number, others: readonly Room[]): Room | null {
+  for (const other of others) {
+    for (let w = 0; w < other.outline.length; w++) {
+      const a = wallSegment(room, wallIndex);
+      const b = wallSegment(other, w);
+      const antiparallel = a.dir[0] * b.dir[0] + a.dir[1] * b.dir[1] < -0.999;
+      const gap = Math.abs((b.a[0] - a.a[0]) * a.normal[0] + (b.a[1] - a.a[1]) * a.normal[1]);
+      if (!antiparallel || Math.abs(gap - room.wallThickness) > 0.03) continue;
+      // Overlapping along the wall
+      const t0 = (b.a[0] - a.a[0]) * a.dir[0] + (b.a[1] - a.a[1]) * a.dir[1];
+      const t1 = (b.b[0] - a.a[0]) * a.dir[0] + (b.b[1] - a.a[1]) * a.dir[1];
+      if (Math.min(Math.max(t0, t1), a.len) - Math.max(Math.min(t0, t1), 0) > 0.2) return other;
+    }
+  }
+  return null;
+}
+
+/** Whether a wall has been deleted (opened completely), from this room's side or the neighbour's. */
+export function isWallDeleted(room: Room, wallIndex: number, others: readonly Room[]): boolean {
+  if (room.openings.some((o) => o.wallIndex === wallIndex && o.subType === 'open-wall')) return true;
+  const ids = new Set(sharedWallOpenings(room, wallIndex, others).map((o) => o.id.replace(/^shared-/, '')));
+  return others.some((r) => r.openings.some((o) => ids.has(o.id) && o.subType === 'open-wall'));
+}
+
+const WallSelection: React.FC<{ wallIndex: number }> = ({ wallIndex }) => {
+  const room = useSceneStore((s) => s.room);
+  const otherRooms = useSceneStore((s) => s.otherRooms);
+  // Delete / Backspace deletes the selected wall (not while typing in a field)
+  const removeRef = React.useRef<() => void>(() => {});
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        removeRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  if (wallIndex < 0 || wallIndex >= room.outline.length) return null;
+  const len = wallSegment(room, wallIndex).len;
+  const neighbour = wallNeighbour(room, wallIndex, otherRooms);
+  const deleted = isWallDeleted(room, wallIndex, otherRooms);
+  const onWall = room.openings.filter((o) => o.wallIndex === wallIndex && o.subType !== 'open-wall').length;
+  const remove = () => {
+    if (onWall > 0 && !window.confirm(`Deleting this wall also removes the ${onWall} window${onWall === 1 ? '' : 's'}/door${onWall === 1 ? '' : 's'} on it. Continue?`)) return;
+    useSceneStore.getState().deleteWall(wallIndex);
+    useUiStore.getState().setSelectedWallIndex(null);
+    useUiStore.getState().setToastMessage(neighbour ? `Wall removed: ${room.name} and ${neighbour.name} are now open to each other.` : 'Wall removed: this side of the room is open to outdoors.', true);
+  };
+  removeRef.current = deleted ? () => {} : remove;
+  const restore = () => {
+    useSceneStore.getState().restoreWall(wallIndex);
+    useUiStore.getState().setSelectedWallIndex(null);
+  };
+  return (
+    <Shell title={neighbour ? `Wall to ${neighbour.name}` : 'Outside wall'} kind={`Wall · ${len.toFixed(2)} m`}>
+      {deleted ? (
+        <>
+          <p className="text-[11.5px] text-neutral-300 leading-snug">{neighbour ? 'Removed: the two rooms are one open space here.' : 'Removed: this side is open to outdoors.'}</p>
+          <button type="button" onClick={restore} data-testid="alt-restore-wall" className="py-1.5 rounded-[8px] bg-white/10 hover:bg-white/15 text-[12px] text-white">
+            Put the wall back
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-[11px] text-neutral-400 leading-snug">
+            {neighbour ? `Deleting it makes ${room.name} and ${neighbour.name} one open space; air moves freely between them.` : 'Deleting it leaves this side open to outdoors, like a verandah or open balcony.'}
+          </p>
+          <button type="button" onClick={remove} data-testid="alt-delete-wall" className="py-1.5 rounded-[8px] bg-red-500/15 hover:bg-red-500/25 text-red-200 text-[12px] flex items-center justify-center gap-1.5">
+            <Trash2 size={12} /> Delete wall
+          </button>
+          <p className="text-[10.5px] text-neutral-500">Drag the wall to move it, or use its arrows to resize the room.</p>
+        </>
+      )}
+    </Shell>
+  );
+};
+
 const isPartition = (assetId: string) => assetId === 'partition-wall' || assetId === 'half-partition';
 
 /** Right panel of Design mode while something is selected. */
@@ -339,7 +424,11 @@ export const SelectionPanel: React.FC = () => {
   const openingId = useSceneStore((s) => s.selectedOpeningId);
   const object = objectId ? room.objects.find((o) => o.id === objectId) : undefined;
   const opening = !object && openingId ? room.openings.find((o) => o.id === openingId) : undefined;
+  const wallIndex = useUiStore((s) => s.selectedWallIndex);
   if (object) return <ObjectSelection object={object} />;
+  // A deleted wall is an "open wall" opening: show it as the wall, with Put the wall back
+  if (opening?.subType === 'open-wall') return <WallSelection wallIndex={opening.wallIndex} />;
   if (opening) return <OpeningSelection opening={opening} />;
+  if (wallIndex !== null) return <WallSelection wallIndex={wallIndex} />;
   return null;
 };
