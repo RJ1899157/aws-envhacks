@@ -11,8 +11,14 @@ import { openingFlowFactor, windowSettings } from '../../simulation/geometry';
 import { WINDOW_STYLES } from './AboutHomeCard';
 import type { WindowStyle } from '../../core/schema';
 import { OpeningStateControl } from './DesignPanel';
+import { AlertTriangle, Minus, Plus } from 'lucide-react';
+import { wallSegment } from '../../core/parser';
+import { findNearestValidPosition } from '../../core/placementValidator';
+import { usePlacementIssuesStore } from '../../store/placementIssuesStore';
+import { useUiStore } from '../../store/uiStore';
+import { wallHeightAt } from '../../simulation/geometry';
 
-const Shell: React.FC<{ title: string; kind: string; onDelete: () => void; onRotate?: () => void; children?: React.ReactNode }> = ({ title, kind, onDelete, onRotate, children }) => (
+const Shell: React.FC<{ title: string; kind: string; onDelete: () => void; onRotate?: () => void; top?: React.ReactNode; children?: React.ReactNode }> = ({ title, kind, onDelete, onRotate, top, children }) => (
   <aside
     data-testid="alt-selection-panel"
     data-viewport-right
@@ -27,7 +33,10 @@ const Shell: React.FC<{ title: string; kind: string; onDelete: () => void; onRot
         <X size={14} />
       </button>
     </div>
-    <div className="px-3.5 py-3 flex flex-col gap-3 text-[12px]">{children}</div>
+    <div className="px-3.5 py-3 flex flex-col gap-3 text-[12px]">
+      {top}
+      {children}
+    </div>
     <div className="px-3.5 pb-3 flex gap-2">
       {onRotate && (
         <button type="button" onClick={onRotate} className="flex-1 py-1.5 rounded-[8px] bg-white/10 hover:bg-white/15 text-[12px] flex items-center justify-center gap-1.5">
@@ -111,6 +120,86 @@ const WindowTypeControls: React.FC<{ opening: Opening }> = ({ opening }) => {
   );
 };
 
+/** − value + stepper in metres. */
+const Stepper: React.FC<{ value: number; min: number; max: number; step?: number; onChange: (v: number) => void; testId?: string }> = ({ value, min, max, step = 0.1, onChange, testId }) => {
+  const set = (v: number) => onChange(Math.round(Math.min(max, Math.max(min, v)) * 100) / 100);
+  const btn = 'w-6 h-6 rounded-[5px] bg-white/10 hover:bg-white/15 disabled:opacity-30 flex items-center justify-center';
+  return (
+    <div className="flex items-center gap-1" data-testid={testId}>
+      <button type="button" aria-label="Smaller" className={btn} disabled={value <= min + 1e-6} onClick={() => set(value - step)}>
+        <Minus size={11} />
+      </button>
+      <span className="w-14 text-center tabular-nums text-white">{value.toFixed(2)} m</span>
+      <button type="button" aria-label="Bigger" className={btn} disabled={value >= max - 1e-6} onClick={() => set(value + step)}>
+        <Plus size={11} />
+      </button>
+    </div>
+  );
+};
+
+/** Overlap / outside-room warning of the selected object, with a fix (replaces the old hover popup). */
+const PlacementWarning: React.FC<{ object: SceneObject }> = ({ object }) => {
+  const issues = usePlacementIssuesStore((s) => s.issues[object.id]);
+  const dismissed = usePlacementIssuesStore((s) => s.dismissedObjectIds.includes(object.id));
+  if (!issues || issues.length === 0 || dismissed) return null;
+  const nudge = () => {
+    const { room } = useSceneStore.getState();
+    const target = findNearestValidPosition(object, room, useUiStore.getState().gridStep);
+    if (!target) {
+      useUiStore.getState().setToastMessage('No free spot nearby: drag it somewhere clear.');
+      return;
+    }
+    useSceneStore.getState().updateObject(object.id, { position: [target[0], 0, target[2]], elevation: target[1] });
+    usePlacementIssuesStore.getState().clearDismissed(object.id);
+  };
+  return (
+    <div className="p-2 rounded-[8px] bg-amber-500/10 border border-amber-400/30 flex flex-col gap-1.5" data-testid="alt-placement-warning">
+      {issues.map((i) => (
+        <span key={i.id} className="flex items-start gap-1.5 text-[11px] text-amber-100">
+          <AlertTriangle size={12} className="shrink-0 mt-px text-amber-300" /> {i.message}
+        </span>
+      ))}
+      <div className="flex gap-1.5">
+        <button type="button" onClick={nudge} className="flex-1 py-1 rounded-[6px] bg-amber-500/25 hover:bg-amber-500/35 text-[11px] text-white">
+          Move to a free spot
+        </button>
+        <button type="button" onClick={() => usePlacementIssuesStore.getState().dismissObject(object.id)} className="px-2 py-1 rounded-[6px] bg-white/10 hover:bg-white/15 text-[11px] text-neutral-300">
+          Keep here
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/** Width, height and (windows) sill height, kept inside the wall. */
+const OpeningSize: React.FC<{ opening: Opening }> = ({ opening }) => {
+  const room = useSceneStore((s) => s.room);
+  const updateOpening = useSceneStore((s) => s.updateOpening);
+  const wallLen = wallSegment(room, opening.wallIndex).len;
+  const wallH = wallHeightAt(room, opening.wallIndex);
+  // Resize about the centre, sliding along the wall to stay on it
+  const setWidth = (width: number) => {
+    const centre = opening.offset + opening.width / 2;
+    const offset = Math.min(Math.max(0, centre - width / 2), Math.max(0, wallLen - width));
+    updateOpening(opening.id, { width, offset });
+  };
+  return (
+    <>
+      <Line label="Width">
+        <Stepper value={opening.width} min={0.3} max={Math.max(0.3, wallLen)} onChange={setWidth} testId="alt-opening-width" />
+      </Line>
+      <Line label="Height">
+        <Stepper value={opening.height} min={0.2} max={Math.max(0.2, wallH - opening.sill)} onChange={(height) => updateOpening(opening.id, { height })} testId="alt-opening-height" />
+      </Line>
+      {opening.type === 'window' && (
+        <Line label="From floor">
+          <Stepper value={opening.sill} min={0} max={Math.max(0, wallH - opening.height)} onChange={(sill) => updateOpening(opening.id, { sill })} testId="alt-opening-sill" />
+        </Line>
+      )}
+    </>
+  );
+};
+
 const OpeningSelection: React.FC<{ opening: Opening }> = ({ opening }) => {
   const isDoor = opening.type === 'door';
   return (
@@ -118,10 +207,9 @@ const OpeningSelection: React.FC<{ opening: Opening }> = ({ opening }) => {
       <Line label="Usually">
         <OpeningStateControl opening={opening} />
       </Line>
+      <OpeningSize opening={opening} />
       <WindowTypeControls opening={opening} />
-      <p className="text-[11px] text-neutral-500 leading-snug">
-        {opening.width.toFixed(1)} m wide. Drag it along the wall to move it; drag its edges to resize.
-      </p>
+      <p className="text-[11px] text-neutral-500 leading-snug">Drag it along the wall to move it.</p>
     </Shell>
   );
 };
@@ -143,7 +231,7 @@ const ObjectSelection: React.FC<{ object: SceneObject }> = ({ object }) => {
     const window = p?.schedule[0];
     const when = !window ? 'always' : window.durationMin <= 30 ? '30' : '60';
     return (
-      <Shell title={name} kind="Pollution source" onDelete={remove} onRotate={rotate}>
+      <Shell top={<PlacementWarning object={object} />} title={name} kind="Pollution source" onDelete={remove} onRotate={rotate}>
         <Line label="Active">
           <OnOff on={p?.enabled ?? true} onChange={(enabled) => updateObject(object.id, { enabled })} />
         </Line>
@@ -177,7 +265,7 @@ const ObjectSelection: React.FC<{ object: SceneObject }> = ({ object }) => {
     const field = role === 'clean' ? 'cadrM3h' : role === 'exhaust' || role === 'supply' ? 'exhaustFlowM3h' : 'defaultAirflow';
     const current = STRENGTH.reduce((best, s) => (Math.abs(s.factor * base - flow) < Math.abs(best.factor * base - flow) ? s : best), STRENGTH[1]!);
     return (
-      <Shell title={name} kind="Air device" onDelete={remove} onRotate={rotate}>
+      <Shell top={<PlacementWarning object={object} />} title={name} kind="Air device" onDelete={remove} onRotate={rotate}>
         <Line label="Switched">
           <OnOff on={device.enabled} onChange={(enabled) => updateObject(object.id, { enabled })} />
         </Line>
@@ -224,13 +312,25 @@ const ObjectSelection: React.FC<{ object: SceneObject }> = ({ object }) => {
   }
 
   return (
-    <Shell title={name} kind="Furniture" onDelete={remove} onRotate={rotate}>
+    <Shell top={<PlacementWarning object={object} />} title={name} kind={isPartition(object.assetId) ? 'Wall' : 'Furniture'} onDelete={remove} onRotate={rotate}>
+      {isPartition(object.assetId) && (
+        <>
+          <Line label="Length">
+            <Stepper value={object.size[0]} min={0.3} max={12} step={0.25} onChange={(len) => updateObject(object.id, { size: [len, object.size[1], object.size[2]] })} testId="alt-partition-length" />
+          </Line>
+          <Line label="Height">
+            <Stepper value={object.size[1]} min={0.5} max={6} step={0.1} onChange={(h) => updateObject(object.id, { size: [object.size[0], h, object.size[2]] })} />
+          </Line>
+        </>
+      )}
       <p className="text-[11px] text-neutral-400 leading-snug">
         {object.role === 'porous' ? 'Air partly passes through it.' : 'Air flows around it, not through it.'} Drag to move; drag the handles to resize.
       </p>
     </Shell>
   );
 };
+
+const isPartition = (assetId: string) => assetId === 'partition-wall' || assetId === 'half-partition';
 
 /** Right panel of Design mode while something is selected. */
 export const SelectionPanel: React.FC = () => {

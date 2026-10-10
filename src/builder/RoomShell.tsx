@@ -799,16 +799,12 @@ export const RoomShell: React.FC<RoomShellProps> = ({ room: roomProp, interactiv
         );
       })}
 
-      {/* 4. Optional Ceiling Mesh */}
-      {showCeiling && !cutaway && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, wallHeight, 0]} receiveShadow userData={{ isExportable: true, exportType: 'wall' }}>
+      {/* 4. Ceiling: in the 3D view only (the top-down plan looks through it), translucent so the
+          room stays visible from above, and never in the way of clicks; hidden in the results cutaway */}
+      {showCeiling && !cutaway && view === '3d' && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, wallHeight, 0]} renderOrder={2} raycast={() => null} userData={{ isExportable: true, exportType: 'wall' }}>
           <shapeGeometry args={[floorShape]} />
-          {/* BackSide: visible from inside the room, invisible when orbiting from above */}
-          <meshStandardMaterial
-            color="#e4e4e7"
-            roughness={0.9}
-            side={THREE.BackSide}
-          />
+          <meshStandardMaterial color="#d4d4d8" roughness={0.9} side={THREE.DoubleSide} transparent opacity={0.55} depthWrite={false} />
         </mesh>
       )}
     </group>

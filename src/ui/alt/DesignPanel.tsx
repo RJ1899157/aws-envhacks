@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Home, Info, Pencil, Play, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Home, Info, Pencil, Play, Search, Trash2, X } from 'lucide-react';
 import { getCatalogAsset } from '../../core/catalog';
 import { openingSubTypeFor } from '../../core/openingPresets';
 import { polygonBounds } from '../../core/parser';
@@ -12,7 +12,8 @@ import { useSceneStore } from '../../store/sceneStore';
 import { useUiStore } from '../../store/uiStore';
 import { DESIGN_STEPS, cancelPlacement, useAltStore, type DesignStep } from './altStore';
 import { AboutHomeCard, homeSummary } from './AboutHomeCard';
-import { FURNITURE_ITEMS, MORE_FURNITURE_ITEMS, POLLUTION_GROUPS, VENTILATION_GROUPS, altLabel, type AltItem } from './altCatalog';
+import { FURNITURE_ITEMS, MORE_FURNITURE_ITEMS, PARTITION_ITEMS, POLLUTION_GROUPS, VENTILATION_GROUPS, altLabel, searchItems, type AltItem } from './altCatalog';
+import type { QuickShapeType } from '../../core/quickShapes';
 
 // ---------------------------------------------------------------------------
 // Shared bits
@@ -211,6 +212,13 @@ const HomeChip: React.FC = () => {
 // Steps
 // ---------------------------------------------------------------------------
 
+const SHAPES: { type: QuickShapeType; label: string; path: string }[] = [
+  { type: 'rectangle', label: 'Square', path: 'M4 5h16v14H4z' },
+  { type: 'l-shape', label: 'L', path: 'M4 5h16v8h-7v6H4z' },
+  { type: 'u-shape', label: 'U', path: 'M4 5h16v14h-5v-7H9v7H4z' },
+  { type: 't-shape', label: 'T', path: 'M4 5h16v7h-5v7H9v-7H4z' },
+];
+
 const RoomsStep: React.FC = () => {
   const room = useSceneStore((s) => s.room);
   const otherRooms = useSceneStore((s) => s.otherRooms);
@@ -225,6 +233,12 @@ const RoomsStep: React.FC = () => {
   const b = polygonBounds(room.outline);
   const [name, setName] = useState(room.name);
   useEffect(() => setName(room.name), [room.name]);
+
+  const reshape = (type: QuickShapeType) => {
+    if (room.openings.length > 0 && !window.confirm('Changing the shape may remove windows and doors that no longer fit their wall. Continue?')) return;
+    const removed = useSceneStore.getState().reshapeRoom(type);
+    if (removed > 0) useUiStore.getState().setToastMessage(`${removed} ${removed === 1 ? 'opening was' : 'openings were'} removed (no longer on a wall). Undo with Ctrl+Z.`);
+  };
 
   const placeRoom = (type: RoomType) => {
     const ui = useUiStore.getState();
@@ -292,6 +306,36 @@ const RoomsStep: React.FC = () => {
           </div>
           <span className="text-[10.5px] text-neutral-500">Or drag the walls in the view.</span>
         </div>
+      </Section>
+
+      <Section title={`Shape of ${room.name}`}>
+        <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Room shape">
+          {SHAPES.map((sh) => (
+            <button
+              key={sh.type}
+              type="button"
+              data-testid={`alt-shape-${sh.type}`}
+              onClick={() => reshape(sh.type)}
+              title={sh.label}
+              className="flex flex-col items-center gap-1 p-1.5 rounded-[8px] border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:border-indigo-400/60"
+            >
+              <svg viewBox="0 0 24 24" className="w-7 h-7 text-indigo-300" fill="currentColor" fillOpacity={0.25} stroke="currentColor" strokeWidth={1.5}>
+                <path d={sh.path} />
+              </svg>
+              <span className="text-[10px] text-neutral-300">{sh.label}</span>
+            </button>
+          ))}
+        </div>
+        <Tip>Or drag the corners and walls in the view. Double-click a wall to add a corner.</Tip>
+      </Section>
+
+      <Section title="Walls inside the room">
+        <Grid>
+          {PARTITION_ITEMS.map((i) => (
+            <AssetButton key={i.assetId} item={i} />
+          ))}
+        </Grid>
+        <Tip>Partitions block air; leave a gap (or add a door) where people walk through.</Tip>
       </Section>
 
       <Section title={project === 'house' || rooms.length > 1 ? 'Add a room' : 'Add another room'}>
@@ -443,8 +487,31 @@ const STEP_INTRO: Record<DesignStep, { title: string; text: string }> = {
 };
 
 /** Left panel of Design mode: one step at a time, Back / Next, and Simulate at the end. */
+/** Search across every item (doors, windows, fans, furniture, partitions, pollution sources). */
+const SearchResults: React.FC<{ query: string }> = ({ query }) => {
+  const results = searchItems(query);
+  if (results.length === 0) return <p className="text-[11.5px] text-neutral-500">Nothing matches "{query}".</p>;
+  const groups = [...new Set(results.map((r) => r.group))];
+  return (
+    <>
+      {groups.map((g) => (
+        <Section key={g} title={g}>
+          <Grid>
+            {results
+              .filter((r) => r.group === g)
+              .map((i) => (
+                <AssetButton key={i.assetId} item={i} />
+              ))}
+          </Grid>
+        </Section>
+      ))}
+    </>
+  );
+};
+
 export const DesignPanel: React.FC<{ onSimulate: () => void }> = ({ onSimulate }) => {
   const step = useAltStore((s) => s.step);
+  const [query, setQuery] = useState('');
   const setStep = useAltStore((s) => s.setStep);
   const index = DESIGN_STEPS.findIndex((s) => s.id === step);
   const intro = STEP_INTRO[step];
@@ -464,11 +531,36 @@ export const DesignPanel: React.FC<{ onSimulate: () => void }> = ({ onSimulate }
         <p className="text-[11.5px] text-neutral-400">{intro.text}</p>
       </div>
 
+      <div className="px-3 pt-2.5">
+        <label className="flex items-center gap-2 px-2.5 py-1.5 rounded-[8px] bg-black/30 border border-white/10 focus-within:border-indigo-500">
+          <Search size={13} className="text-neutral-500 shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
+            placeholder="Search windows, fans, furniture…"
+            className="flex-1 bg-transparent text-[12px] text-white placeholder-neutral-500 outline-none"
+            data-testid="alt-asset-search"
+          />
+          {query && (
+            <button type="button" aria-label="Clear search" onClick={() => setQuery('')} className="text-neutral-500 hover:text-white">
+              <X size={12} />
+            </button>
+          )}
+        </label>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3.5">
-        {step === 'rooms' && <RoomsStep />}
-        {step === 'ventilation' && <VentilationStep />}
-        {step === 'pollution' && <PollutionStep />}
-        {step === 'furniture' && <FurnitureStep />}
+        {query.trim() ? (
+          <SearchResults query={query} />
+        ) : (
+          <>
+            {step === 'rooms' && <RoomsStep />}
+            {step === 'ventilation' && <VentilationStep />}
+            {step === 'pollution' && <PollutionStep />}
+            {step === 'furniture' && <FurnitureStep />}
+          </>
+        )}
       </div>
 
       {placing && (

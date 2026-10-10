@@ -93,6 +93,11 @@ export const FURNITURE_ITEMS: AltItem[] = [
   { assetId: 'bookshelf', label: 'Bookshelf', hint: 'Tall, partly open' },
 ];
 
+export const PARTITION_ITEMS: AltItem[] = [
+  { assetId: 'partition-wall', label: 'Partition wall', hint: 'Full height, splits a room' },
+  { assetId: 'half-partition', label: 'Half wall', hint: '1.2 m high, air flows over it' },
+];
+
 const PICKED = new Set(
   [...VENTILATION_GROUPS, ...POLLUTION_GROUPS].flatMap((g) => g.items.map((i) => i.assetId)).concat(FURNITURE_ITEMS.map((i) => i.assetId))
 );
@@ -116,4 +121,23 @@ const ALT_LABELS: Record<string, string> = Object.fromEntries(
 
 export function altLabel(assetId: string | undefined, fallback: string): string {
   return (assetId && ALT_LABELS[assetId]) || fallback;
+}
+
+/** Every item the app offers, with the step it belongs to, for the asset search. */
+export const SEARCHABLE_ITEMS: (AltItem & { group: string })[] = [
+  ...VENTILATION_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.title }))),
+  ...PARTITION_ITEMS.map((i) => ({ ...i, group: 'Walls' })),
+  ...FURNITURE_ITEMS.map((i) => ({ ...i, group: 'Furniture' })),
+  ...POLLUTION_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: `Pollution · ${g.title}` }))),
+  ...MORE_FURNITURE_ITEMS.map((i) => ({ ...i, group: 'More furniture' })),
+];
+
+/** Items matching a search (label, hint or group; every word must match). */
+export function searchItems(query: string): (AltItem & { group: string })[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  return SEARCHABLE_ITEMS.filter((i) => {
+    const text = `${i.label} ${i.hint} ${i.group} ${i.assetId}`.toLowerCase();
+    return words.every((w) => text.includes(w));
+  });
 }

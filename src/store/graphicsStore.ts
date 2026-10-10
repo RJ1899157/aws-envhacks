@@ -47,13 +47,14 @@ const initialTheme = getInitialTheme();
 applyThemeToDOM(initialTheme);
 
 export const useGraphicsStore = create<GraphicsState>()((set) => ({
-  quality: 'Medium',
+  // Low only: Medium/High added bloom and ambient occlusion that made rooms glow
+  quality: 'Low',
   wallOpacityMode: 'Auto-fade',
   theme: initialTheme,
   fps: 60,
   wallCutHeight: null,
 
-  setQuality: (quality) => set({ quality }),
+  setQuality: () => set({ quality: 'Low' }),
   setWallOpacityMode: (wallOpacityMode) => set({ wallOpacityMode }),
   setTheme: (theme) => {
     set({ theme });

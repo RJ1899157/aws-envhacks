@@ -9,8 +9,8 @@ export type DesignStep = 'rooms' | 'ventilation' | 'pollution' | 'furniture';
 /** In order. 'ventilation' is the Doors & windows step (ids kept so saved sessions still resume). */
 export const DESIGN_STEPS: { id: DesignStep; label: string }[] = [
   { id: 'rooms', label: 'Rooms' },
-  { id: 'furniture', label: 'Furniture' },
   { id: 'ventilation', label: 'Doors & windows' },
+  { id: 'furniture', label: 'Furniture' },
   { id: 'pollution', label: 'Pollution sources' },
 ];
 

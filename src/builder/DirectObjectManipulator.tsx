@@ -388,10 +388,10 @@ export const DirectObjectManipulator: React.FC = () => {
         grabOffset,
       };
 
-      // Also track any other selected objects for multi-object moving
-      const otherSelected = room.objects.filter(
-        (o) => (selectedObjectIds.includes(o.id) || selectedObjectId === o.id) && o.id !== objectId
-      );
+      // Also track any other selected objects for multi-object moving: the selection as it is
+      // after this click (clicking an unselected object without Shift selects only that one)
+      const after = useSceneStore.getState().selectedObjectIds;
+      const otherSelected = room.objects.filter((o) => after.includes(o.id) && o.id !== objectId);
       secondaryObjectsRef.current = otherSelected.map((o) => ({
         id: o.id,
         startPos: [...o.position] as Vec3,

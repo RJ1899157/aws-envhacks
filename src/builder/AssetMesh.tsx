@@ -7,9 +7,7 @@ import { normalizeModel } from '../core/modelNormalizer';
 import type { AirflowRole, SceneObject } from '../core/schema';
 import { registerObjectGroup, unregisterObjectGroup } from './objectRegistry';
 import { usePlacementIssuesStore } from '../store/placementIssuesStore';
-import { useSceneStore } from '../store/sceneStore';
-import { useUiStore } from '../store/uiStore';
-import { findNearestValidPosition, type PlacementIssue } from '../core/placementValidator';
+import type { PlacementIssue } from '../core/placementValidator';
 import { prefersReducedMotion } from '../core/motion';
 import { setCanvasCursor, resetCanvasCursor } from '../core/cursor';
 import { useDropFeedbackStore } from '../store/dropFeedbackStore';
@@ -691,84 +689,6 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
     [object.id, onDoubleClick]
   );
 
-  const handleTooltipPointerEnter = useCallback(() => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    setIsHovered(true);
-  }, []);
-
-  const handleTooltipPointerLeave = useCallback(() => {
-    setIsHovered(false);
-  }, []);
-
-  // Action: Nudge to nearest valid position using spiral search
-  const handleNudge = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      const room = useSceneStore.getState().room;
-      const gridStep = useUiStore.getState().gridStep;
-      const targetPos = findNearestValidPosition(object as SceneObject, room, gridStep);
-
-      if (!targetPos) {
-        return;
-      }
-
-      if (groupRef.current) {
-        const startX = groupRef.current.position.x;
-        const startY = groupRef.current.position.y;
-        const startZ = groupRef.current.position.z;
-        const endX = targetPos[0];
-        const endY = (targetPos[1] ?? 0) + (object.elevation ?? 0);
-        const endZ = targetPos[2];
-        const startTime = performance.now();
-        const duration = 160;
-
-        const animate = (currentTime: number) => {
-          const elapsed = currentTime - startTime;
-          const progress = Math.min(1, elapsed / duration);
-          // Ease-out cubic
-          const ease = 1 - Math.pow(1 - progress, 3);
-          if (groupRef.current) {
-            groupRef.current.position.set(
-              startX + (endX - startX) * ease,
-              startY + (endY - startY) * ease,
-              startZ + (endZ - startZ) * ease
-            );
-          }
-
-          if (progress < 1) {
-            requestAnimationFrame(animate);
-          } else {
-            useSceneStore.getState().updateObject(object.id, {
-              position: [targetPos[0], 0, targetPos[2]],
-              elevation: targetPos[1],
-            });
-            usePlacementIssuesStore.getState().clearDismissed(object.id);
-            setIsHovered(false);
-          }
-        };
-
-        requestAnimationFrame(animate);
-      } else {
-        useSceneStore.getState().updateObject(object.id, {
-          position: [targetPos[0], 0, targetPos[2]],
-          elevation: targetPos[1],
-        });
-        usePlacementIssuesStore.getState().clearDismissed(object.id);
-        setIsHovered(false);
-      }
-    },
-    [object]
-  );
-
-  // Action: Keep anyway (dismisses the warning for this object)
-  const handleKeepAnyway = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      usePlacementIssuesStore.getState().dismissObject(object.id);
-      setIsHovered(false);
-    },
-    [object.id]
-  );
 
   const effectiveColliding = isColliding || hasIssues;
 
@@ -868,52 +788,7 @@ const AssetMeshComponent: React.FC<AssetMeshProps> = ({
         </group>
       )}
 
-      {/* Phase B: Floating interactive hover tooltip with issue text, Nudge, and Keep anyway */}
-      {hasIssues && isHovered && (
-        <Html
-          center
-          position={[0, targetSize[1] + 0.35, 0]}
-          className="pointer-events-auto select-none"
-        >
-          <div
-            onMouseEnter={handleTooltipPointerEnter}
-            onMouseLeave={handleTooltipPointerLeave}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="bg-neutral-900/95 border border-red-500/80 rounded-xl shadow-2xl p-2.5 backdrop-blur-md text-xs text-white min-w-56 max-w-72 flex flex-col gap-2 z-50 animate-in fade-in zoom-in-95 duration-100"
-          >
-            <div className="flex flex-col gap-1 border-b border-neutral-800 pb-1.5">
-              {objectIssues.map((iss) => (
-                <div
-                  key={iss.id}
-                  className="flex items-start gap-1.5 text-xs text-red-300 font-medium leading-snug"
-                >
-                  <span className="text-red-400 shrink-0 text-sm">⚠️</span>
-                  <span>{iss.message}</span>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-1.5 pt-0.5">
-              <button
-                type="button"
-                onClick={handleNudge}
-                className="flex-1 px-2 py-1 text-[11px] font-semibold bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white rounded-md shadow transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                title="Find closest non-overlapping snapped position"
-              >
-                <span>🧭</span>
-                <span>Nudge to nearest valid position</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleKeepAnyway}
-                className="px-2 py-1 text-[11px] font-medium bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-900 text-neutral-300 hover:text-white rounded-md border border-neutral-700 transition-colors cursor-pointer shrink-0"
-                title="Dismiss this warning"
-              >
-                Keep anyway
-              </button>
-            </div>
-          </div>
-        </Html>
-      )}
+      {/* Placement issues are explained (with a Nudge fix) in the selection panel, not a hover popup */}
 
       {/* Dashed bounding box with labelled dimension edges when selected */}
       {isSelected && !isGhost && (

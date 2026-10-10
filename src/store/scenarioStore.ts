@@ -56,7 +56,9 @@ export interface ScenarioUiState {
   deleteScenario: (id: string) => void;
   duplicateScenario: (id: string) => void;
   /** The scenario becomes the design: one undoable step */
-  applyToDesign: (s: Pick<Scenario, 'actions'>) => void;
+  applyToDesign: (s: Pick<Scenario, 'actions'> & { texts?: string[] }) => void;
+  /** Last fix applied to the design (so the results view can re-run and say what changed) */
+  lastApplied: { at: number; label: string } | null;
 
   openCompare: (a: ScenarioRef, b: ScenarioRef, view?: CompareView) => void;
   setCompare: (patch: Partial<CompareState>) => void;
@@ -95,6 +97,7 @@ export const useScenarioStore = create<ScenarioUiState>()((set, get) => ({
   ranking: null,
   rankingKey: null,
   knownVoxel: {},
+  lastApplied: null,
 
   enterWhatIf: () => {
     if (get().whatIf) return;
@@ -156,7 +159,7 @@ export const useScenarioStore = create<ScenarioUiState>()((set, get) => ({
 
   applyToDesign: (s) => {
     useSceneStore.getState().replaceDesign(applyScenario(currentDesign(), s));
-    set({ compare: null, preview: null });
+    set({ compare: null, preview: null, lastApplied: { at: Date.now(), label: s.texts?.join(' + ') ?? 'the change' } });
   },
 
   openCompare: (a, b, view = 'swipe') => set({ compare: { a, b, view, swipe: 0.5, roomId: null } }),

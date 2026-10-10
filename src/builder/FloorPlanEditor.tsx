@@ -1078,11 +1078,12 @@ export const FloorPlanEditor: React.FC = () => {
             );
           })}
 
-          {/* 1b. Stretch handles: drag a wall in or out to resize the room */}
-          {wallData.map((w) => {
+          {/* 1b. Stretch handles: drag a wall in or out to resize the room. One outside and one
+              inside each wall, so a wall shared with a neighbouring room can still be grabbed */}
+          {wallData.flatMap((w) => [1, -1].map((side) => ({ w, side }))).map(({ w, side }) => {
             const isDraggingThis = draggingWallState?.index === w.index && !draggingWallState.isExtrude;
             const isHovered = hoveredStretchIndex === w.index;
-            const offset = room.wallThickness + 0.28;
+            const offset = side > 0 ? room.wallThickness + 0.28 : -0.4;
             const hx = w.midX + w.normalX * offset;
             const hz = w.midZ + w.normalZ * offset;
             // Rotate so the handle's local +X points along the wall's outward normal
@@ -1091,7 +1092,7 @@ export const FloorPlanEditor: React.FC = () => {
             const sizeAcross = wallData[(w.index + 1) % wallData.length]?.len ?? 0;
 
             return (
-              <group key={`stretch-${w.index}`} position={[hx, 0.06, hz]} rotation={[0, rotY, 0]}>
+              <group key={`stretch-${w.index}-${side}`} position={[hx, 0.06, hz]} rotation={[0, rotY, 0]}>
                 <mesh
                   onPointerOver={(e) => {
                     e.stopPropagation();
@@ -1120,7 +1121,7 @@ export const FloorPlanEditor: React.FC = () => {
                   <coneGeometry args={[0.07, 0.12, 3]} />
                   <meshBasicMaterial color="#ffffff" />
                 </mesh>
-                {(isDraggingThis || isHovered) && (
+                {(isDraggingThis || isHovered) && side > 0 && (
                   <Html center position={[0, 0.3, 0]} className="pointer-events-none select-none" zIndexRange={[30, 0]}>
                     <div className="whitespace-nowrap rounded bg-neutral-950/90 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-emerald-300 shadow">
                       {isDraggingThis ? `${sizeAcross.toFixed(2)} m` : 'Drag to stretch'}

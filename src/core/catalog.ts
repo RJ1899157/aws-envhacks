@@ -105,6 +105,8 @@ export const CATALOG_ASSETS: readonly AssetDef[] = [
   { id: 'archway', label: 'Archway', category: 'Walls', size: [1.2, 2.2, 0.15], elevation: 0, role: 'none', wallMounted: true, color: '#e2e8f0', variants: ['#e2e8f0', '#ffffff', '#94a3b8'] },
   { id: 'wide-archway', label: 'Wide Archway', category: 'Walls', size: [2.4, 2.4, 0.15], elevation: 0, role: 'none', wallMounted: true, color: '#e2e8f0', variants: ['#e2e8f0', '#ffffff'] },
   { id: 'pass-through', label: 'Kitchen Pass-Through', category: 'Walls', size: [1.8, 1.2, 0.15], elevation: 1.0, role: 'none', wallMounted: true, color: '#e2e8f0', variants: ['#e2e8f0', '#ffffff'] },
+  { id: 'partition-wall', label: 'Partition Wall', category: 'Walls', size: [2.0, 2.7, 0.1], elevation: 0, role: 'solid', color: '#e5e7eb', variants: ['#e5e7eb', '#d6d3d1'] },
+  { id: 'half-partition', label: 'Half-height Partition', category: 'Walls', size: [2.0, 1.2, 0.1], elevation: 0, role: 'solid', color: '#d6d3d1', variants: ['#d6d3d1', '#e5e7eb'] },
   { id: 'open-wall', label: 'Open Wall (remove wall)', category: 'Walls', size: [1.0, 2.7, 0.15], elevation: 0, role: 'none', wallMounted: true, color: '#94a3b8', variants: ['#94a3b8'] },
 
   // DECOR

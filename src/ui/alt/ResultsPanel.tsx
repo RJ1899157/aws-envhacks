@@ -5,6 +5,7 @@ import { useSceneStore } from '../../store/sceneStore';
 import { useScenarioStore } from '../../store/scenarioStore';
 import { useSimulationStore } from '../../store/simulationStore';
 import { useSimulationModel } from '../../store/useSimulationModel';
+import { useUiStore } from '../../store/uiStore';
 import { ComparePanel } from '../simulation/ComparePanel';
 import { InsightsPanel } from '../simulation/InsightsPanel';
 import { ModeSwitch } from '../simulation/ModeSwitch';
@@ -36,6 +37,16 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void; example?: boolean }> 
   const comparing = useScenarioStore((s) => s.compare !== null);
   const whatIf = useScenarioStore((s) => s.whatIf !== null);
   const outdoor = room.params.outdoorPm25?.valueUgM3 ?? DEFAULT_OUTDOOR_PM25;
+  const lastApplied = useScenarioStore((s) => s.lastApplied);
+
+  // Applying a suggested fix changes the design: say so and re-run, so the results show its effect
+  const seenApplied = React.useRef(lastApplied?.at ?? 0);
+  useEffect(() => {
+    if (!lastApplied || lastApplied.at === seenApplied.current) return;
+    seenApplied.current = lastApplied.at;
+    useUiStore.getState().setToastMessage(`Applied: ${lastApplied.label}. Updating results… (Ctrl+Z to undo)`);
+    runSimulation();
+  }, [lastApplied]);
 
   // Insights live in this panel, not floating over the view
   useEffect(() => {

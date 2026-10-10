@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Html } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { wallQuaternion } from './wallRotation';
 import { getCatalogAsset } from '../core/catalog';
-import type { SceneObject } from '../core/schema';
+import type { Room, SceneObject } from '../core/schema';
 import { roomGridOrigin } from '../core/rooms';
 import { computeSmartSnap } from '../core/smartSnap';
-import { pointInPolygon } from '../core/parser';
+import { pointInPolygon, wallSegment } from '../core/parser';
 import { isPollutionSourceObject, surfaceHeightAt } from '../core/surfaces';
 import {
   computeOpeningSnapGuides,
@@ -65,6 +66,11 @@ export const PlacementController: React.FC = () => {
   } | null>(null);
 
   const [placementRotY, setPlacementRotY] = useState(0);
+  /** Whether the opening under the cursor fits on its wall (green) or overlaps another (red) */
+  const [openingFits, setOpeningFits] = useState(true);
+  /** Wall a wall-mounted object (exhaust fan, AC) would go on, for the wall highlight */
+  const [targetWall, setTargetWall] = useState<number | null>(null);
+  const view = useUiStore((state) => state.view);
   const lastPointerPoint = useRef<THREE.Vector3 | null>(null);
 
   // Shift key repeat placement tracking
@@ -137,6 +143,8 @@ export const PlacementController: React.FC = () => {
 
         const quaternion = wallQuaternion(seg.dir);
 
+        setOpeningFits(resolveOpeningOverlapOnWall(room, nearest.wallIndex, offset, w).canPlace);
+        setTargetWall(nearest.wallIndex);
         setWallOpeningData({
           wallIndex: nearest.wallIndex,
           offset,
@@ -149,6 +157,7 @@ export const PlacementController: React.FC = () => {
       } else if (isWallObject) {
         const placed = placeOnNearestWall(rawX, rawZ, room, catalogDef.size, snapEnabled ? gridStep : undefined);
         if (!placed) return;
+        setTargetWall(findNearestWallForPoint(rawX, rawZ, room)?.wallIndex ?? null);
         setGhostPos([placed.position[0], catalogDef.elevation, placed.position[2]]);
         setWallObjectRotY(placed.rotY);
         setWallOpeningData(null);
@@ -256,7 +265,10 @@ export const PlacementController: React.FC = () => {
     if (toolMode !== 'place' && toolMode !== 'opening') return;
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
-    const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    // In 3D, wall items aim at their own height, so the wall under the cursor is the one picked
+    const onWall = isWallMounted || isWallObject;
+    const aimY = view === '3d' && onWall && catalogDef ? catalogDef.elevation + catalogDef.size[1] / 2 : 0;
+    const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), -aimY);
     const hit = new THREE.Vector3();
 
     const floorPointAt = (e: PointerEvent): THREE.Vector3 | null => {
@@ -295,7 +307,7 @@ export const PlacementController: React.FC = () => {
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerdown', onDown);
     };
-  }, [toolMode, camera, canvas, handleGroundPointerMove, handleGroundPointerDown]);
+  }, [toolMode, camera, canvas, handleGroundPointerMove, handleGroundPointerDown, view, isWallMounted, isWallObject, catalogDef]);
 
   useEffect(() => {
     if (lastPointerPoint.current) handleGroundPointerMove(lastPointerPoint.current);
@@ -309,13 +321,16 @@ export const PlacementController: React.FC = () => {
     if (isPlacing && viewBeforePlacing.current === null) {
       useSceneStore.getState().clearSelection();
       viewBeforePlacing.current = ui.view;
-      if (ui.view !== '2d') ui.setView('2d');
+      // Floor items only: windows, doors and wall devices go on walls, which the plan view hides
+      if (ui.view !== '2d' && !isWallMounted && !isWallObject) ui.setView('2d');
     } else if (!isPlacing && viewBeforePlacing.current !== null) {
       setPlacementRotY(0);
       const previous = viewBeforePlacing.current;
       viewBeforePlacing.current = null;
       if (ui.view !== previous) ui.setView(previous);
     }
+    // Only when placing starts or ends: picking another item mid-placement must not flip the view
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlacing]);
 
   // Manage placement cursor
@@ -336,21 +351,21 @@ export const PlacementController: React.FC = () => {
 
   return (
     <group name="placement-controller">
-      {/* 1. Wall-Mounted Opening Ghost Preview */}
+      {/* 0. Where it can go: every wall of the room tinted, the targeted one green */}
+      {(isWallMounted || isWallObject) && <WallTargets room={room} target={isWallMounted ? (wallOpeningData?.wallIndex ?? null) : targetWall} />}
+
+      {/* 1. Wall-Mounted Opening Ghost Preview: green where it fits, red where it would overlap */}
       {isWallMounted && wallOpeningData && (
         <group position={wallOpeningData.position} quaternion={wallOpeningData.quaternion}>
-          <mesh>
-            <boxGeometry
-              args={[wallOpeningData.width, wallOpeningData.height, room.wallThickness * 1.15]}
-            />
-            <meshStandardMaterial
-              color="#38bdf8"
-              transparent
-              opacity={0.6}
-              emissive="#0284c7"
-              emissiveIntensity={0.6}
-            />
+          <mesh renderOrder={20}>
+            <boxGeometry args={[wallOpeningData.width, wallOpeningData.height, room.wallThickness * 1.3]} />
+            <meshBasicMaterial color={openingFits ? '#22c55e' : '#ef4444'} transparent opacity={0.75} depthTest={false} toneMapped={false} />
           </mesh>
+          {!openingFits && (
+            <Html center position={[0, wallOpeningData.height / 2 + 0.25, 0]} className="pointer-events-none select-none">
+              <div className="whitespace-nowrap rounded bg-red-950/90 border border-red-400/60 px-1.5 py-0.5 text-[11px] font-semibold text-red-200">Overlaps another opening</div>
+            </Html>
+          )}
         </group>
       )}
 
@@ -378,3 +393,32 @@ export const PlacementController: React.FC = () => {
 };
 
 export default PlacementController;
+
+/** Translucent tint over the inner face of every wall (where wall items can go); the target wall in green. */
+const WallTargets: React.FC<{ room: Room; target: number | null }> = ({ room, target }) => {
+  const walls = useMemo(
+    () =>
+      room.outline.map((_, i) => {
+        const seg = wallSegment(room, i);
+        const h = room.wallOverrides?.[i]?.height ?? room.wallHeight;
+        return {
+          i,
+          len: seg.len,
+          h,
+          position: [seg.a[0] + (seg.dir[0] * seg.len) / 2 - seg.normal[0] * 0.02, h / 2, seg.a[1] + (seg.dir[1] * seg.len) / 2 - seg.normal[1] * 0.02] as [number, number, number],
+          quaternion: wallQuaternion(seg.dir),
+        };
+      }),
+    [room]
+  );
+  return (
+    <group name="placement-wall-targets">
+      {walls.map((w) => (
+        <mesh key={w.i} position={w.position} quaternion={w.quaternion} renderOrder={19} raycast={() => null}>
+          <boxGeometry args={[w.len, w.h, 0.02]} />
+          <meshBasicMaterial color={w.i === target ? '#22c55e' : '#22d3ee'} transparent opacity={w.i === target ? 0.3 : 0.12} depthWrite={false} toneMapped={false} />
+        </mesh>
+      ))}
+    </group>
+  );
+};

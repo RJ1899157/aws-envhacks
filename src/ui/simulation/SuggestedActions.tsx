@@ -26,12 +26,7 @@ const Verified: React.FC<{ r: RankedAction }> = ({ r }) => {
         <CheckCircle2 size={10} /> verified
       </span>
     );
-  if (r.verified === 'pending')
-    return (
-      <span className="flex items-center gap-0.5 text-[9.5px] text-neutral-400">
-        <Loader2 size={10} className="animate-spin" /> verifying
-      </span>
-    );
+  // The 3D check runs quietly in the background; only its outcome is shown
   if (r.verified === 'disagrees')
     return (
       <span className="flex items-center gap-0.5 text-[9.5px] text-amber-300" title={`The voxel solver finds Δ ${r.voxelDelta?.toFixed(1)} µg/m³`}>

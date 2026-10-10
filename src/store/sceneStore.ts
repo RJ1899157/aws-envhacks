@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { temporal } from 'zundo';
 import { immer } from 'zustand/middleware/immer';
 import { createDefaultRoom } from '../core/defaultRoom';
-import { parseRoom, type ParseIssue, wallSegment } from '../core/parser';
+import { parseRoom, polygonBounds, type ParseIssue, wallSegment } from '../core/parser';
 import { createRoomOfType, withRoomId } from '../core/rooms';
 import { computeSmartSnap, objectsFlushAgainstWall } from '../core/smartSnap';
 import { settleSources } from '../core/surfaces';
@@ -71,6 +71,11 @@ export interface SceneState {
   moveRoom: (delta: Vec2) => void;
   scaleRoom: (targetWidth: number, targetDepth: number) => void;
   setQuickShape: (type: QuickShapeType, dimensions: QuickShapeDimensions) => void;
+  /**
+   * Gives the active room a new shape of the same size, where it is now; windows and doors that no
+   * longer fit their wall are removed (their count is returned). One undo step.
+   */
+  reshapeRoom: (type: QuickShapeType) => number;
   setWallHeight: (height: number) => void;
   setWallThickness: (thickness: number) => void;
   setRoomName: (name: string) => void;
@@ -409,6 +414,36 @@ export const useSceneStore = create<SceneState>()(
           state.room.objects = objects;
           settleSources(state.room);
         });
+      },
+
+      reshapeRoom: (type) => {
+        let removed = 0;
+        set((state) => {
+          const b = polygonBounds(state.room.outline);
+          const w = b.width;
+          const d = b.depth;
+          const shape = generateQuickShape(type, {
+            width: w,
+            depth: d,
+            cutWidth: w * 0.4,
+            cutDepth: d * 0.4,
+            recessWidth: w * 0.35,
+            recessDepth: d * 0.45,
+            stemWidth: w * 0.4,
+            stemDepth: d * 0.45,
+          });
+          state.room.outline = shape.map(([x, z]) => [Number((x + b.min[0]).toFixed(4)), Number((z + b.min[1]).toFixed(4))] as Vec2);
+          const kept = state.room.openings.filter((op) => {
+            if (op.wallIndex >= state.room.outline.length) return false;
+            const len = wallSegment(state.room as Room, op.wallIndex).len;
+            return op.offset + op.width <= len + 1e-6;
+          });
+          removed = state.room.openings.length - kept.length;
+          state.room.openings = kept;
+          state.room.wallOverrides = {};
+          clearSelectionDraft(state);
+        });
+        return removed;
       },
 
       setQuickShape: (type, dimensions) => {
