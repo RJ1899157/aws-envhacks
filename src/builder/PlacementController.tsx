@@ -7,6 +7,7 @@ import type { SceneObject } from '../core/schema';
 import { roomGridOrigin } from '../core/rooms';
 import { computeSmartSnap } from '../core/smartSnap';
 import { pointInPolygon } from '../core/parser';
+import { isPollutionSourceObject, surfaceHeightAt } from '../core/surfaces';
 import {
   computeOpeningSnapGuides,
   createOpeningFromPreset,
@@ -162,7 +163,9 @@ export const PlacementController: React.FC = () => {
           gridOrigin: roomGridOrigin(room),
           snapEnabled,
         });
-        setGhostPos([snappedPos[0], catalogDef.elevation, snappedPos[2]]);
+        // Pollution sources rest on whatever is under them (floor, counter, table…)
+        const y = isPollutionSourceObject({ assetId: catalogDef.id }) ? surfaceHeightAt(room, snappedPos[0], snappedPos[2]) : catalogDef.elevation;
+        setGhostPos([snappedPos[0], y, snappedPos[2]]);
         setWallOpeningData(null);
       }
     },
@@ -205,7 +208,7 @@ export const PlacementController: React.FC = () => {
           rotation: [0, isWallObject ? wallObjectRotY : placementRotY, 0],
           size: [...catalogDef.size],
           scale: [1, 1, 1],
-          elevation: catalogDef.elevation,
+          elevation: ghostPos[1],
           role: catalogDef.role,
           wallMounted: isWallObject,
           color: catalogDef.color,
@@ -357,11 +360,12 @@ export const PlacementController: React.FC = () => {
           object={{
             id: 'placement-ghost',
             assetId: catalogDef.id,
-            position: ghostPos,
+            // The ghost's height is its elevation (drawn at position.y + elevation)
+            position: [ghostPos[0], 0, ghostPos[2]],
             rotation: [0, isWallObject ? wallObjectRotY : placementRotY, 0],
             size: catalogDef.size,
             scale: [1, 1, 1],
-            elevation: catalogDef.elevation,
+            elevation: ghostPos[1],
             role: catalogDef.role,
             color: catalogDef.color,
           }}

@@ -76,6 +76,26 @@ export const CP_BY_EXPOSURE: Record<SiteExposure, readonly number[]> = {
   urbanDense: [0.2, 0.05, -0.25, -0.3, -0.25],
 };
 
+/** Storey height (m) and window-centre height above its floor (m), for the wind at a home's windows. */
+export const STOREY_HEIGHT_M = 3;
+export const WINDOW_CENTRE_ABOVE_FLOOR_M = 1.5;
+
+/**
+ * Share of a window's frame that can open, by how it opens: sliding sashes overlap (≤ 50 %);
+ * louvres / jaali leave roughly 30–50 % free area between blades; casements open the whole frame.
+ * Typical manufacturer free-area figures; TODO verify per product.
+ */
+export const WINDOW_STYLE_OPEN_AREA = { sliding: 0.5, casement: 1, louvre: 0.4 } as const;
+
+/**
+ * Pressure-loss coefficient of a household insect mesh (fibreglass / aluminium, ~16–18 mesh,
+ * porosity ~0.6–0.7). In series with the window's orifice it lowers the effective discharge
+ * coefficient to Cd / sqrt(1 + K·Cd²) ≈ 0.76 Cd for K = 2, i.e. ~25 % less flow for the same
+ * pressure difference. Screen loss coefficients of ~1.5–3 are reported for this porosity (e.g.
+ * Miguel et al., J. Agric. Eng. Res. 1997, and later screen-porosity studies). TODO verify.
+ */
+export const INSECT_MESH_LOSS_K = 2;
+
 /**
  * Single-sided wind-driven ventilation: Q ≈ 0.025 · A · U.
  * BS 5925:1991 and CIBSE AM10 (2005), "wind only, single opening". TODO verify clause numbers.
@@ -248,6 +268,14 @@ export const PM25_SOURCE_PRESETS = {
    * coarse estimate. TODO verify.
    */
   'kerosene-coal-heater': { label: 'Kerosene / coal heater', rateUgMin: 1000, heightM: 0.5, assetId: 'pm25-heater', reference: 'Traynor et al. 1983 (kerosene); coal estimate', approximate: true },
+  /**
+   * Toilet flushing plume. Studies count droplets, not mass: ≈ 0.3–0.6 million particles > 0.3 µm
+   * per flush, ≥ 90 % below 2 µm (squat-toilet and bioaerosol chamber studies, Build. Environ. 2024;
+   * Sci. Rep. 12 (2022) 21128). As water droplets of ~1–2 µm that is of order 1 µg of PM2.5 per
+   * flush, spread over the ~1 min the plume lasts. Negligible next to cooking; the real concern of a
+   * flush is bioaerosols (germs), which this PM2.5 model does not track. Order-of-magnitude estimate.
+   */
+  'toilet-flush': { label: 'Toilet flushing', rateUgMin: 1, heightM: 0.5, assetId: 'pm25-toilet-flush', reference: 'Droplet counts per flush (2022–2024 studies) → ~1 µg/flush', approximate: true },
 } as const satisfies Record<string, Pm25SourcePreset>;
 
 export type Pm25SourcePresetId = keyof typeof PM25_SOURCE_PRESETS;
@@ -426,6 +454,17 @@ export const DOOR_UNDERCUT_HEIGHT_M = 0.01;
  */
 export const ENVELOPE_LEAK_AREA_PER_M2_FLOOR = 1e-4;
 
+/**
+ * Room-to-room temperature difference (K) assumed for the two-way exchange through open interior
+ * doorways. One indoor temperature is modelled for the whole home, which on its own would make an
+ * open door between two rooms with no through-draft carry no air at all. In real homes rooms differ
+ * by ~0.5–2 K (sun, cooking, occupants, appliances), and the buoyant exchange through a doorway,
+ *   Q = (Cd/3)·W·sqrt(g·H³·ΔT/T)  each way (Brown & Solvason 1962; CIBSE AM10; ASHRAE Fundamentals ch. 16),
+ * gives ~250 m³/h at 0.5 K for a 0.9 × 2.1 m door, the order of interzonal flows measured through
+ * open doors in houses. 0.5 K is a deliberately low choice. TODO calibrate.
+ */
+export const INTERZONAL_DELTA_T_K = 0.5;
+
 /** Vertical slices per exterior opening in the network model, so stack flow can go both ways. */
 export const NETWORK_OPENING_SEGMENTS = 4;
 
@@ -484,4 +523,4 @@ export const VOXEL_CACHE_SIZE = 8;
  * hash; bump it whenever a change to src/simulation/voxel alters results, then run
  * `npm run showcase:build`.
  */
-export const VOXEL_SOLVER_VERSION = 'voxel-2026.10.1';
+export const VOXEL_SOLVER_VERSION = 'voxel-2026.10.2';

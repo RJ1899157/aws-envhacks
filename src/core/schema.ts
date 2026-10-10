@@ -59,6 +59,13 @@ export const OpeningSubTypeSchema = z.enum([
 export type OpeningSubType = z.infer<typeof OpeningSubTypeSchema>;
 
 /**
+ * How a window opens. Sliding sashes overlap, so at most half the frame opens; louvres / jaali have
+ * a much smaller free area; casements (hinged, opening outwards) open the whole frame.
+ */
+export const WindowStyleSchema = z.enum(['sliding', 'casement', 'louvre']);
+export type WindowStyle = z.infer<typeof WindowStyleSchema>;
+
+/**
  * Wall opening schema (windows and doors)
  */
 export const OpeningSchema = z.object({
@@ -72,6 +79,9 @@ export const OpeningSchema = z.object({
   sill: z.number().nonnegative('Sill height must be non-negative'),
   role: OpeningRoleSchema.default('closed'),
   openFraction: z.number().min(0).max(1).default(0),
+  // Windows only; absent = the home's default (params.windowDefaults), else a casement without mesh
+  windowStyle: WindowStyleSchema.optional(),
+  mesh: z.boolean().optional(), // insect mesh over the opening
   flipHinge: z.boolean().optional(),
   flipSwing: z.boolean().optional(),
   isHidden: z.boolean().optional(),
@@ -113,6 +123,7 @@ export const ObjectSchema = z.object({
   enabled: z.boolean().optional(), // device switched on; absent = on
   cadrM3h: z.number().nonnegative().optional(), // air purifier PM2.5 clean air delivery rate (m³/h)
   exhaustFlowM3h: z.number().nonnegative().optional(), // exhaust fan / range hood extraction rate (m³/h)
+  flowDirection: z.enum(['out', 'in']).optional(), // exhaust fan: 'out' extracts (default), 'in' blows outdoor air in
   dischargeVelocityMs: z.number().nonnegative().optional(), // fan/AC jet velocity for the voxel solver (m/s)
   // Placed PM2.5 sources (device 'pm25Source'); absent fields come from the preset
   sourcePreset: z.string().optional(), // see PM25_SOURCE_PRESETS
@@ -186,6 +197,9 @@ export const RoomParamsSchema = z.object({
   outdoorPm25: OutdoorPm25Schema.optional(),
   location: GeoLocationSchema.optional(),
   exposure: SiteExposureSchema.optional(), // runtime default 'urbanDense'
+  // House-wide (written to every room). Absent = wind taken at the 10 m reference height
+  floorLevel: z.number().int().min(0).max(150).optional(), // storey of the home, 0 = ground floor
+  windowDefaults: z.object({ style: WindowStyleSchema, mesh: z.boolean() }).optional(),
 });
 export type RoomParams = z.infer<typeof RoomParamsSchema>;
 

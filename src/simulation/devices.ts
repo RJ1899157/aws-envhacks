@@ -19,9 +19,11 @@ export type AirDeviceKind = Exclude<DeviceKind, 'pm25Source'>;
  * How a device acts in the well-mixed model:
  * - clean: removes PM2.5 at its CADR (purifier)
  * - exhaust: extracts air to outdoors, adding to air exchange (exhaust fan, range hood)
+ * - supply: blows unfiltered outdoor air in (an exhaust fan turned round, flowDirection 'in'); the
+ *   room's air leaves through its openings and leaks
  * - mix: recirculates room air; no effect on ACH, only on the voxel solver (fans, AC)
  */
-export type DeviceRole = 'clean' | 'exhaust' | 'mix';
+export type DeviceRole = 'clean' | 'exhaust' | 'supply' | 'mix';
 
 export const DEVICE_ROLE: Readonly<Record<AirDeviceKind, DeviceRole>> = {
   purifier: 'clean',
@@ -64,8 +66,9 @@ export function deviceKindOf(obj: SceneObject): DeviceKind | null {
 export function deviceFor(obj: SceneObject): Device | null {
   const kind = deviceKindOf(obj);
   if (!kind || kind === 'pm25Source') return null;
-  const role = DEVICE_ROLE[kind];
-  const explicit = role === 'clean' ? obj.cadrM3h : role === 'exhaust' ? obj.exhaustFlowM3h : undefined;
+  // A reversible exhaust fan set to blow in supplies outdoor air instead of extracting
+  const role: DeviceRole = kind === 'exhaustFan' && obj.flowDirection === 'in' ? 'supply' : DEVICE_ROLE[kind];
+  const explicit = role === 'clean' ? obj.cadrM3h : role === 'exhaust' || role === 'supply' ? obj.exhaustFlowM3h : undefined;
   const m3h = explicit ?? obj.defaultAirflow ?? DEFAULT_DEVICE_FLOW_M3H[kind];
   return {
     objectId: obj.id,

@@ -17,6 +17,8 @@ import {
   SINGLE_SIDED_WIND_COEFFICIENT,
   STACK_TWO_OPENING_MIN_HEIGHT_DIFF,
   TERRAIN_WIND_COEFFICIENTS,
+  STOREY_HEIGHT_M,
+  WINDOW_CENTRE_ABOVE_FLOOR_M,
   WIND_REFERENCE_HEIGHT_M,
 } from './constants';
 import { devicesIn, totalFlow, type Device } from './devices';
@@ -41,6 +43,8 @@ export interface VentilationEnv {
   exposure?: SiteExposure;
   /** Background envelope infiltration (1/h). Default DEFAULT_INFILTRATION_ACH (0.5). */
   infiltrationAch?: number;
+  /** Height the local wind is taken at (m); default from room.params.floorLevel (windHeightForFloor) */
+  windHeightM?: number;
 }
 
 export function ventilationEnvFromRoom(room: Room): VentilationEnv {
@@ -171,9 +175,17 @@ export function twoOpeningStackFlow(
 }
 
 /** Local wind at the building: U · K · z^a for the site's terrain (BS 5925 Table 8). */
-export function localWindSpeed(reportedWindSpeed: number, exposure: SiteExposure = DEFAULT_SITE_EXPOSURE): number {
+export function localWindSpeed(reportedWindSpeed: number, exposure: SiteExposure = DEFAULT_SITE_EXPOSURE, heightM: number = WIND_REFERENCE_HEIGHT_M): number {
   const { K, a } = TERRAIN_WIND_COEFFICIENTS[exposure];
-  return Math.max(0, reportedWindSpeed) * K * Math.pow(WIND_REFERENCE_HEIGHT_M, a);
+  return Math.max(0, reportedWindSpeed) * K * Math.pow(Math.max(heightM, 1), a);
+}
+
+/**
+ * Height (m) at which a home's windows meet the wind: storey × STOREY_HEIGHT_M + window centre, or
+ * the 10 m reference when the floor is unknown (designs made before the floor was asked).
+ */
+export function windHeightForFloor(floorLevel: number | undefined): number {
+  return floorLevel === undefined ? WIND_REFERENCE_HEIGHT_M : floorLevel * STOREY_HEIGHT_M + WINDOW_CENTRE_ABOVE_FLOOR_M;
 }
 
 /**
@@ -257,7 +269,7 @@ export function computeVentilation(room: Room, env: VentilationEnv, options: Ven
   }
   const open = allGeoms.filter((g) => g.effectiveArea > 0 && !g.interior);
   const windSpeed = Math.max(0, env.windSpeed);
-  const localWind = localWindSpeed(windSpeed, exposure);
+  const localWind = localWindSpeed(windSpeed, exposure, env.windHeightM ?? windHeightForFloor(room.params.floorLevel));
   const dT = env.indoorTempC - env.outdoorTempC;
 
   const incidence = allGeoms.map((g) => windIncidenceDeg(g.normal, env.windDirDeg));
@@ -334,6 +346,9 @@ export function computeVentilation(room: Room, env: VentilationEnv, options: Ven
   // --- Mechanical and infiltration ---------------------------------------------------------------
   const devices = devicesIn(room.objects);
   const exhaustM3s = totalFlow(devices, 'exhaust');
+  const supplyM3s = totalFlow(devices, 'supply');
+  // Unbalanced mechanical flows: the larger one sets the exchange (the rest flows through openings)
+  const mechanicalM3s = Math.max(exhaustM3s, supplyM3s);
   const infiltrationM3s = ((env.infiltrationAch ?? DEFAULT_INFILTRATION_ACH) * volumeM3) / SECONDS_PER_HOUR;
 
   // Quadrature superposition of wind and stack (CIBSE AM10 / BS 5925 simple method). It is an
@@ -341,12 +356,13 @@ export function computeVentilation(room: Room, env: VentilationEnv, options: Ven
   const naturalM3s = Math.hypot(windM3s, stackM3s);
   // Mechanical exhaust and infiltration added linearly (an upper bound; ASHRAE Fundamentals
   // suggests quadrature superposition for unbalanced flows: sqrt(Q_nat² + Q_exhaust²)).
-  const totalM3s = naturalM3s + exhaustM3s + infiltrationM3s;
+  const totalM3s = naturalM3s + mechanicalM3s + infiltrationM3s;
 
-  // Makeup air for exhaust comes through open windows if any, otherwise through envelope cracks.
-  const makeupP = open.length > 0 ? OPEN_WINDOW_PENETRATION : INFILTRATION_PENETRATION;
+  // Makeup air for exhaust comes through open windows if any, otherwise through envelope cracks;
+  // a supply fan blows outdoor air straight in (no filter, P = 1).
+  const makeupP = supplyM3s >= exhaustM3s && supplyM3s > 0 ? OPEN_WINDOW_PENETRATION : open.length > 0 ? OPEN_WINDOW_PENETRATION : INFILTRATION_PENETRATION;
   const penetration = totalM3s > 0
-    ? (naturalM3s * OPEN_WINDOW_PENETRATION + exhaustM3s * makeupP + infiltrationM3s * INFILTRATION_PENETRATION) / totalM3s
+    ? (naturalM3s * OPEN_WINDOW_PENETRATION + mechanicalM3s * makeupP + infiltrationM3s * INFILTRATION_PENETRATION) / totalM3s
     : OPEN_WINDOW_PENETRATION;
 
   const openings: OpeningFlow[] = allGeoms.map((g, i) => {
@@ -385,7 +401,7 @@ export function computeVentilation(room: Room, env: VentilationEnv, options: Ven
   });
 
   // --- Classification and warnings ---------------------------------------------------------------
-  const fallbackType: VentilationType = exhaustM3s > 0 ? 'mechanical' : infiltrationM3s > 0 ? 'infiltration' : 'none';
+  const fallbackType: VentilationType = mechanicalM3s > 0 ? 'mechanical' : infiltrationM3s > 0 ? 'infiltration' : 'none';
   let type: VentilationType;
   if (open.length === 0) type = fallbackType;
   else if (windM3s <= 0) type = stackM3s > 0 ? 'stack' : fallbackType;
@@ -429,7 +445,7 @@ export function computeVentilation(room: Room, env: VentilationEnv, options: Ven
       wind: toAch(windM3s),
       stack: toAch(stackM3s),
       natural: toAch(naturalM3s),
-      exhaust: toAch(exhaustM3s),
+      exhaust: toAch(mechanicalM3s),
       infiltration: toAch(infiltrationM3s),
       total: toAch(totalM3s),
     },

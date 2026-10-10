@@ -53,9 +53,9 @@ export function clearAutosavedSession(): void {
 
 /**
  * Hook to manage localStorage autosaving (debounced 500ms)
- * and provide pending session restoration on load.
+ * and provide pending session restoration on load (`promptRestore: false` skips the prompt).
  */
-export function useAutosave() {
+export function useAutosave({ promptRestore = true }: { promptRestore?: boolean } = {}) {
   const room = useSceneStore((state) => state.room);
   const otherRooms = useSceneStore((state) => state.otherRooms);
   const loadRoom = useSceneStore((state) => state.loadRoom);
@@ -66,11 +66,14 @@ export function useAutosave() {
 
   // Check for previous autosaved session on initial mount
   useEffect(() => {
+    if (!promptRestore) return;
     const saved = getAutosavedSession();
     if (saved && saved.room) {
       // Check if saved room is non-trivial or differs from default
       setPendingRestore(saved);
     }
+    // Decided once, on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Debounced autosave whenever room changes

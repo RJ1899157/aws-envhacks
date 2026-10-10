@@ -169,7 +169,13 @@ export const useSimulationStore = create<SimulationState>()((set, get) => ({
       set((st) => ({ status: 'done', progress: null, error: null, result: cached, resultKey: key, viz: { ...st.viz, snapshotIndex: null, playing: false } }));
       return;
     }
-    set({ status: 'running', progress: { phase: 'setup', fraction: 0, message: 'Starting' }, error: null });
+    // A result for another design must not keep playing while this one computes: drop it now
+    set((st) => ({
+      status: 'running',
+      progress: { phase: 'setup', fraction: 0, message: 'Starting' },
+      error: null,
+      ...(st.resultKey !== key && { result: null, resultKey: null, viz: { ...st.viz, snapshotIndex: null, playing: false } }),
+    }));
     // Background scenario runs wait (the one in flight is re-queued) while the user's run goes
     voxelQueue.suspend();
     try {

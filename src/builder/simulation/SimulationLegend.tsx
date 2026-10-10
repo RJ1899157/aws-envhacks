@@ -3,7 +3,7 @@ import { AlertTriangle, Pause, Play } from 'lucide-react';
 import { useSimulationStore, type SimViewMode } from '../../store/simulationStore';
 import { useSceneStore } from '../../store/sceneStore';
 import { sourceEvents } from '../../simulation/sources';
-import { achPosition, AQI_PM25_BANDS, AQI_SCALE_MAX, rampCss, scalePosition } from '../../simulation/viz/colormap';
+import { achPosition, AQI_PM25_BANDS, AQI_SCALE_MAX, motionTimeScale, rampCss, scalePosition } from '../../simulation/viz/colormap';
 import { ACH_BANDS, AGE_BANDS } from '../../simulation/viz/insights';
 import { ModeSwitch } from '../../ui/simulation/ModeSwitch';
 import { useDisplayedField } from './useDisplayedField';
@@ -26,7 +26,7 @@ function useLibraryClearance(legend: React.RefObject<HTMLDivElement | null>, act
   const [pos, setPos] = useState({ left: 12, bottom: STATUS_BAR_CLEARANCE });
   useEffect(() => {
     if (!active) return;
-    const lib = document.querySelector('[data-testid="asset-library-sidebar"]');
+    const lib = document.querySelector('[data-testid="asset-library-sidebar"], [data-viewport-left]');
     const update = () => {
       const r = lib?.getBoundingClientRect();
       const h = legend.current?.offsetHeight ?? 320;
@@ -324,7 +324,10 @@ export const SimulationLegend: React.FC = () => {
       )}
       {moving && mode === 'airflow' && viz.streamlines && (
         <div className="text-[9.5px] text-neutral-400" data-testid="sim-legend-timescale">
-          Motion shown {viz.timeScale}× faster than real time
+          {(() => {
+            const ts = motionTimeScale(displayed?.result.velocity.maxSpeed ?? 0, viz.timeScale);
+            return ts <= 1.05 ? 'Motion shown at real speed' : `Motion shown ${ts >= 10 ? Math.round(ts) : ts.toFixed(1)}× faster than real time`;
+          })()}
         </div>
       )}
 

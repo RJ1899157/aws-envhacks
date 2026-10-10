@@ -4,8 +4,8 @@ import { Line } from '@react-three/drei';
 import type { Line2, LineMaterial, LineSegments2 } from 'three-stdlib';
 import * as THREE from 'three';
 import type { Room } from '../../core/schema';
-import { AQI_BOUNDARIES, STATUS_COLORS, type ColorScale } from '../../simulation/viz/colormap';
-import { horizontalSlice, marchingSquares, sliceToRGBA, type FieldSlice } from '../../simulation/viz/slice';
+import { AQI_BOUNDARIES, STATUS_COLORS, mapValue, type ColorScale } from '../../simulation/viz/colormap';
+import { fillSolids, horizontalSlice, marchingSquares, type FieldSlice } from '../../simulation/viz/slice';
 import type { StaleZone } from '../../simulation/viz/stagnation';
 import type { GridInfo } from '../../simulation/voxel/analysis';
 
@@ -13,6 +13,9 @@ import type { GridInfo } from '../../simulation/voxel/analysis';
 const HEAT_Y = 0.02;
 const CONTOUR_Y = 0.032;
 const STALE_Y = 0.04;
+/** Entries of the colour lookup table (band steps land within domain / LUT_SIZE of their value) */
+const LUT_SIZE = 2048;
+const HEAT_ALPHA = 235 / 255;
 
 /**
  * Floor polygon of a room in world XZ at height y, with UVs mapping world position onto the grid
@@ -43,13 +46,114 @@ function useRoomGeometries(rooms: readonly Room[], grid: GridInfo, y: number): T
   return geometries;
 }
 
-function dataTexture(data: Uint8Array<ArrayBuffer>, w: number, h: number, nearest = false): THREE.DataTexture {
-  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
-  tex.magFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter;
-  tex.minFilter = THREE.LinearFilter;
+/** The slice as a float texture, one texel per cell (interpolated in the shader). NaN → 0. */
+function fieldTexture(slice: FieldSlice): THREE.DataTexture {
+  const data = Float32Array.from(slice.values, (v) => (Number.isFinite(v) ? v : 0));
+  const tex = new THREE.DataTexture(data, slice.width, slice.height, THREE.RedFormat, THREE.FloatType);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** The scale's colours sampled evenly along its 0–1 position (linear or log), so the shader matches mapValue exactly. */
+function colorLut(scale: ColorScale): THREE.DataTexture {
+  const [lo, hi] = scale.domain;
+  const log = Boolean(scale.log && lo > 0);
+  const data = new Uint8Array(LUT_SIZE * 4);
+  const rgba: [number, number, number, number] = [0, 0, 0, 0];
+  for (let i = 0; i < LUT_SIZE; i++) {
+    const t = (i + 0.5) / LUT_SIZE;
+    const v = log ? lo * Math.pow(hi / lo, t) : lo + t * (hi - lo);
+    mapValue(scale, v, 255, rgba);
+    data.set(rgba, i * 4);
+  }
+  const tex = new THREE.DataTexture(data, LUT_SIZE, 1, THREE.RGBAFormat);
+  // Nearest keeps the AQI band steps sharp; the field itself is interpolated per pixel
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   return tex;
+}
+
+const HEAT_VERTEX = /* glsl */ `
+#include <clipping_planes_pars_vertex>
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  #include <begin_vertex>
+  #include <project_vertex>
+  #include <clipping_planes_vertex>
+}`;
+
+/**
+ * Per pixel: bilinear interpolation of the cell-centred field, then the colour of that value. The
+ * field is smooth at any zoom and band boundaries are crisp curves, not cell-sized steps.
+ */
+const HEAT_FRAGMENT = /* glsl */ `
+#include <clipping_planes_pars_fragment>
+uniform sampler2D field;
+uniform ivec2 size;
+uniform sampler2D lut;
+uniform float lo;
+uniform float hi;
+uniform bool logScale;
+uniform float opacity;
+varying vec2 vUv;
+float cell(ivec2 c) { return texelFetch(field, clamp(c, ivec2(0), size - 1), 0).r; }
+void main() {
+  #include <clipping_planes_fragment>
+  vec2 p = vUv * vec2(size) - 0.5;
+  vec2 i0 = floor(p);
+  vec2 f = p - i0;
+  ivec2 c = ivec2(i0);
+  float v = mix(mix(cell(c), cell(c + ivec2(1, 0)), f.x), mix(cell(c + ivec2(0, 1)), cell(c + ivec2(1, 1)), f.x), f.y);
+  float t = logScale ? log(max(v, lo) / lo) / log(hi / lo) : (v - lo) / max(1e-6, hi - lo);
+  gl_FragColor = vec4(texture2D(lut, vec2(clamp(t, 0.0, 1.0), 0.5)).rgb, opacity);
+  #include <colorspace_fragment>
+}`;
+
+function useHeatMaterial(slice: FieldSlice, scale: ColorScale, clippingPlanes?: THREE.Plane[]): THREE.ShaderMaterial {
+  const field = useMemo(() => fieldTexture(slice), [slice]);
+  const [lo, hi] = scale.domain;
+  const lut = useMemo(() => colorLut({ field: scale.field, domain: [lo, hi], log: scale.log, relative: scale.relative }), [scale.field, lo, hi, scale.log, scale.relative]);
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: HEAT_VERTEX,
+        fragmentShader: HEAT_FRAGMENT,
+        uniforms: {
+          field: { value: null },
+          size: { value: new THREE.Vector2(1, 1) },
+          lut: { value: null },
+          lo: { value: 0 },
+          hi: { value: 1 },
+          logScale: { value: false },
+          opacity: { value: HEAT_ALPHA },
+        },
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        clipping: true,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      }),
+    []
+  );
+  const u = material.uniforms;
+  u.field!.value = field;
+  (u.size!.value as THREE.Vector2).set(slice.width, slice.height);
+  u.lut!.value = lut;
+  u.lo!.value = lo;
+  u.hi!.value = hi;
+  u.logScale!.value = Boolean(scale.log && lo > 0);
+  material.clippingPlanes = clippingPlanes ?? null;
+  useEffect(() => () => field.dispose(), [field]);
+  useEffect(() => () => lut.dispose(), [lut]);
+  useEffect(() => () => material.dispose(), [material]);
+  return material;
 }
 
 /** Contour segments of a slice at the given levels, as world-space line geometry at height y. */
@@ -109,20 +213,15 @@ export const RoomTint: React.FC<{ rooms: readonly Room[]; grid: GridInfo; colors
  */
 export const FloorHeatmap: React.FC<FloorHeatmapProps> = ({ rooms, grid, values, scale, sampleY, clippingPlanes }) => {
   const slice = useMemo(() => horizontalSlice(grid, values, sampleY), [grid, values, sampleY]);
-  const [d0, d1] = scale.domain;
-  const texture = useMemo(
-    () => dataTexture(sliceToRGBA(slice, { field: scale.field, domain: [d0, d1], log: scale.log, relative: scale.relative }, 235), slice.width, slice.height),
-    [slice, scale.field, d0, d1, scale.log, scale.relative]
-  );
-  useEffect(() => () => texture.dispose(), [texture]);
+  // Furniture and wall cells take the air around them, so the floor under a wardrobe isn't a hole
+  const filled = useMemo(() => fillSolids(slice), [slice]);
+  const material = useHeatMaterial(filled, scale, clippingPlanes);
   const heatGeoms = useRoomGeometries(rooms, grid, HEAT_Y);
 
   return (
     <group name="sim-floor-heatmap">
       {heatGeoms.map((g, i) => (
-        <mesh key={i} geometry={g} renderOrder={-3} raycast={() => null}>
-          <meshBasicMaterial map={texture} transparent side={THREE.DoubleSide} depthWrite={false} toneMapped={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} clippingPlanes={clippingPlanes ?? null} />
-        </mesh>
+        <mesh key={i} geometry={g} material={material} renderOrder={-3} raycast={() => null} />
       ))}
       {scale.field === 'pm25' && !scale.relative && !clippingPlanes && <Contours slice={slice} grid={grid} levels={AQI_BOUNDARIES} color="#f8fafc" opacity={0.3} />}
     </group>

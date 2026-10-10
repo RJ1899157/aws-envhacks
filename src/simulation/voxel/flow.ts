@@ -356,7 +356,7 @@ export function divergenceRows(state: FlowState, field: VelocityField = state.fi
   }, rowOfCell);
   for (let r = 0; r < out.length; r++) {
     const c = state.cellOfRow[r]!;
-    out[r] = out[r]! - domain.dx * (domain.sSink[c]! + domain.sSource[c]! + domain.sReturn[c]!);
+    out[r] = out[r]! - domain.dx * (domain.sSink[c]! + domain.sSource[c]! + domain.sReturn[c]! + domain.sSupply[c]!);
   }
   return out;
 }

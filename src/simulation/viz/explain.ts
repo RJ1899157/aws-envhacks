@@ -126,6 +126,8 @@ export function roomCause(network: NetworkResult, zoneIndex: number, mode: Cause
   const outdoorOpen = hasOutdoorOpening(network, zoneIndex);
   const age = opts.ageMinutes ?? f.zone.ageMinutes;
   const exhaust = f.zone.exhaustM3s > 0;
+  // A fan blowing outdoor air in, when it brings more than the biggest open window
+  const supplyLeads = f.zone.supplyM3s > 0 && f.zone.supplyM3s >= (inlet?.flow ?? 0);
   // Biggest air supply from another room (any direction of PM2.5)
   const fromRooms = [...f.imports.entries()].sort((a, b) => b[1] - a[1])[0];
   const roomSupplyDominates = fromRooms && fromRooms[1] > (inlet?.flow ?? 0) && fromRooms[1] * 3600 > 0.5 * f.zone.volumeM3;
@@ -138,6 +140,7 @@ export function roomCause(network: NetworkResult, zoneIndex: number, mode: Cause
       const what = src ? `${f.neighbour.name} ${(src.label ?? 'source').toLowerCase()} smoke` : `Polluted air from the ${f.neighbour.name}`;
       return `${what} drifts in through ${routeBetween(network, zoneIndex, f.neighbour.index)}`;
     }
+    if (supplyLeads && f.ratio >= 0.8) return 'Outdoor air blown in by the fan (unfiltered)';
     if (inlet && f.ratio >= 0.8) return `Outdoor air entering through ${inletWords(inlet)}`;
     if (f.hasPurifier) return 'Purifier helps, but outdoor air comes in about as fast';
     if (!outdoorOpen) return 'Closed room: slow leaks bring outdoor air in';
@@ -146,6 +149,7 @@ export function roomCause(network: NetworkResult, zoneIndex: number, mode: Cause
 
   if (mode === 'ventilation') {
     const old = age >= 60;
+    if (supplyLeads && !old) return 'Fresh outdoor air blown in by the fan';
     if (inlet && !old) return `Fresh outdoor air through ${inletWords(inlet)}`;
     if (roomSupplyDominates && !old) return `Air arrives second-hand from the ${network.zones[fromRooms[0]]!.name}`;
     if (!outdoorOpen) return `No window open to outdoors, air ~${r0(age)} min old`;
@@ -153,8 +157,9 @@ export function roomCause(network: NetworkResult, zoneIndex: number, mode: Cause
   }
 
   // airflow
+  if (supplyLeads && !roomSupplyDominates) return `Fan blows outdoor air in; it leaves through ${outdoorOpen ? 'the open windows' : 'gaps around doors and windows'}`;
   if (inlet && !roomSupplyDominates) return `Outdoor air entering through ${inletWords(inlet)}`;
   if (roomSupplyDominates) return `Air comes mostly from the ${network.zones[fromRooms[0]]!.name} through ${routeBetween(network, zoneIndex, fromRooms[0])}`;
-  if (exhaust) return 'Exhaust fan pulls air in through leaks';
+  if (exhaust) return 'Exhaust fan blows room air out; fresh air leaks in to replace it';
   return outdoorOpen ? 'Openings face away from the wind: little air moves' : 'Only slow leaks: no open window or door';
 }

@@ -13,7 +13,7 @@ import {
 } from '../constants';
 import { totalFlow } from '../devices';
 import { roomPm25Sources, sourceActiveAt } from '../sources';
-import { buildHouse, type House, type HouseEnv, type HousePath } from './house';
+import { buildHouse, interzonalExchangeM3s, type House, type HouseEnv, type HousePath } from './house';
 
 /**
  * Multi-zone network model (CONTAM-style, one node per room):
@@ -67,6 +67,8 @@ export interface ZoneResult {
   nominalTauMinutes: number;
   cadrM3s: number;
   exhaustM3s: number;
+  /** Outdoor air blown in by supply fans (m³/s) */
+  supplyM3s: number;
   /** Steady PM2.5 with always-on sources (µg/m³) */
   cssUgM3: number;
   /** Steady mean age of air (min) */
@@ -163,8 +165,10 @@ function pathFlows(house: House, path: HousePath, p: readonly number[]) {
 export function solvePressures(house: House, maxIter = 100): { p: number[]; iterations: number; residual: number; scale: number } {
   const n = house.zones.length;
   const exhaust = house.zones.map((z) => totalFlow(z.devices, 'exhaust'));
+  const supply = house.zones.map((z) => totalFlow(z.devices, 'supply'));
   const residual = (p: number[]) => {
-    const F = exhaust.map((e) => -e);
+    // Net inflow per zone: supply fans push air in, exhaust fans pull it out
+    const F = exhaust.map((e, i) => supply[i]! - e);
     let scale = 1e-12;
     for (const path of house.paths) {
       const { q } = pathFlows(house, path, p);
@@ -172,7 +176,7 @@ export function solvePressures(house: House, maxIter = 100): { p: number[]; iter
       if (path.to >= 0) F[path.to] = F[path.to]! + q;
       scale = Math.max(scale, Math.abs(q));
     }
-    for (const e of exhaust) scale = Math.max(scale, e);
+    for (let i = 0; i < n; i++) scale = Math.max(scale, exhaust[i]!, supply[i]!);
     return { F, scale };
   };
   let p = new Array<number>(n).fill(0);
@@ -241,7 +245,12 @@ export function simulateHouseNetwork(rooms: readonly Room[], envOverrides: Parti
   const QoLeak = new Array<number>(n).fill(0);
   const Qx = new Array<number>(n).fill(0);
   const paths: PathFlow[] = house.paths.map((path) => {
-    const { q, fwd, back } = pathFlows(house, path, p);
+    const flows = pathFlows(house, path, p);
+    const { q } = flows;
+    // Open interior doorways also exchange air both ways (no net flow; see INTERZONAL_DELTA_T_K)
+    const mix = interzonalExchangeM3s(path, house.env.indoorTempC);
+    const fwd = flows.fwd + mix;
+    const back = flows.back + mix;
     if (path.to >= 0) {
       Qz[path.from]![path.to] = Qz[path.from]![path.to]! + fwd;
       Qz[path.to]![path.from] = Qz[path.to]![path.from]! + back;
@@ -254,6 +263,8 @@ export function simulateHouseNetwork(rooms: readonly Room[], envOverrides: Parti
   });
   const exhaust = house.zones.map((z) => totalFlow(z.devices, 'exhaust'));
   for (let i = 0; i < n; i++) Qx[i] = Qx[i]! + exhaust[i]!;
+  // Supply fans: unfiltered outdoor air blown in
+  const supply = house.zones.map((z) => totalFlow(z.devices, 'supply'));
 
   // Linear zone balance: M C = b (+ V/dt terms in time)
   const k = options.depositionPerS ?? PM25_DEPOSITION_RATE_PER_S;
@@ -266,7 +277,7 @@ export function simulateHouseNetwork(rooms: readonly Room[], envOverrides: Parti
     Array.from({ length: n }, (_, i) =>
       Array.from({ length: n }, (_, j) => (i === j ? outflow[i]! + lam * V[i]! + (withLosses ? k * V[i]! + cadr[i]! : 0) : -Qz[j]![i]!))
     );
-  const outdoorGain = house.zones.map((_, i) => QoWindow[i]! * OPEN_WINDOW_PENETRATION * cOut + (QoLeak[i]! + lam * V[i]!) * INFILTRATION_PENETRATION * cOut);
+  const outdoorGain = house.zones.map((_, i) => (QoWindow[i]! + supply[i]!) * OPEN_WINDOW_PENETRATION * cOut + (QoLeak[i]! + lam * V[i]!) * INFILTRATION_PENETRATION * cOut);
   // Room-level and placed sources; the steady state (tS null) has every source on
   const zoneSources = house.zones.map((z) => roomPm25Sources(z.room));
   const emission = (tS: number | null) => zoneSources.map((list) => list.reduce((s, src) => (sourceActiveAt(src, tS) ? s + src.emissionRateUgMin / 60 : s), 0));
@@ -299,7 +310,7 @@ export function simulateHouseNetwork(rooms: readonly Room[], envOverrides: Parti
 
   const zones: ZoneResult[] = house.zones.map((z, i) => {
     const fromOthers = Qz.reduce((s, row) => s + row[i]!, 0);
-    const outdoorIn = QoWindow[i]! + QoLeak[i]!;
+    const outdoorIn = QoWindow[i]! + QoLeak[i]! + supply[i]!;
     const totalIn = outdoorIn + fromOthers + lam * V[i]!;
     return {
       index: i,
@@ -314,6 +325,7 @@ export function simulateHouseNetwork(rooms: readonly Room[], envOverrides: Parti
       nominalTauMinutes: totalIn > 0 ? V[i]! / totalIn / 60 : Infinity,
       cadrM3s: cadr[i]!,
       exhaustM3s: exhaust[i]!,
+      supplyM3s: supply[i]!,
       cssUgM3: css[i]!,
       ageMinutes: age[i]! / 60,
       series: series[i]!,

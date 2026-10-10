@@ -22,8 +22,10 @@ export interface TransportOperator {
   A: StencilMatrix;
   /** Constant right-hand side (µg/s for PM2.5, m³ for age: V·1 s/s) without emissions */
   b: Float64Array;
-  /** Cell volume (m³) */
+  /** Grid cell volume (m³): absolute flows per volume (sinks, make-up) are spread over it */
   cellVol: number;
+  /** True air volume per row (m³): storage, deposition, infiltration and ageing act on it */
+  rowVol: Float64Array;
   /** Per-row loss coefficients split out for the mass budget (m³/s) */
   outflowCoef: Float64Array;
   inflowRate: Float64Array;
@@ -55,6 +57,7 @@ export function buildTransport(state: FlowState, kind: ScalarKind, field: Veloci
   const inflowRate = new Float64Array(m);
   const arrays = [field.u, field.v, field.w];
   const losses = [domain.uLoss, domain.vLoss, domain.wLoss];
+  const exchange = [domain.uExchange, domain.vExchange, domain.wExchange];
   let exchanges = false;
 
   forEachCellFace(domain, (row, _cell, slot, axis, index, outward, nbCell) => {
@@ -69,7 +72,8 @@ export function buildTransport(state: FlowState, kind: ScalarKind, field: Veloci
       // Diffusion through an opening scales with its real open area, not the voxelized hole
       // (A_open / A_voxel = 1 / (Cd·sqrt K)); an undercut is ~1 cm high, not a full cell
       const K = losses[axis]![index]!;
-      const g = D * dx * (K > 0 ? Math.min(1, 1 / (DISCHARGE_COEFFICIENT * Math.sqrt(K))) : 1);
+      // plus the two-way doorway exchange between rooms (interzonalExchangeM3s)
+      const g = D * dx * (K > 0 ? Math.min(1, 1 / (DISCHARGE_COEFFICIENT * Math.sqrt(K))) : 1) + exchange[axis]![index]!;
       diag[row] = diag[row]! + g;
       coef[row * 6 + slot] = coef[row * 6 + slot]! + g;
     } else {
@@ -85,19 +89,24 @@ export function buildTransport(state: FlowState, kind: ScalarKind, field: Veloci
     }
   }, rowOfCell);
 
+  const rowVol = new Float64Array(m);
   for (let r = 0; r < m; r++) {
     const c = cellOfRow[r]!;
     const sink = -domain.sSink[c]!;
     const src = domain.sSource[c]!;
-    diag[r] = diag[r]! + cellVol * (kDep + domain.infiltrationPerS + sink);
-    b[r] = b[r]! + cellVol * (domain.infiltrationPerS + src) * cEnv;
-    if (kind === 'age') b[r] = b[r]! + cellVol; // every cell ages at 1 s per s
+    const vol = (rowVol[r] = domain.cellVolumes[c]!);
+    diag[r] = diag[r]! + vol * (kDep + domain.infiltrationPerS) + cellVol * sink;
+    b[r] = b[r]! + (vol * domain.infiltrationPerS + cellVol * src) * cEnv;
+    // Supply fans: outdoor air straight in (no filter); age 0, so nothing for the age equation
+    b[r] = b[r]! + cellVol * domain.sSupply[c]! * cIn;
+    if (domain.sSupply[c]! > 0) exchanges = true;
+    if (kind === 'age') b[r] = b[r]! + vol; // every cell ages at 1 s per s
     if (domain.infiltrationPerS > 0 || src > 0 || sink > 0) exchanges = true;
   }
   // Guard rows that ended up with no coupling at all (isolated cells)
   for (let r = 0; r < m; r++) if (diag[r]! <= 0) diag[r] = 1e-12;
 
-  return { kind, A: { size: m, diag, nbr, coef }, b, cellVol, outflowCoef, inflowRate, exchanges };
+  return { kind, A: { size: m, diag, nbr, coef }, b, cellVol, rowVol, outflowCoef, inflowRate, exchanges };
 }
 
 /** Emission per row (µg/s) of the sources active at time t (every source for the steady state, t null). */
@@ -163,17 +172,16 @@ const stepCache = new WeakMap<TransportOperator, { dt: number; A: StencilMatrix;
 /** One backward-Euler step: (V/dt + A)·x¹ = V/dt·x⁰ + b + extra. `x` holds x⁰ and receives x¹. */
 export function stepImplicit(op: TransportOperator, extra: Float64Array | null, x: Float64Array, dt: number, tol = VOXEL_TRANSIENT_TOL): SolveStats {
   const m = op.A.size;
-  const vdt = op.cellVol / dt;
   let cached = stepCache.get(op);
   if (!cached || cached.dt !== dt) {
     const diag = new Float64Array(m);
-    for (let r = 0; r < m; r++) diag[r] = op.A.diag[r]! + vdt;
+    for (let r = 0; r < m; r++) diag[r] = op.A.diag[r]! + op.rowVol[r]! / dt;
     const A = { ...op.A, diag };
     cached = { dt, A, pivots: diluPivots(A) };
     stepCache.set(op, cached);
   }
   const b = new Float64Array(m);
-  for (let r = 0; r < m; r++) b[r] = op.b[r]! + (extra ? extra[r]! : 0) + vdt * x[r]!;
+  for (let r = 0; r < m; r++) b[r] = op.b[r]! + (extra ? extra[r]! : 0) + (op.rowVol[r]! / dt) * x[r]!;
   return bicgstab(cached.A, b, x, tol, 5000, cached.pivots);
 }
 
@@ -193,12 +201,14 @@ export function massBudget(state: FlowState, op: TransportOperator, x: Float64Ar
   for (let r = 0; r < x.length; r++) {
     const c = cellOfRow[r]!;
     const C = x[r]!;
-    mass += C * op.cellVol;
+    const vol = op.rowVol[r]!;
+    mass += C * vol;
     gains += op.inflowRate[r]! * domain.inflowUgM3;
-    gains += op.cellVol * (domain.infiltrationPerS + domain.sSource[c]!) * domain.envelopeInflowUgM3;
+    gains += (vol * domain.infiltrationPerS + op.cellVol * domain.sSource[c]!) * domain.envelopeInflowUgM3;
+    gains += op.cellVol * domain.sSupply[c]! * domain.inflowUgM3;
     if (extraGains) gains += extraGains[r]!;
     losses += op.outflowCoef[r]! * C;
-    losses += op.cellVol * (depositionPerS + domain.infiltrationPerS - domain.sSink[c]!) * C;
+    losses += (vol * (depositionPerS + domain.infiltrationPerS) - op.cellVol * domain.sSink[c]!) * C;
   }
   return { gains, losses, mass };
 }

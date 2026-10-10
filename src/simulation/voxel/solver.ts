@@ -268,7 +268,7 @@ export async function runVoxelSimulation(input: VoxelSimInput, hooks: VoxelHooks
     pHi = Math.max(pHi, f.p0);
   }
   const pressureDriven = flow.pressureFaces.length > 0 && pHi - pLo > 1e-9;
-  const hasDrivers = pressureDriven || domain.jets.length > 0 || domain.sSink.some((s) => s !== 0);
+  const hasDrivers = pressureDriven || domain.jets.length > 0 || domain.sSink.some((s) => s !== 0) || domain.sSupply.some((s) => s !== 0);
   let steps = 0;
   let converged = !hasDrivers;
   let relChange = 0;
@@ -344,7 +344,10 @@ export async function runVoxelSimulation(input: VoxelSimInput, hooks: VoxelHooks
   const scalarDt = Math.min(VOXEL_MAX_SCALAR_DT_S, Math.max(VOXEL_MIN_SCALAR_DT_S, VOXEL_SCALAR_DT_FRACTION * (Number.isFinite(fastestTau) ? fastestTau : 3600)));
   let transientIters = 0;
   let imbalance = 0;
-  let throughput = c0 * pmOp.cellVol * flow.pressure.size;
+  const totalVol = pmOp.rowVol.reduce((s, v) => s + v, 0);
+  /** Volume-weighted mean over the fluid rows (rooms count by their true volume) */
+  const volumeMean = (rows: Float64Array) => rows.reduce((s, v, r) => s + v * pmOp.rowVol[r]!, 0) / totalVol;
+  let throughput = c0 * totalVol;
   const snapshotSet = new Set(snapshotTimes);
   const nZones = domain.zones.length;
   const zoneMeansOf = (rows: Float64Array) => {
@@ -360,7 +363,7 @@ export async function runVoxelSimulation(input: VoxelSimInput, hooks: VoxelHooks
   };
   const record = (t: number) => {
     if (!snapshotSet.has(t)) return;
-    const mean = pm.reduce((s, v) => s + v, 0) / pm.length;
+    const mean = volumeMean(pm);
     snapshots.push({ tS: t, mean, zoneMeans: zoneMeansOf(pm), field: toGridField(domain, flow.cellOfRow, pm) });
   };
   record(0);
@@ -405,7 +408,7 @@ export async function runVoxelSimulation(input: VoxelSimInput, hooks: VoxelHooks
     }
   }
   const [y0, y1] = BREATHING_ZONE_HEIGHT_M;
-  const meanOf = (rows: Float64Array) => rows.reduce((s, v) => s + v, 0) / rows.length;
+  const meanOf = volumeMean;
   const meanSteady = meanOf(pmSteady);
   const meanAge = ageRows ? meanOf(ageRows) / 60 : null;
   const pmThreshold = input.hotspotPm25UgM3 ?? HOTSPOT_RELATIVE * meanSteady;
@@ -478,6 +481,14 @@ export async function runVoxelSimulation(input: VoxelSimInput, hooks: VoxelHooks
       // Interior openings are seeded on the face itself so the room-to-room exchange shows
       inflowPts.push(...p);
     }
+  }
+  // Supply fans: outdoor air enters at the fan's cells
+  for (let c = 0; c < domain.sSupply.length; c++) {
+    if (!(domain.sSupply[c]! > 0)) continue;
+    const i = c % domain.nx;
+    const j = Math.floor(c / domain.nx) % domain.ny;
+    const k = Math.floor(c / (domain.nx * domain.ny));
+    inflowPts.push(domain.origin[0] + (i + 0.5) * dx, domain.origin[1] + (j + 0.5) * dx, domain.origin[2] + (k + 0.5) * dx);
   }
   const devicePts: number[] = [];
   const jetStride = Math.max(1, Math.floor(domain.jets.length / 200));

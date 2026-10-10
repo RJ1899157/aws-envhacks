@@ -54,9 +54,9 @@ export function freeViewport(canvas: HTMLElement): FreeViewport {
   let right = c.width - PAD_PX;
   const top = TOP_BAR_PX;
   const bottom = c.height - BOTTOM_BAR_PX;
-  const lib = visibleRect('[data-testid="asset-library-sidebar"]', c);
+  const lib = visibleRect('[data-testid="asset-library-sidebar"], [data-viewport-left]', c);
   if (lib && lib.left - c.left < c.width / 2) left = Math.max(left, lib.right - c.left + PAD_PX);
-  for (const sel of ['[data-testid="inspector-panel"]', '[data-testid="sim-insights-floating"]']) {
+  for (const sel of ['[data-testid="inspector-panel"]', '[data-testid="sim-insights-floating"]', '[data-viewport-right]']) {
     const r = visibleRect(sel, c);
     if (r && r.left - c.left > c.width / 2) right = Math.min(right, r.left - c.left - PAD_PX);
   }

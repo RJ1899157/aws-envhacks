@@ -92,6 +92,7 @@ export const CATALOG_ASSETS: readonly AssetDef[] = [
   { id: 'pm25-candle', label: 'Candle / Diya', category: 'Pollution sources', size: [0.1, 0.12, 0.1], elevation: 0.68, role: 'none', color: '#fbbf24', variants: ['#fbbf24'] },
   { id: 'pm25-cigarette', label: 'Cigarette', category: 'Pollution sources', size: [0.12, 0.05, 0.12], elevation: 0.95, role: 'none', color: '#e7e5e4', variants: ['#e7e5e4'] },
   { id: 'pm25-sweeping', label: 'Sweeping / Dusting', category: 'Pollution sources', size: [0.3, 0.3, 0.12], elevation: 0, role: 'none', color: '#ca8a04', variants: ['#ca8a04'] },
+  { id: 'pm25-toilet-flush', label: 'Toilet Flushing', category: 'Pollution sources', size: [0.4, 0.8, 0.7], elevation: 0, role: 'none', color: '#f8fafc', variants: ['#f8fafc'] },
   { id: 'pm25-heater', label: 'Kerosene / Coal Heater', category: 'Pollution sources', size: [0.4, 0.5, 0.3], elevation: 0, role: 'none', color: '#b91c1c', variants: ['#b91c1c'] },
 
   // OPENINGS

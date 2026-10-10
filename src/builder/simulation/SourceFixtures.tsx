@@ -208,7 +208,41 @@ const Heater: React.FC<FixtureProps> = ({ size, material, isGhost, outline }) =>
   );
 };
 
+/** Toilet (bowl, seat, cistern) with a plume of droplets rising from the bowl. */
+const ToiletFlush: React.FC<FixtureProps> = ({ size, material, isGhost, outline }) => {
+  const [W, H, D] = size;
+  const m = mats(material, isGhost);
+  const bowlH = H * 0.5;
+  const bowlZ = D * 0.12;
+  return (
+    <group>
+      <mesh position={[0, bowlH / 2, bowlZ]} material={m.body}>
+        <cylinderGeometry args={[W * 0.45, W * 0.32, bowlH, 20]} />
+        {outline}
+      </mesh>
+      <mesh position={[0, bowlH + 0.01, bowlZ]} rotation={[-Math.PI / 2, 0, 0]} material={m.steel}>
+        <torusGeometry args={[W * 0.36, 0.02, 8, 24]} />
+      </mesh>
+      <mesh position={[0, H * 0.65, -D / 2 + D * 0.12]} material={m.body}>
+        <boxGeometry args={[W * 0.95, H * 0.6, D * 0.24]} />
+      </mesh>
+      {[
+        [0, 0.12, 0],
+        [0.05, 0.2, 0.03],
+        [-0.05, 0.26, -0.02],
+        [0.02, 0.34, 0.04],
+        [-0.03, 0.42, 0.01],
+      ].map(([x, y, z], i) => (
+        <mesh key={i} position={[x!, bowlH + y!, bowlZ + z!]} material={m.flameBlue}>
+          <sphereGeometry args={[0.012 - i * 0.0015, 8, 8]} />
+        </mesh>
+      ))}
+    </group>
+  );
+};
+
 export const SOURCE_FIXTURES: Record<string, React.FC<FixtureProps>> = {
+  'pm25-toilet-flush': ToiletFlush,
   'pm25-stove-frying': Stove,
   'pm25-stove-boiling': (props) => <Stove {...props} pot />,
   'pm25-tawa': Tawa,

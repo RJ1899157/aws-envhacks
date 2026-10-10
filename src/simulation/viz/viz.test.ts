@@ -15,6 +15,7 @@ import {
   fieldDomain,
   hexToRgb,
   mapValue,
+  motionTimeScale,
   isLogScale,
   pm25Band,
   rampCss,
@@ -27,7 +28,7 @@ import {
 } from './colormap';
 import { explainRoom } from './explain';
 import { cellIndexAt, sampleScalar, sampleVector } from './sampling';
-import { horizontalSlice, marchingSquares, sliceRegions, sliceToRGBA, speedField, verticalSlice } from './slice';
+import { fillSolids, horizontalSlice, marchingSquares, sliceRegions, sliceToRGBA, speedField, verticalSlice } from './slice';
 import { isResultStale, simulationInputKey } from './staleness';
 
 /** 3 × 2 × 4 grid at 1 m, origin (10, 0, 20); value = i + 10·j + 100·k. */
@@ -231,5 +232,26 @@ describe('plain-language explanation', () => {
     expect(explainRoom(net, living, devicesIn(rooms[living]!.objects))).toMatch(/drifts in from the Kitchen/);
     const kitchen = net.zones.findIndex((z) => z.name === 'Kitchen');
     expect(explainRoom(net, kitchen, devicesIn(rooms[kitchen]!.objects))).toMatch(/frying/i);
+  });
+});
+
+describe('smooth heatmap slices', () => {
+  const slice = (width: number, height: number, vals: number[]) => ({ width, height, values: Float32Array.from(vals), layer: 0 });
+
+  it('fills solid (NaN) cells from the surrounding air', () => {
+    const filled = fillSolids(slice(3, 3, [1, 1, 1, 1, NaN, 1, 1, 1, 1]));
+    expect(filled.values[4]).toBeCloseTo(1);
+    const deep = fillSolids(slice(5, 1, [2, NaN, NaN, NaN, 4]));
+    expect([...deep.values].every((v) => !Number.isNaN(v))).toBe(true);
+  });
+
+});
+
+describe('flow animation speed', () => {
+  it('keeps gentle draughts sped up but caps fan jets, never below real time', () => {
+    expect(motionTimeScale(0.3, 20)).toBe(20); // window draught: 0.3 × 20 = 6 m/s on screen
+    expect(motionTimeScale(1.8, 20)).toBeCloseTo(6 / 1.8); // pedestal fan: ~3.3×
+    expect(motionTimeScale(8, 20)).toBe(1); // very fast: real time, not slower
+    expect(motionTimeScale(0, 20)).toBe(20);
   });
 });

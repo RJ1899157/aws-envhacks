@@ -5,6 +5,7 @@ import { createDefaultRoom } from '../core/defaultRoom';
 import { parseRoom, type ParseIssue, wallSegment } from '../core/parser';
 import { createRoomOfType, withRoomId } from '../core/rooms';
 import { computeSmartSnap, objectsFlushAgainstWall } from '../core/smartSnap';
+import { settleSources } from '../core/surfaces';
 import type {
   Opening,
   OpeningRole,
@@ -392,6 +393,7 @@ export const useSceneStore = create<SceneState>()(
           );
           state.room.outline = outline;
           state.room.objects = objects;
+          settleSources(state.room);
         });
       },
 
@@ -405,6 +407,7 @@ export const useSceneStore = create<SceneState>()(
           );
           state.room.outline = outline;
           state.room.objects = objects;
+          settleSources(state.room);
         });
       },
 
@@ -457,6 +460,7 @@ export const useSceneStore = create<SceneState>()(
           if (!active) return;
           state.room = active as Room;
           state.otherRooms = rooms.filter((r) => r !== active) as Room[];
+          for (const r of [state.room, ...state.otherRooms]) settleSources(r);
           clearSelectionDraft(state);
         });
       },
@@ -482,6 +486,7 @@ export const useSceneStore = create<SceneState>()(
       addObject: (object) =>
         set((state) => {
           state.room.objects.push(object);
+          settleSources(state.room);
           state.selectedObjectId = object.id;
           state.selectedObjectIds = [object.id];
           state.selectedOpeningId = null;
@@ -499,6 +504,7 @@ export const useSceneStore = create<SceneState>()(
               ...state.room.objects[index],
               ...updates,
             };
+            settleSources(state.room);
           }
         });
       },
@@ -506,6 +512,7 @@ export const useSceneStore = create<SceneState>()(
       removeObject: (id) =>
         set((state) => {
           state.room.objects = state.room.objects.filter((o) => o.id !== id);
+          settleSources(state.room);
           state.selectedObjectIds = state.selectedObjectIds.filter((oId) => oId !== id);
           state.selectedObjectId = state.selectedObjectIds[0] ?? null;
         }),
@@ -528,6 +535,7 @@ export const useSceneStore = create<SceneState>()(
             ],
           };
           state.room.objects.push(duplicated);
+          settleSources(state.room);
           state.selectedObjectId = newId;
           state.selectedObjectIds = [newId];
           state.selectedOpeningId = null;
@@ -563,6 +571,7 @@ export const useSceneStore = create<SceneState>()(
             newSelectedIds.push(newId);
           }
 
+          settleSources(state.room);
           if (newSelectedIds.length > 0) {
             state.selectedObjectIds = newSelectedIds;
             state.selectedObjectId = newSelectedIds[0] ?? null;
@@ -578,6 +587,7 @@ export const useSceneStore = create<SceneState>()(
           if (state.selectedObjectIds.length > 0) {
             const idsToRemove = new Set(state.selectedObjectIds);
             state.room.objects = state.room.objects.filter((o) => !idsToRemove.has(o.id));
+            settleSources(state.room);
             state.selectedObjectIds = [];
             state.selectedObjectId = null;
           }

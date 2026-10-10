@@ -6,7 +6,7 @@ import { BASE_PARTICLES, MAX_PARTICLES, useSimulationStore } from '../../store/s
 import { useSimulationModel } from '../../store/useSimulationModel';
 import { useGraphicsStore } from '../../store/graphicsStore';
 import { useUiStore } from '../../store/uiStore';
-import { STATUS_COLORS, type ColorScale } from '../../simulation/viz/colormap';
+import { motionTimeScale, STATUS_COLORS, type ColorScale } from '../../simulation/viz/colormap';
 import { isPm25SourceObject } from '../../simulation/sources';
 import { sliceToRGBA, verticalSlice, type FieldSlice } from '../../simulation/viz/slice';
 import type { GridInfo, Hotspot } from '../../simulation/voxel/analysis';
@@ -250,6 +250,8 @@ export const SimulationLayer: React.FC = () => {
   const view = useUiStore((s) => s.view);
   const overlay = view === '2d';
   const result = displayed?.result ?? null;
+  // Fans move air fast: slow the playback so it still looks like air, not a stream of sparks
+  const timeScale = motionTimeScale(result?.velocity.maxSpeed ?? 0, viz.timeScale);
   const insights = useRoomInsights();
   const comparing = useScenarioStore((s) => s.compare !== null);
   const staleZones = useStaleZones();
@@ -293,11 +295,11 @@ export const SimulationLayer: React.FC = () => {
       {viz.vertical.enabled && !overlay && displayed.values && displayed.scale && (
         <VerticalSlice grid={grid} values={displayed.values} scale={displayed.scale} axis={viz.vertical.axis} position={verticalPos} />
       )}
-      {moving && viz.streamlines && mode === 'airflow' && !comparing && <Streamlines result={result} speedRef={displayed.speedRef} timeScale={viz.timeScale} density={viz.density} />}
-      {moving && viz.streamlines && mode === 'ventilation' && !comparing && <Streamlines result={result} speedRef={displayed.speedRef} timeScale={viz.timeScale} density={viz.density * 0.6} width={1.4} opacity={0.45} />}
+      {moving && viz.streamlines && mode === 'airflow' && !comparing && <Streamlines result={result} speedRef={displayed.speedRef} timeScale={timeScale} density={viz.density} />}
+      {moving && viz.streamlines && mode === 'ventilation' && !comparing && <Streamlines result={result} speedRef={displayed.speedRef} timeScale={timeScale} density={viz.density * 0.6} width={1.4} opacity={0.45} />}
       {mode === 'airflow' && viz.openingArrows && <OpeningArrows house={network.house} flows={flows} />}
       {mode === 'pollution' && viz.smoke && displayed.scale && !comparing && (
-        <SmokeParticles key={smokeCount} result={result} rooms={rooms} timeS={displayed.timeS} pm25={displayed.pm25} scale={displayed.scale} count={smokeCount} timeScale={viz.timeScale} />
+        <SmokeParticles key={smokeCount} result={result} rooms={rooms} timeS={displayed.timeS} pm25={displayed.pm25} scale={displayed.scale} count={smokeCount} timeScale={timeScale} />
       )}
       {viz.arrows && <VectorArrows grid={grid} velocity={result.velocity.cell} sliceY={viz.sliceHeight} drawY={SIM_WALL_CUT_M + 0.05} />}
       {viz.hotspots &&

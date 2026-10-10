@@ -977,9 +977,11 @@ const NewProjectEmptyState: React.FC = () => {
 
 export interface CanvasProps {
   className?: string;
+  /** Guided app: no view cube, empty-state card, floating insights or debug controls */
+  minimal?: boolean;
 }
 
-export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
+export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false }) => {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const isDragging = useSceneStore((state) => state.isDragging);
   const room = useSceneStore((state) => state.room);
@@ -1253,7 +1255,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           <SimulationLayer />
 
           {/* Top-Right Clickable 3D View-Cube (drei GizmoViewcube) */}
-          <GizmoHelper
+          {!minimal && <GizmoHelper
             alignment="top-right"
             margin={[160, 130]}
             onTarget={() => controlsRef.current?.target ?? new THREE.Vector3(0, 0, 0)}
@@ -1265,24 +1267,24 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
               strokeColor="#334155"
               opacity={0.92}
             />
-          </GizmoHelper>
+          </GizmoHelper>}
           <SceneExporter />
-          <NewProjectEmptyState />
+          {!minimal && <NewProjectEmptyState />}
         </Suspense>
       </R3FCanvas>
 
       {/* Floating Voxel Debug Controls (Y-slice slider, opacity, solid toggle, legend) */}
-      <VoxelDebugControls />
+      {!minimal && <VoxelDebugControls />}
       <RoomChips />
       <HoverReadout />
       <SimulationLegend />
-      <FloatingInsights />
+      {!minimal && <FloatingInsights />}
       <CompareOverlay />
       <WhatIfBanner />
       <ScenarioEngine />
       <StoryBar />
       <ExamplesPicker />
-      <FirstUseCard />
+      {!minimal && <FirstUseCard />}
       <RunProgress />
     </div>
   );

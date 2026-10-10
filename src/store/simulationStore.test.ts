@@ -29,6 +29,22 @@ describe('simulation store', () => {
     expect(useSimulationStore.getState().result).toEqual({ tag: 'new' });
   });
 
+  it('drops the old result as soon as a run for a changed design starts, so it never plays meanwhile', async () => {
+    const room = createBedroomSample();
+    setVoxelRunnerFactory(() => ({ run: async () => ({ tag: 'old' }) as unknown as VoxelSimResult, cancel: () => {} }));
+    await useSimulationStore.getState().runVoxel(room, []);
+    expect(useSimulationStore.getState().result).toEqual({ tag: 'old' });
+    let resolve: (r: VoxelSimResult) => void = () => {};
+    setVoxelRunnerFactory(() => ({ run: () => new Promise<VoxelSimResult>((res) => (resolve = res)), cancel: () => {} }));
+    const changed = { ...room, objects: room.objects.slice(1) };
+    const run = useSimulationStore.getState().runVoxel(changed, []);
+    expect(useSimulationStore.getState().status).toBe('running');
+    expect(useSimulationStore.getState().result).toBeNull();
+    resolve({ tag: 'new' } as unknown as VoxelSimResult);
+    await run;
+    expect(useSimulationStore.getState().result).toEqual({ tag: 'new' });
+  });
+
   it('is not part of the design: the scene export has no simulation data', async () => {
     const { useSceneStore } = await import('./sceneStore');
     expect(useSceneStore.getState().exportRoom()).not.toMatch(/pm25"|snapshots|velocity/);

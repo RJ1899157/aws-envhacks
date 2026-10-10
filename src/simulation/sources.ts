@@ -1,3 +1,4 @@
+import { getCatalogAsset } from '../core/catalog';
 import type { Pm25ScheduleWindow, Pm25Source, Room, SceneObject } from '../core/schema';
 import { PM25_SOURCE_PRESETS, type Pm25SourcePresetId } from './constants';
 import { deviceKindOf } from './devices';
@@ -31,6 +32,16 @@ export function sourcePresetOf(obj: SceneObject): Pm25SourcePresetId {
   return PRESET_BY_ASSET.get(obj.assetId) ?? 'gas-stove-frying';
 }
 
+/**
+ * How far above its own base a source emits (m): the preset's emission height minus the height its
+ * catalogue marker usually sits at (a pan 0.1 m above the hob, an incense tip 0.3 m above its stand).
+ */
+export function emissionOffsetM(preset: Pm25SourcePresetId): number {
+  const def = PM25_SOURCE_PRESETS[preset];
+  const usualBase = getCatalogAsset(def.assetId)?.elevation ?? 0;
+  return Math.max(0.02, def.heightM - usualBase);
+}
+
 /** Resolved parameters of a placed source (object fields override the preset). Null for non-sources. */
 export function placedSourceParams(obj: SceneObject): PlacedSourceParams | null {
   if (!isPm25SourceObject(obj)) return null;
@@ -40,7 +51,8 @@ export function placedSourceParams(obj: SceneObject): PlacedSourceParams | null 
     preset,
     label: def.label,
     rateUgMin: obj.emissionRateUgMin ?? def.rateUgMin,
-    heightM: obj.emissionHeightM ?? def.heightM,
+    // Emits from where it actually rests (floor, counter, shelf…), unless set explicitly
+    heightM: obj.emissionHeightM ?? (obj.position[1] ?? 0) + (obj.elevation ?? 0) + emissionOffsetM(preset),
     schedule: obj.sourceSchedule ?? [],
     enabled: obj.enabled !== false,
   };

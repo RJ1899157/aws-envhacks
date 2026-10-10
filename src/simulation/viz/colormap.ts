@@ -257,3 +257,19 @@ export function pm25Band(v: number): { level: Pm25Level; color: string; label: s
   if (v <= INDIA_NAAQS_PM25_24H) return { level: 'warning', color: STATUS_COLORS.warning, label: 'Above WHO, within NAAQS' };
   return { level: 'critical', color: STATUS_COLORS.critical, label: 'Above India NAAQS' };
 }
+
+/**
+ * Fastest on-screen speed (m/s) the flow animation may show. Gentle draughts (≤ 0.3 m/s) are sped up
+ * to be visible, but a fan's 1–3 m/s jet sped up as much races across the room and looks wrong.
+ */
+export const MAX_ANIMATED_SPEED_MS = 6;
+
+/**
+ * Speed-up actually used for streamlines and smoke: the chosen one (default 20×), capped so the
+ * fastest air in the result moves at most MAX_ANIMATED_SPEED_MS on screen, and never slower than
+ * real time.
+ */
+export function motionTimeScale(maxSpeedMs: number, chosen: number): number {
+  if (!(maxSpeedMs > 0)) return chosen;
+  return Math.max(1, Math.min(chosen, MAX_ANIMATED_SPEED_MS / maxSpeedMs));
+}

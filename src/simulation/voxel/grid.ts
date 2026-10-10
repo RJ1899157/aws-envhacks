@@ -14,7 +14,7 @@ import {
   SECONDS_PER_HOUR,
 } from '../constants';
 import type { Device } from '../devices';
-import type { House, HousePath } from '../house/house';
+import { interzonalExchangeM3s, type House, type HousePath } from '../house/house';
 import { roomPm25Sources } from '../sources';
 
 /**
@@ -123,6 +123,13 @@ export interface VoxelDomain {
   uFixed: Float64Array;
   vFixed: Float64Array;
   wFixed: Float64Array;
+  /**
+   * Two-way exchange conductance (m³/s) added on the faces of open interior doorways, the voxel side
+   * of interzonalExchangeM3s (the solver has no room-to-room temperature field to drive it)
+   */
+  uExchange: Float64Array;
+  vExchange: Float64Array;
+  wExchange: Float64Array;
   /** Orifice loss coefficient K per face (0 = none) */
   uLoss: Float32Array;
   vLoss: Float32Array;
@@ -138,9 +145,18 @@ export interface VoxelDomain {
   openings: DomainOpening[];
   jets: Jet[];
   /** Per-cell volumetric sink (≤ 0, 1/s): exhaust devices, recirculator intakes, uniform leakage */
+  /**
+   * Air volume each cell stands for in the scalar balances (m³). The grid gives every room half a wall
+   * of extra cells and rounds the ceiling to whole cells, so a room's cells hold 2–20 % more volume
+   * than the room; each room's cells are scaled so the room totals its true volume (furniture
+   * included in the shell, as in the network model). Flows and emissions stay absolute.
+   */
+  cellVolumes: Float64Array;
   sSink: Float64Array;
   /** Per-cell volumetric source (≥ 0, 1/s): uniform make-up air through the envelope */
   sSource: Float64Array;
+  /** Per-cell volumetric source (≥ 0, 1/s) of supply fans: outdoor air at P·C_out = inflowUgM3, age 0 */
+  sSupply: Float64Array;
   recirculators: Recirculator[];
   /** Per-cell volumetric source (≥ 0, 1/s) of recirculator outlets */
   sReturn: Float64Array;
@@ -307,6 +323,15 @@ export function buildDomain({ house, dx, marginM = HOUSE_MARGIN_M }: DomainInput
     }
   });
 
+  // --- True volume per cell: each room's shell (all its cells) scaled to floor area × height ------
+  const shellCells = new Float64Array(rooms.length);
+  for (let c = 0; c < n; c++) if (zoneOf[c]! >= 0) shellCells[zoneOf[c]!]! += 1;
+  const cellVolumes = new Float64Array(n);
+  for (let c = 0; c < n; c++) {
+    const z = zoneOf[c]!;
+    cellVolumes[c] = z >= 0 && shellCells[z]! > 0 ? house.zones[z]!.volumeM3 / shellCells[z]! : cellVol;
+  }
+
   const fluid = new Uint8Array(n);
   let fluidCount = 0;
   for (let c = 0; c < n; c++) {
@@ -338,6 +363,10 @@ export function buildDomain({ house, dx, marginM = HOUSE_MARGIN_M }: DomainInput
   const vLoss = new Float32Array(vType.length);
   const wLoss = new Float32Array(wType.length);
   const losses = [uLoss, vLoss, wLoss];
+  const uExchange = new Float64Array(uType.length);
+  const vExchange = new Float64Array(vType.length);
+  const wExchange = new Float64Array(wType.length);
+  const exchange = [uExchange, vExchange, wExchange];
   const uPressure = new Float64Array(uType.length);
   const vPressure = new Float64Array(vType.length);
   const wPressure = new Float64Array(wType.length);
@@ -408,11 +437,13 @@ export function buildDomain({ house, dx, marginM = HOUSE_MARGIN_M }: DomainInput
     }
     const voxelArea = faces.length * dx * dx;
     const loss = (voxelArea / (DISCHARGE_COEFFICIENT * path.areaM2)) ** 2;
+    const mixPerFace = interzonalExchangeM3s(path, house.env.indoorTempC) / faces.length;
     for (const f of faces) {
       claimed.add(`${f.axis}:${f.index}`);
       losses[f.axis]![f.index] = loss;
       if (path.to >= 0) {
         types[f.axis]![f.index] = FaceType.INTERIOR;
+        exchange[f.axis]![f.index] = mixPerFace;
       } else {
         types[f.axis]![f.index] = FaceType.PRESSURE;
         // Wind pressure plus stack (outdoor minus indoor hydrostatic) at the face height
@@ -441,6 +472,7 @@ export function buildDomain({ house, dx, marginM = HOUSE_MARGIN_M }: DomainInput
   const jets: Jet[] = [];
   const sSink = new Float64Array(n);
   const sSource = new Float64Array(n);
+  const sSupply = new Float64Array(n);
   const sReturn = new Float64Array(n);
   const recirculators: Recirculator[] = [];
   const devices: Device[] = [];
@@ -568,7 +600,9 @@ export function buildDomain({ house, dx, marginM = HOUSE_MARGIN_M }: DomainInput
         case 'exhaustFan':
         case 'rangeHood': {
           const region = cellsInBox(b, zone.index);
-          for (const c of region) sSink[c] = sSink[c]! - d.flowM3s / (region.length * cellVol);
+          // An exhaust fan set to blow in (role 'supply') pushes outdoor air into the room instead
+          if (d.role === 'supply') for (const c of region) sSupply[c] = sSupply[c]! + d.flowM3s / (region.length * cellVol);
+          else for (const c of region) sSink[c] = sSink[c]! - d.flowM3s / (region.length * cellVol);
           anyExhaust = true;
           break;
         }
@@ -612,14 +646,20 @@ export function buildDomain({ house, dx, marginM = HOUSE_MARGIN_M }: DomainInput
     const cnt = new Float64Array(nComp);
     for (let c = 0; c < n; c++) {
       if (comp[c]! < 0) continue;
-      net[comp[c]!] = net[comp[c]!]! + (sSink[c]! + sReturn[c]!) * cellVol;
+      net[comp[c]!] = net[comp[c]!]! + (sSink[c]! + sReturn[c]! + sSupply[c]!) * cellVol;
       cnt[comp[c]!] = cnt[comp[c]!]! + 1;
     }
     for (let p = 0; p < nComp; p++) {
-      if (open[p] || net[p]! >= -1e-12) continue;
+      if (open[p] || Math.abs(net[p]!) <= 1e-12) continue;
       const s = -net[p]! / (cnt[p]! * cellVol);
-      for (let c = 0; c < n; c++) if (comp[c] === p) sSource[c] = sSource[c]! + s;
-      warnings.push('Part of the house has an exhaust fan but no open window: its make-up air comes in uniformly through the envelope.');
+      if (s > 0) {
+        for (let c = 0; c < n; c++) if (comp[c] === p) sSource[c] = sSource[c]! + s;
+        warnings.push('Part of the house has an exhaust fan but no open window: its make-up air comes in uniformly through the envelope.');
+      } else {
+        // A supply fan with nowhere for the air to go: it leaks out evenly through the envelope
+        for (let c = 0; c < n; c++) if (comp[c] === p) sSink[c] = sSink[c]! + s;
+        warnings.push('Part of the house has a fan blowing air in but no open window: the air leaves through gaps in the envelope.');
+      }
     }
   }
 
@@ -676,6 +716,9 @@ export function buildDomain({ house, dx, marginM = HOUSE_MARGIN_M }: DomainInput
     uFixed: new Float64Array(uType.length),
     vFixed: new Float64Array(vType.length),
     wFixed: new Float64Array(wType.length),
+    uExchange,
+    vExchange,
+    wExchange,
     uLoss,
     vLoss,
     wLoss,
@@ -686,8 +729,10 @@ export function buildDomain({ house, dx, marginM = HOUSE_MARGIN_M }: DomainInput
     porousFaces: { u: uniq(porousU), v: uniq(porousV), w: uniq(porousW) },
     openings,
     jets,
+    cellVolumes,
     sSink,
     sSource,
+    sSupply,
     recirculators,
     sReturn,
     sources,

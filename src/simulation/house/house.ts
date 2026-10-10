@@ -4,6 +4,9 @@ import type { Opening, Room, SiteExposure, Vec2 } from '../../core/schema';
 import {
   AIR_GAS_CONSTANT,
   DEFAULT_INFILTRATION_ACH,
+  DISCHARGE_COEFFICIENT,
+  GRAVITY,
+  INTERZONAL_DELTA_T_K,
   DEFAULT_SITE_EXPOSURE,
   DOOR_UNDERCUT_HEIGHT_M,
   ENVELOPE_LEAK_AREA_PER_M2_FLOOR,
@@ -11,8 +14,8 @@ import {
   NETWORK_OPENING_SEGMENTS,
 } from '../constants';
 import { devicesIn, type Device } from '../devices';
-import { interiorOpeningIds, isOpeningOpen, openingArea, roomVolume, wallHeightAt } from '../geometry';
-import { localWindSpeed, pressureCoefficient, windIncidenceDeg } from '../ventilation';
+import { interiorOpeningIds, isOpeningOpen, openAreaShare, openingArea, openingFlowFactor, roomVolume, wallHeightAt } from '../geometry';
+import { localWindSpeed, pressureCoefficient, windHeightForFloor, windIncidenceDeg } from '../ventilation';
 
 /**
  * A house = the rooms of a floor plan as zones, connected by flow paths:
@@ -31,6 +34,8 @@ export interface HouseEnv {
   exposure: SiteExposure;
   infiltrationAch: number;
   outdoorUgM3: number;
+  /** Height the local wind is taken at (m): the home's floor (windHeightForFloor) */
+  windHeightM: number;
 }
 
 export interface HouseZone {
@@ -123,6 +128,7 @@ export function houseEnvFromRoom(room: Room, overrides: Partial<HouseEnv> = {}):
     exposure: p.exposure ?? DEFAULT_SITE_EXPOSURE,
     infiltrationAch: DEFAULT_INFILTRATION_ACH,
     outdoorUgM3: p.outdoorPm25?.valueUgM3 ?? 35,
+    windHeightM: windHeightForFloor(p.floorLevel),
     ...defined,
   };
 }
@@ -140,11 +146,26 @@ function segments(op: Opening, wallH: number, area: number): PathSegment[] {
  * Builds the zone/path description. `rooms[0]` is the primary room whose params set the
  * environment (wind, temperatures, exposure, outdoor PM2.5).
  */
+/**
+ * Two-way air exchange (m³/s each way, no net flow) through an open interior opening from a small
+ * room-to-room temperature difference (INTERZONAL_DELTA_T_K). 0 for exterior openings, undercuts and
+ * leaks. Both the network and the voxel model add it, so an open door mixes neighbouring rooms even
+ * when nothing pushes air through the house.
+ */
+export function interzonalExchangeM3s(path: HousePath, indoorTempC: number): number {
+  if (path.kind !== 'opening' || path.to < 0 || !path.geometry) return 0;
+  const { height } = path.geometry;
+  if (!(path.areaM2 > 0) || !(height > 0)) return 0;
+  const tK = indoorTempC + KELVIN_OFFSET;
+  // Effective open width = open area / height (carries the open fraction, window style and mesh)
+  return (DISCHARGE_COEFFICIENT / 3) * (path.areaM2 / height) * Math.sqrt((GRAVITY * height ** 3 * INTERZONAL_DELTA_T_K) / tK);
+}
+
 export function buildHouse(rooms: readonly Room[], envOverrides: Partial<HouseEnv> = {}): House {
   if (rooms.length === 0) throw new Error('A house needs at least one room');
   const warnings: string[] = [];
   const env = houseEnvFromRoom(rooms[0]!, envOverrides);
-  const uLocal = localWindSpeed(env.windSpeed, env.exposure);
+  const uLocal = localWindSpeed(env.windSpeed, env.exposure, env.windHeightM);
   const rhoOut = airDensity(env.outdoorTempC);
   const rhoIn = airDensity(env.indoorTempC);
 
@@ -168,8 +189,11 @@ export function buildHouse(rooms: readonly Room[], envOverrides: Partial<HouseEn
       const wallH = wallHeightAt(room, op.wallIndex);
       const seg = wallSegment(room, op.wallIndex);
       const open = isOpeningOpen(op);
-      const area = open ? openingArea(op, wallH) * op.openFraction : 0;
-      const geometry = { room: a, wallIndex: op.wallIndex, offset: op.offset, width: op.width, sill: op.sill, height: Math.min(op.height, wallH - op.sill), openFraction: open ? op.openFraction : 0, normal: seg.normal };
+      // Window style (sliding / louvre) and insect mesh reduce the effective open area
+      const area = open ? openingArea(op, wallH) * op.openFraction * openingFlowFactor(op, room.params.windowDefaults) : 0;
+      // The voxel grid opens this share of the width (a sliding sash at most half)
+      const openShare = open ? op.openFraction * openAreaShare(op, room.params.windowDefaults) : 0;
+      const geometry = { room: a, wallIndex: op.wallIndex, offset: op.offset, width: op.width, sill: op.sill, height: Math.min(op.height, wallH - op.sill), openFraction: openShare, normal: seg.normal };
       // Interior? Find the neighbour whose shared wall this opening sits on
       const b = rooms.findIndex((other, i) => i !== a && interiorOpeningIds(room, [other]).has(op.id));
       if (b >= 0) {

@@ -1,6 +1,7 @@
 import { signedArea, wallSegment } from '../core/parser';
 import { sharedWallOpenings } from '../core/rooms';
-import type { Opening, Room, Vec2, Vec3 } from '../core/schema';
+import type { Opening, Room, RoomParams, Vec2, Vec3, WindowStyle } from '../core/schema';
+import { DISCHARGE_COEFFICIENT, INSECT_MESH_LOSS_K, WINDOW_STYLE_OPEN_AREA } from './constants';
 
 /** Floor area of the room outline (m²). */
 export function floorArea(room: Pick<Room, 'outline'>): number {
@@ -49,9 +50,39 @@ export function openingArea(op: Pick<Opening, 'width' | 'height' | 'sill'>, wall
   return op.width * Math.max(0, top - op.sill);
 }
 
-/** Effective open area (m²): width × height × open fraction, 0 when closed. */
-export function effectiveOpenArea(op: Opening, wallHeight: number): number {
-  return isOpeningOpen(op) ? openingArea(op, wallHeight) * op.openFraction : 0;
+export type WindowDefaults = RoomParams['windowDefaults'];
+
+/**
+ * How a window opens and whether it has insect mesh: its own setting, else the home's default, else
+ * a casement without mesh (the behaviour of designs made before these settings existed). Null for
+ * doors, vents and pass-throughs, which these settings don't apply to.
+ */
+export function windowSettings(op: Pick<Opening, 'type' | 'subType' | 'windowStyle' | 'mesh'>, defaults?: WindowDefaults): { style: WindowStyle; mesh: boolean } | null {
+  if (op.type !== 'window' || op.subType === 'vent' || op.subType === 'pass-through') return null;
+  return { style: op.windowStyle ?? defaults?.style ?? 'casement', mesh: op.mesh ?? defaults?.mesh ?? false };
+}
+
+/** Share of the frame that opens (sliding ≤ ½, louvres ~0.4, casement and non-windows 1). */
+export function openAreaShare(op: Pick<Opening, 'type' | 'subType' | 'windowStyle' | 'mesh'>, defaults?: WindowDefaults): number {
+  const w = windowSettings(op, defaults);
+  return w ? WINDOW_STYLE_OPEN_AREA[w.style] : 1;
+}
+
+/** Insect mesh in series with the opening: effective Cd / Cd = 1 / sqrt(1 + K·Cd²) (≈ 0.76). */
+export const MESH_FLOW_FACTOR = 1 / Math.sqrt(1 + INSECT_MESH_LOSS_K * DISCHARGE_COEFFICIENT ** 2);
+
+/**
+ * Multiplier on an opening's geometric open area that carries its window style and mesh into every
+ * model: flows scale with Cd·A, so a lower effective Cd is the same as a smaller area.
+ */
+export function openingFlowFactor(op: Pick<Opening, 'type' | 'subType' | 'windowStyle' | 'mesh'>, defaults?: WindowDefaults): number {
+  const w = windowSettings(op, defaults);
+  return w ? WINDOW_STYLE_OPEN_AREA[w.style] * (w.mesh ? MESH_FLOW_FACTOR : 1) : 1;
+}
+
+/** Effective open area (m²): width × height × open fraction × window style and mesh, 0 when closed. */
+export function effectiveOpenArea(op: Opening, wallHeight: number, defaults?: WindowDefaults): number {
+  return isOpeningOpen(op) ? openingArea(op, wallHeight) * op.openFraction * openingFlowFactor(op, defaults) : 0;
 }
 
 export interface OpeningGeometry {
@@ -112,7 +143,7 @@ export function openingGeometries(room: Room, neighbours: readonly Room[] = []):
         type: op.type,
         role: op.role,
         area,
-        effectiveArea: effectiveOpenArea(op, wallH),
+        effectiveArea: effectiveOpenArea(op, wallH, room.params.windowDefaults),
         normal: seg.normal,
         along: seg.dir,
         center: [seg.a[0] + u * seg.dir[0], centerHeight, seg.a[1] + u * seg.dir[1]],

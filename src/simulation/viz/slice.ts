@@ -42,6 +42,41 @@ export function verticalSlice(grid: GridInfo, field: ArrayLike<number>, axis: 'x
   return { width: nz, height: ny, values, layer: i };
 }
 
+/**
+ * Fills NaN (solid) cells from their valid neighbours, ring by ring, so a tall wardrobe or a wall
+ * cell doesn't punch a square hole in a floor heatmap. Cells with no valid cell anywhere stay NaN.
+ */
+export function fillSolids(slice: FieldSlice, maxPasses = 64): FieldSlice {
+  const { width, height } = slice;
+  const values = Float32Array.from(slice.values);
+  for (let pass = 0; pass < maxPasses; pass++) {
+    const next = Float32Array.from(values);
+    let missing = 0;
+    for (let r = 0; r < height; r++)
+      for (let c = 0; c < width; c++) {
+        const t = r * width + c;
+        if (!Number.isNaN(values[t]!)) continue;
+        let sum = 0;
+        let n = 0;
+        for (const [dr, dc] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) {
+          const rr = r + dr;
+          const cc = c + dc;
+          if (rr < 0 || cc < 0 || rr >= height || cc >= width) continue;
+          const v = values[rr * width + cc]!;
+          if (!Number.isNaN(v)) {
+            sum += v;
+            n++;
+          }
+        }
+        if (n > 0) next[t] = sum / n;
+        else missing++;
+      }
+    values.set(next);
+    if (missing === 0) break;
+  }
+  return { ...slice, values };
+}
+
 /** |u| per cell from a cell-centred velocity field; NaN outside fluid. */
 export function speedField(velocity: ArrayLike<number>, fluid: ArrayLike<number>): Float32Array {
   const out = new Float32Array(fluid.length);

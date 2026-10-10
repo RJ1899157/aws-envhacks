@@ -23,6 +23,8 @@ interface ArrowSpec {
   twoWay: boolean;
   small: boolean;
   kind: 'in' | 'out' | 'between';
+  /** Label prefix (mechanical fans) */
+  prefix?: string;
 }
 
 const COLORS = { in: '#38bdf8', out: '#fb923c', between: '#e5e7eb' } as const;
@@ -77,6 +79,7 @@ const Arrow: React.FC<{ a: ArrowSpec; showLabel: boolean }> = ({ a, showLabel })
       {showLabel && !a.small && (
         <Html center position={[0, 0.02, 0]} style={{ pointerEvents: 'none' }} zIndexRange={[6, 0]}>
           <div data-testid="sim-opening-arrow-label" className="mt-7 px-1.5 py-0.5 rounded bg-neutral-950/85 text-[10px] font-semibold whitespace-nowrap tabular-nums" style={{ color, border: `1px solid ${color}66` }}>
+            {a.prefix ? `${a.prefix} · ` : ''}
             {a.twoWay ? '⇄ ' : ''}
             {Math.round(a.m3h)} m³/h{a.twoWay ? ' each way' : a.kind === 'in' ? ' in' : a.kind === 'out' ? ' out' : ''}
           </div>
@@ -118,6 +121,37 @@ export const OpeningArrows: React.FC<{ house: House; flows: ReadonlyMap<string, 
         small,
         kind,
       });
+    }
+    // Mechanical fans: exhaust blows room air out through its wall, a fan set to blow in brings
+    // outdoor air through it; the arrow crosses the nearest wall in that direction
+    for (const zone of house.zones) {
+      for (const d of zone.devices) {
+        if (!d.enabled || (d.role !== 'exhaust' && d.role !== 'supply') || d.flowM3s <= 0) continue;
+        const obj = zone.room.objects.find((o) => o.id === d.objectId);
+        if (!obj) continue;
+        const p: [number, number] = [obj.position[0], obj.position[2]];
+        let best: { seg: ReturnType<typeof wallSegment>; t: number; dist: number } | null = null;
+        for (let w = 0; w < zone.room.outline.length; w++) {
+          const seg = wallSegment(zone.room, w);
+          const t = Math.max(0, Math.min(seg.len, (p[0] - seg.a[0]) * seg.dir[0] + (p[1] - seg.a[1]) * seg.dir[1]));
+          const dist = Math.hypot(p[0] - seg.a[0] - seg.dir[0] * t, p[1] - seg.a[1] - seg.dir[1] * t);
+          if (!best || dist < best.dist) best = { seg, t, dist };
+        }
+        if (!best) continue;
+        const { seg, t } = best;
+        const sign = d.role === 'exhaust' ? 1 : -1;
+        const halfT = zone.room.wallThickness / 2;
+        out.push({
+          id: `device:${d.objectId}`,
+          position: [seg.a[0] + seg.dir[0] * t + seg.normal[0] * halfT, ARROW_Y, seg.a[1] + seg.dir[1] * t + seg.normal[1] * halfT],
+          dir: [seg.normal[0] * sign, seg.normal[1] * sign],
+          m3h: d.flowM3s * 3600,
+          twoWay: false,
+          small: false,
+          kind: d.role === 'exhaust' ? 'out' : 'in',
+          prefix: d.kind === 'rangeHood' ? 'Hood' : 'Fan',
+        });
+      }
     }
     return out;
   }, [house, flows]);

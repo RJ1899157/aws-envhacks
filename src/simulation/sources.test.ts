@@ -17,7 +17,12 @@ describe('placed PM2.5 sources', () => {
     const obj = incense();
     expect(deviceKindOf(obj)).toBe('pm25Source');
     expect(deviceFor(obj)).toBeNull();
-    expect(placedSourceParams(obj)).toMatchObject({ preset: 'incense', rateUgMin: PM25_SOURCE_PRESETS.incense.rateUgMin, heightM: 0.9, enabled: true });
+    // Emits from where it rests: the stick's tip 0.3 m above the floor here, the preset's 0.9 m at
+    // its usual 0.6 m shelf height, higher on a 0.8 m sideboard
+    expect(placedSourceParams(obj)).toMatchObject({ preset: 'incense', rateUgMin: PM25_SOURCE_PRESETS.incense.rateUgMin, enabled: true });
+    expect(placedSourceParams(obj)!.heightM).toBeCloseTo(0.3);
+    expect(placedSourceParams(incense({ elevation: 0.6 }))!.heightM).toBeCloseTo(PM25_SOURCE_PRESETS.incense.heightM);
+    expect(placedSourceParams(incense({ elevation: 0.8 }))!.heightM).toBeCloseTo(1.1);
     const custom = incense({ emissionRateUgMin: 50, emissionHeightM: 1.4, sourceSchedule: [{ startMin: 5, durationMin: 10 }] });
     const [src] = roomPm25Sources(rectRoom(4, 3, 2.5, { objects: [custom] }));
     expect(src).toMatchObject({ emissionRateUgMin: 50, position: [1.2, 1.4, 1.4], schedule: [{ startMin: 5, durationMin: 10 }] });
@@ -52,9 +57,9 @@ describe('placed PM2.5 sources', () => {
     const durationS = 30 * 60;
     const room = rectRoom(4, 3, 2.5, { objects: [incense({ emissionRateUgMin: rate })] });
     const r = await runVoxelSimulation({ room, env: sealed, initialUgM3: 0, durationS, snapshotTimesS: [0, 600, durationS] });
-    const cellVol = r.diagnostics.dx ** 3;
+    // Mass = mean × the room's true volume (4 × 3 × 2.5 m), not the grid's cell count
     for (const snap of r.pm25.snapshots) {
-      const mass = snap.mean * r.diagnostics.fluidCells * cellVol;
+      const mass = snap.mean * 4 * 3 * 2.5;
       const expected = (rate * snap.tS) / 60;
       if (expected === 0) expect(mass).toBe(0);
       else expect(Math.abs(mass - expected) / expected).toBeLessThan(0.02);
@@ -70,7 +75,7 @@ describe('placed PM2.5 sources', () => {
     const rate = 600;
     const room = rectRoom(4, 3, 2.5, { objects: [incense({ emissionRateUgMin: rate, sourceSchedule: [{ startMin: 5, durationMin: 10 }] })] });
     const r = await runVoxelSimulation({ room, env: sealed, initialUgM3: 0, durationS: 30 * 60, snapshotTimesS: [0, 300, 1800] });
-    const mass = (i: number) => r.pm25.snapshots[i]!.mean * r.diagnostics.fluidCells * r.diagnostics.dx ** 3;
+    const mass = (i: number) => r.pm25.snapshots[i]!.mean * 4 * 3 * 2.5;
     expect(mass(1)).toBeLessThan(1e-6);
     expect(Math.abs(mass(2) - rate * 10) / (rate * 10)).toBeLessThan(0.02);
   }, TIMEOUT);
