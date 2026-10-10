@@ -1,10 +1,12 @@
-import { voxelize } from './voxelizer';
+import { voxelize, type OpeningFlowRoles } from './voxelizer';
 import type { Room } from './schema';
 
-self.onmessage = (e: MessageEvent<{ room: Room; dx: number; neighbours?: Room[]; id: number }>) => {
-  const { room, dx, neighbours = [], id } = e.data;
+self.onmessage = (
+  e: MessageEvent<{ room: Room; dx: number; neighbours?: Room[]; flowRoles?: OpeningFlowRoles; id: number }>
+) => {
+  const { room, dx, neighbours = [], flowRoles, id } = e.data;
   const start = performance.now();
-  const grid = voxelize(room, dx, neighbours);
+  const grid = voxelize(room, dx, neighbours, flowRoles);
   const duration = performance.now() - start;
 
   // Zero-copy transfer of the cells Uint8Array buffer

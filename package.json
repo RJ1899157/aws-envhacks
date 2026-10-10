@@ -10,8 +10,12 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
+    "sim:report": "vite-node scripts/sim-report.ts",
+    "sim:voxel-report": "vite-node scripts/sim-voxel-report.ts",
     "lint": "eslint src --ext .ts,.tsx",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
+    "showcase:build": "vite-node scripts/showcase-build.ts",
+    "showcase:thumbs": "node scripts/showcase-thumbs.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.120.4",

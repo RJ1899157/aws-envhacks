@@ -9,6 +9,13 @@ export type {
   SceneObject,
   PollutantSource,
   RoomParams,
+  Pm25Source,
+  Pm25ScheduleWindow,
+  OutdoorPm25,
+  OutdoorPm25Source,
+  GeoLocation,
+  DeviceKind,
+  SiteExposure,
   Room,
 } from './schema';
 

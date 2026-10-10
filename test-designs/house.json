@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "id": "room-muzt1csa-fycm",
+  "type": "bedroom",
+  "name": "Bedroom 2",
+  "wallHeight": 2.7,
+  "wallThickness": 0.15,
+  "outline": [
+    [
+      -3,
+      1.65
+    ],
+    [
+      0.6,
+      1.65
+    ],
+    [
+      0.6,
+      4.85
+    ],
+    [
+      -3,
+      4.85
+    ]
+  ],
+  "openings": [],
+  "objects": [
+    {
+      "id": "double-bed-muzt1csa-0",
+      "assetId": "double-bed",
+      "name": "Double Bed",
+      "position": [
+        -1.2,
+        0,
+        2.65
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        1.5,
+        0.55,
+        2
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false,
+      "color": "#4338ca"
+    },
+    {
+      "id": "nightstand-muzt1csa-1",
+      "assetId": "nightstand",
+      "name": "Nightstand",
+      "position": [
+        -2.3,
+        0,
+        1.85
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.5,
+        0.5,
+        0.4
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false,
+      "color": "#78350f"
+    },
+    {
+      "id": "nightstand-muzt1csa-2",
+      "assetId": "nightstand",
+      "name": "Nightstand",
+      "position": [
+        -0.1,
+        0,
+        1.85
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.5,
+        0.5,
+        0.4
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false,
+      "color": "#78350f"
+    },
+    {
+      "id": "wardrobe-muzt1csa-3",
+      "assetId": "wardrobe",
+      "name": "Wardrobe",
+      "position": [
+        -2.7,
+        0,
+        4.15
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "size": [
+        1.2,
+        2,
+        0.6
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false,
+      "color": "#78350f"
+    },
+    {
+      "id": "dresser-muzt1csa-4",
+      "assetId": "dresser",
+      "name": "Dresser",
+      "position": [
+        0.35,
+        0,
+        4.15
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
+      "size": [
+        1.2,
+        0.8,
+        0.5
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false,
+      "color": "#78350f"
+    }
+  ],
+  "params": {
+    "windSpeed": 2.5,
+    "windDirDeg": 0,
+    "pressurePa": 101325,
+    "indoorTempC": 22,
+    "outdoorTempC": 25,
+    "humidity": 50,
+    "datetime": "2026-10-05T12:00:00Z"
+  },
+  "floorMaterial": "wood",
+  "wallMaterial": "paint"
+}

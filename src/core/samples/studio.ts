@@ -2,7 +2,8 @@ import { RoomSchema, type Room } from '../schema';
 
 /**
  * Sample 1: Compact Studio Apartment (3.5m x 4.0m)
- * Features single bed, work desk, chair, bookshelf, and air purifier with inlet window and outlet door.
+ * Features single bed, work desk, chair, bookshelf, and air purifier with a north inlet window and a
+ * south outlet door; the wind blows from the north.
  */
 export function createStudioSample(): Room {
   const roomData = {

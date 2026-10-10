@@ -5,6 +5,7 @@ import { polygonBounds } from '../core/parser';
 import { ROOM_TYPES, roomTypeOf } from '../core/rooms';
 import type { Room } from '../core/schema';
 import { useSceneStore } from '../store/sceneStore';
+import { useSimulationStore } from '../store/simulationStore';
 import { useUiStore } from '../store/uiStore';
 import { AssetMesh } from './AssetMesh';
 import { RoomShell } from './RoomShell';
@@ -12,6 +13,7 @@ import { RoomShell } from './RoomShell';
 const InactiveRoom: React.FC<{ room: Room }> = ({ room }) => {
   const setActiveRoom = useSceneStore((state) => state.setActiveRoom);
   const activate = useMemo(() => () => room.id && setActiveRoom(room.id), [room.id, setActiveRoom]);
+  const simChips = useSimulationStore((s) => s.viz.show && s.viz.roomLabels && s.result !== null);
 
   const center = useMemo(() => {
     const b = polygonBounds(room.outline);
@@ -37,6 +39,8 @@ const InactiveRoom: React.FC<{ room: Room }> = ({ room }) => {
         ))}
       </group>
 
+      {/* While the simulation's room chips are up they replace this name pill */}
+      {!simChips && (
       <Html center position={[center[0], 0.05, center[1]]} className="select-none" zIndexRange={[20, 0]}>
         <button
           type="button"
@@ -48,6 +52,7 @@ const InactiveRoom: React.FC<{ room: Room }> = ({ room }) => {
           {roomTypeOf(room) !== 'basic' && !room.name.startsWith(typeLabel) && <span className="ml-1.5 text-neutral-500">{typeLabel}</span>}
         </button>
       </Html>
+      )}
     </group>
   );
 };

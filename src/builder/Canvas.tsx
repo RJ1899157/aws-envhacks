@@ -53,6 +53,22 @@ import { PerformanceOverlay } from '../ui/PerformanceOverlay';
 import { DirectObjectManipulator } from './DirectObjectManipulator';
 import { OpeningTaggingPanel } from './OpeningTaggingPanel';
 import { VoxelDebugMesh, VoxelDebugControls } from './VoxelDebug';
+import { WindIndicator } from './WindIndicator';
+import { useSimulationStore } from '../store/simulationStore';
+import { SimulationLayer } from './simulation/SimulationLayer';
+import { SimulationLegend } from './simulation/SimulationLegend';
+import { RoomChips } from './simulation/RoomChips';
+import { HoverReadout } from './simulation/HoverReadout';
+import { FirstUseCard, RunProgress } from './simulation/SimulationOverlays';
+import { FloatingInsights } from '../ui/simulation/InsightsPanel';
+import { WhatIfBanner } from './simulation/WhatIfBanner';
+import { CompareOverlay } from './simulation/CompareOverlay';
+import { ScenarioEngine } from './simulation/ScenarioEngine';
+import { ExamplesPicker, openExamples } from '../ui/showcase/ExamplesPicker';
+import { StoryBar } from '../ui/showcase/StoryBar';
+import { registerShowcaseCamera } from '../store/showcaseStore';
+import { focusSimulationRoom } from './simulation/simulationCamera';
+import { SourceWisps } from './simulation/SourceWisps';
 import { ScaleReference } from './ScaleReference';
 import { usePlacementValidation } from './usePlacementValidation';
 import { SceneExporter } from './SceneExporter';
@@ -64,6 +80,12 @@ import { SceneExporter } from './SceneExporter';
 const GROUND_GRID_SCALE = 1.5;
 /** ...but never smaller than this many metres across */
 const GROUND_GRID_MIN_SIZE = 100;
+
+/** Simulation view backdrop and how much of the ground grid stays visible on it. */
+const SIM_BACKGROUND = '#0e0f12';
+const SIM_GRID_STRENGTH = 0.2;
+/** `color` blended toward `bg`, keeping `strength` of it (an opacity the Grid shader lacks). */
+const fadeToward = (color: string, bg: string, strength: number) => `#${new THREE.Color(bg).lerp(new THREE.Color(color), strength).getHexString()}`;
 
 export const sharedOrbitControlsRef = React.createRef<OrbitControlsImpl | null>();
 
@@ -379,7 +401,7 @@ const DraggedOpeningPreviewMesh: React.FC = () => {
 /**
  * Blender-like X (Red) and Z (Blue) axis floor lines
  */
-export const BlenderAxisLines: React.FC = () => {
+export const BlenderAxisLines: React.FC<{ faded?: boolean }> = ({ faded = false }) => {
   const xLine = useMemo(() => {
     const geom = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(-500, 0.001, 0),
@@ -397,6 +419,16 @@ export const BlenderAxisLines: React.FC = () => {
     const mat = new THREE.LineBasicMaterial({ color: 0x3b82f6, depthTest: true });
     return new THREE.Line(geom, mat);
   }, []);
+
+  // Faded with the ground grid in the simulation view
+  useEffect(() => {
+    for (const line of [xLine, zLine]) {
+      const mat = line.material as THREE.LineBasicMaterial;
+      mat.transparent = faded;
+      mat.opacity = faded ? SIM_GRID_STRENGTH : 1;
+      mat.needsUpdate = true;
+    }
+  }, [faded, xLine, zLine]);
 
   return (
     <group name="blender-axes">
@@ -701,12 +733,20 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
       }
     };
 
+    // "Simulation view": top-down isometric framing of the whole house
+    const handleSimulationView = () => {
+      const { room: active, otherRooms } = useSceneStore.getState();
+      cameraController.goToHouseView([active, ...otherRooms], camera, controlsRef.current);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('fly-focus-object', handleFlyFocusEvent);
+    window.addEventListener('airforce:simulation-view', handleSimulationView);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('fly-focus-object', handleFlyFocusEvent);
+      window.removeEventListener('airforce:simulation-view', handleSimulationView);
     };
   }, [camera, controlsRef, room]);
 
@@ -728,6 +768,21 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
         maxZ = Math.max(maxZ, rb.max[1]);
       }
       currentRoom = { ...currentRoom, outline: rectOutline(minX - margin, minZ - margin, maxX - minX + 2 * margin, maxZ - minZ + 2 * margin) };
+    } else if (view === '2d') {
+      // A whole-house simulation result is on show: frame every room, not just the active one
+      const sim = useSimulationStore.getState();
+      const { otherRooms } = useSceneStore.getState();
+      if (sim.viz.show && sim.result && otherRooms.length > 0) {
+        let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+        for (const r of [currentRoom, ...otherRooms]) {
+          const rb = polygonBounds(r.outline);
+          minX = Math.min(minX, rb.min[0]);
+          minZ = Math.min(minZ, rb.min[1]);
+          maxX = Math.max(maxX, rb.max[0]);
+          maxZ = Math.max(maxZ, rb.max[1]);
+        }
+        currentRoom = { ...currentRoom, outline: rectOutline(minX, minZ, maxX - minX, maxZ - minZ) };
+      }
     }
     if (view === '2d') {
       if (camera instanceof THREE.OrthographicCamera) {
@@ -915,6 +970,7 @@ const NewProjectEmptyState: React.FC = () => {
         <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('airforce:open-templates'))} className="rounded-lg bg-white/10 px-2 py-2 text-xs hover:bg-white/15">Start from a template</button>
         <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('airforce:open-import'))} className="rounded-lg bg-white/10 px-2 py-2 text-xs hover:bg-white/15">Import a model</button>
       </div>
+      <button type="button" onClick={openExamples} className="mt-2 w-full rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-2 py-2 text-xs hover:bg-indigo-500/20" data-testid="empty-state-examples">Or explore an example flat with ready-made simulation results</button>
     </div>
   </div></Html>;
 };
@@ -949,6 +1005,8 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
     return { center, size: [2 * hx, 2 * hz] as [number, number] };
   }, [room, otherRooms]);
   const view = useUiStore((state) => state.view);
+  // While simulation results are on show: darker neutral background and the grid faded to ~20 %
+  const simActive = useSimulationStore((state) => state.viz.show && state.result !== null);
   const transformMode = useUiStore((state) => state.transformMode);
   const numericInputBuffer = useUiStore((state) => state.numericInputBuffer);
 
@@ -965,6 +1023,23 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
   // Run Phase B placement validation off the hot path (debounced 100ms)
   usePlacementValidation();
+
+  // Example stories read and move the camera through this
+  useEffect(() => {
+    registerShowcaseCamera({
+      get: () => {
+        const c = sharedOrbitControlsRef.current;
+        return c ? { position: c.object.position.toArray() as [number, number, number], target: c.target.toArray() as [number, number, number] } : null;
+      },
+      set: (snap) => {
+        const c = sharedOrbitControlsRef.current;
+        if (c) cameraController.animateTo(c.object, c, new THREE.Vector3(...snap.position), new THREE.Vector3(...snap.target), { duration: 400 });
+      },
+      // After the simulation layer mounts with the story's results
+      frame: (roomId) => window.setTimeout(() => (roomId ? focusSimulationRoom(roomId) : window.dispatchEvent(new CustomEvent('airforce:simulation-view'))), 350),
+    });
+    return () => registerShowcaseCamera(null);
+  }, []);
 
   // Sync ref to shared ref
   useEffect(() => {
@@ -1035,7 +1110,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
         }}
         className="w-full h-full"
       >
-        <color attach="background" args={['#18181b']} />
+        <color attach="background" args={[simActive ? SIM_BACKGROUND : '#18181b']} />
 
         {/* Dual camera setup with projection preservation and makeDefault toggle */}
         <PerspectiveCamera
@@ -1078,10 +1153,10 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
             args={groundGrid.size}
             cellSize={0.1}
             cellThickness={0.6}
-            cellColor="#2e3039"
+            cellColor={simActive ? fadeToward('#2e3039', SIM_BACKGROUND, SIM_GRID_STRENGTH) : '#2e3039'}
             sectionSize={1.0}
             sectionThickness={1.2}
-            sectionColor="#52525e"
+            sectionColor={simActive ? fadeToward('#52525e', SIM_BACKGROUND, SIM_GRID_STRENGTH) : '#52525e'}
             fadeDistance={1000}
             fadeStrength={0}
           />
@@ -1090,7 +1165,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {isPlacing && <PlacementGrid />}
 
           {/* Blender X (Red) and Z (Blue) floor axis lines */}
-          <BlenderAxisLines />
+          <BlenderAxisLines faded={simActive} />
 
           {/* Ground click & double click detector to clear selection or re-center orbit pivot */}
           <GroundPlaneDetector controlsRef={controlsRef} />
@@ -1111,9 +1186,11 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
           {/* Placed Objects in the Room */}
           <PlacedObjects />
+          <SourceWisps />
 
           {/* Interactive Scale Reference (1.7m human & 1.0m³ cube) */}
           <ScaleReference />
+          <WindIndicator />
 
           {/* Interactive Selection & Transform Gizmo (Precision Mode) */}
           <SelectionGizmo />
@@ -1172,6 +1249,9 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
           {/* Voxel Domain Debug Visualizer (non-fluid InstancedMesh cubes) */}
           <VoxelDebugMesh />
 
+          {/* Simulation results: heatmap slices, flow particles, hotspots */}
+          <SimulationLayer />
+
           {/* Top-Right Clickable 3D View-Cube (drei GizmoViewcube) */}
           <GizmoHelper
             alignment="top-right"
@@ -1193,6 +1273,17 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '' }) => {
 
       {/* Floating Voxel Debug Controls (Y-slice slider, opacity, solid toggle, legend) */}
       <VoxelDebugControls />
+      <RoomChips />
+      <HoverReadout />
+      <SimulationLegend />
+      <FloatingInsights />
+      <CompareOverlay />
+      <WhatIfBanner />
+      <ScenarioEngine />
+      <StoryBar />
+      <ExamplesPicker />
+      <FirstUseCard />
+      <RunProgress />
     </div>
   );
 };

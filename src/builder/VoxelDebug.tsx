@@ -7,6 +7,7 @@ import {
   voxelizeAsync,
   type VoxelGrid,
 } from '../core/voxelizer';
+import { computedOpeningRoles, computeVentilation, ventilationEnvFromRoom } from '../simulation/ventilation';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 
@@ -37,7 +38,9 @@ export const VoxelDebugMesh: React.FC = () => {
 
     timerRef.current = setTimeout(async () => {
       try {
-        const { grid: newGrid, timeMs } = await voxelizeAsync(room, 0.1, otherRooms);
+        // Inlet/outlet cells come from the computed airflow direction, not the user's role tags
+        const ventilation = computeVentilation(room, ventilationEnvFromRoom(room), { neighbours: otherRooms });
+        const { grid: newGrid, timeMs } = await voxelizeAsync(room, 0.1, otherRooms, computedOpeningRoles(ventilation));
         setGrid(newGrid);
         setVoxelStats(computeVoxelStats(newGrid, timeMs));
       } catch (err) {
@@ -266,11 +269,11 @@ export const VoxelDebugControls: React.FC = () => {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-[#38bdf8] border border-sky-400 inline-block" />
-            <span className="text-neutral-300">Inlet (Window)</span>
+            <span className="text-neutral-300">Inlet (air in)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-[#f97316] border border-orange-400 inline-block" />
-            <span className="text-neutral-300">Outlet (Door)</span>
+            <span className="text-neutral-300">Outlet (air out)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-[#22c55e] border border-emerald-400 inline-block" />
@@ -279,6 +282,10 @@ export const VoxelDebugControls: React.FC = () => {
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-[#eab308] border border-yellow-400 inline-block" />
             <span className="text-neutral-300">Porous Screen</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-[#a855f7] border border-purple-400 inline-block" />
+            <span className="text-neutral-300">Two-way Opening</span>
           </div>
         </div>
       </div>

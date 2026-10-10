@@ -153,14 +153,14 @@ async function exportSTL(scene: THREE.Scene, filename: string, scale: number) {
 
 // ---- JSON ----
 function exportJSON(filename: string) {
-  const room = useSceneStore.getState().room;
-  const data = JSON.stringify(room, null, 2);
+  // The active room plus `otherRooms`, so a multi-room plan round-trips (same format as autosave import)
+  const data = useSceneStore.getState().exportRoom();
   downloadBlob(new Blob([data], { type: 'application/json' }), `${filename}.json`);
 }
 
 // ---- AIRFORCE (Project) ----
 async function exportAirforce(filename: string) {
-  const room = useSceneStore.getState().room;
+  const room = JSON.parse(useSceneStore.getState().exportRoom()) as unknown;
   const savedViews = useCameraStore.getState().savedViews;
   const zip = new JSZip();
   

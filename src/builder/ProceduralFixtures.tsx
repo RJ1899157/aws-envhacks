@@ -1,6 +1,7 @@
 import React from 'react';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
+import { SOURCE_FIXTURES } from './simulation/SourceFixtures';
 
 /**
  * Procedural bathroom and kitchen fixtures built from primitives, sized to the catalog's
@@ -456,6 +457,7 @@ const FIXTURES: Record<string, React.FC<FixtureProps>> = {
   dishwasher: Dishwasher,
   fridge: Fridge,
   'range-hood': RangeHood,
+  ...SOURCE_FIXTURES,
 };
 
 /** The procedural fixture for a catalog id, or null when it has no dedicated model */

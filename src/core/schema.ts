@@ -80,6 +80,20 @@ export const OpeningSchema = z.object({
 export type Opening = z.infer<typeof OpeningSchema>;
 
 /**
+ * Air-handling device kind of an object. Optional: when absent it is inferred from `assetId`
+ * (see DEVICE_KIND_BY_ASSET in simulation/devices.ts).
+ */
+export const DeviceKindSchema = z.enum(['purifier', 'exhaustFan', 'rangeHood', 'ceilingFan', 'pedestalFan', 'ac', 'pm25Source']);
+export type DeviceKind = z.infer<typeof DeviceKindSchema>;
+
+/** Activity window of a PM2.5 source, in minutes from the simulation start. */
+export const Pm25ScheduleWindowSchema = z.object({
+  startMin: z.number().nonnegative(), // minutes from simulation start
+  durationMin: z.number().positive(),
+});
+export type Pm25ScheduleWindow = z.infer<typeof Pm25ScheduleWindowSchema>;
+
+/**
  * 3D placed object instance in the room
  */
 export const ObjectSchema = z.object({
@@ -94,7 +108,17 @@ export const ObjectSchema = z.object({
   role: AirflowRoleSchema.default('solid'),
   wallMounted: z.boolean().default(false),
   color: z.string().optional(),
-  defaultAirflow: z.number().optional(), // optional airflow rate (m³/h or m/s)
+  defaultAirflow: z.number().optional(), // volumetric airflow of a device, m³/h
+  device: DeviceKindSchema.optional(), // inferred from assetId when absent
+  enabled: z.boolean().optional(), // device switched on; absent = on
+  cadrM3h: z.number().nonnegative().optional(), // air purifier PM2.5 clean air delivery rate (m³/h)
+  exhaustFlowM3h: z.number().nonnegative().optional(), // exhaust fan / range hood extraction rate (m³/h)
+  dischargeVelocityMs: z.number().nonnegative().optional(), // fan/AC jet velocity for the voxel solver (m/s)
+  // Placed PM2.5 sources (device 'pm25Source'); absent fields come from the preset
+  sourcePreset: z.string().optional(), // see PM25_SOURCE_PRESETS
+  emissionRateUgMin: z.number().nonnegative().optional(), // µg/min while active
+  emissionHeightM: z.number().nonnegative().optional(), // height above the floor where it emits (m)
+  sourceSchedule: z.array(Pm25ScheduleWindowSchema).optional(), // absent or empty = always on
   isHidden: z.boolean().optional(),
   isLocked: z.boolean().optional(),
 });
@@ -111,6 +135,40 @@ export const PollutantSourceSchema = z.object({
 export type PollutantSource = z.infer<typeof PollutantSourceSchema>;
 
 /**
+ * A PM2.5 emission source (cooking, incense, smoking …). Absent `schedule` means always on.
+ */
+export const Pm25SourceSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().optional(),
+  kind: z.string().optional(), // e.g. 'cooking-frying'; see PM25_EMISSION_RATES_UG_PER_MIN
+  emissionRateUgMin: z.number().nonnegative(), // µg/min while active
+  schedule: z.array(Pm25ScheduleWindowSchema).optional(),
+  objectId: z.string().optional(), // object the source is attached to (for the voxel solver)
+  position: Vec3Schema.optional(),
+});
+export type Pm25Source = z.infer<typeof Pm25SourceSchema>;
+
+export const OutdoorPm25SourceSchema = z.enum(['manual', 'live']);
+export type OutdoorPm25Source = z.infer<typeof OutdoorPm25SourceSchema>;
+
+export const OutdoorPm25Schema = z.object({
+  valueUgM3: z.number().nonnegative(), // µg/m³
+  source: OutdoorPm25SourceSchema.default('manual'),
+  observedAt: z.string().optional(), // ISO timestamp of a live reading
+});
+export type OutdoorPm25 = z.infer<typeof OutdoorPm25Schema>;
+
+/** Terrain/shielding around the building; sets the wind speed reduction and Cp table. */
+export const SiteExposureSchema = z.enum(['open', 'suburban', 'urbanDense']);
+export type SiteExposure = z.infer<typeof SiteExposureSchema>;
+
+export const GeoLocationSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lon: z.number().min(-180).max(180),
+});
+export type GeoLocation = z.infer<typeof GeoLocationSchema>;
+
+/**
  * Environmental and ventilation simulation parameters
  */
 export const RoomParamsSchema = z.object({
@@ -122,6 +180,12 @@ export const RoomParamsSchema = z.object({
   humidity: z.number().min(0).max(100, 'Humidity must be 0-100%').default(50.0), // %
   datetime: z.string().default('2026-10-05T12:00:00Z'),
   pollutantSource: PollutantSourceSchema.optional(),
+  // Phase 2 (air simulation). Optional with no zod default so Phase 1 designs parse unchanged;
+  // the simulation layer applies defaults.
+  pm25Sources: z.array(Pm25SourceSchema).optional(),
+  outdoorPm25: OutdoorPm25Schema.optional(),
+  location: GeoLocationSchema.optional(),
+  exposure: SiteExposureSchema.optional(), // runtime default 'urbanDense'
 });
 export type RoomParams = z.infer<typeof RoomParamsSchema>;
 
@@ -137,6 +201,50 @@ export const WallOverrideSchema = z.object({
   isLocked: z.boolean().optional(),
 });
 export type WallOverride = z.infer<typeof WallOverrideSchema>;
+
+/**
+ * Air-simulation what-if scenarios: a named list of typed actions applied to the design (see
+ * src/simulation/scenarios). Targets are referenced by room and object/opening ids; an action whose
+ * target no longer exists is skipped.
+ */
+export const ScenarioActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('setOpening'), roomId: z.string(), openingId: z.string(), openFraction: z.number().min(0).max(1) }),
+  z.object({ type: z.literal('toggleDevice'), roomId: z.string(), objectId: z.string(), enabled: z.boolean() }),
+  z.object({ type: z.literal('moveObject'), roomId: z.string(), objectId: z.string(), toRoomId: z.string().optional(), position: Vec3Schema }),
+  z.object({
+    type: z.literal('addDevice'),
+    roomId: z.string(),
+    objectId: z.string(),
+    kind: DeviceKindSchema,
+    assetId: z.string(),
+    position: Vec3Schema,
+    rotationY: z.number().optional(),
+  }),
+  z.object({ type: z.literal('removeObject'), roomId: z.string(), objectId: z.string() }),
+  z.object({
+    type: z.literal('setSource'),
+    roomId: z.string(),
+    sourceId: z.string(),
+    enabled: z.boolean().optional(),
+    rateUgMin: z.number().nonnegative().optional(),
+    schedule: z.array(Pm25ScheduleWindowSchema).optional(),
+  }),
+  z.object({
+    type: z.literal('setDeviceParam'),
+    roomId: z.string(),
+    objectId: z.string(),
+    param: z.enum(['cadrM3h', 'exhaustFlowM3h', 'defaultAirflow', 'dischargeVelocityMs']),
+    value: z.number().nonnegative(),
+  }),
+]);
+export type ScenarioAction = z.infer<typeof ScenarioActionSchema>;
+
+export const ScenarioSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  actions: z.array(ScenarioActionSchema),
+});
+export type Scenario = z.infer<typeof ScenarioSchema>;
 
 export const RoomTypeSchema = z.enum(['basic', 'bedroom', 'living', 'kitchen', 'dining', 'bathroom']);
 export type RoomType = z.infer<typeof RoomTypeSchema>;
@@ -164,6 +272,9 @@ export const RoomSchema = z.object({
   objects: z.array(ObjectSchema).default([]),
   params: RoomParamsSchema.default(() => RoomParamsSchema.parse({})),
   wallOverrides: z.record(z.coerce.number(), WallOverrideSchema).optional(),
+  // Phase 2 (air simulation), optional so older designs parse unchanged:
+  occupancyWeight: z.number().nonnegative().optional(), // share of time people spend here; default by room type (OCCUPANCY_WEIGHTS)
+  scenarios: z.array(ScenarioSchema).optional(), // what-if scenarios of the whole house, kept on the active room
   floorMaterial: z.string().default('wood'),
   wallMaterial: z.string().default('paint'),
 });

@@ -192,6 +192,40 @@ class SharedCameraController {
   }
 
   /**
+   * "Simulation view": the whole floor plan from above at an angle (≈ 55° down, from the
+   * south-east), framed to fit every room. Switches to the 3D view.
+   */
+  public goToHouseView(rooms: readonly Room[], camera: THREE.Camera, controls: OrbitControlsImpl | null, options?: CameraAnimationOptions): void {
+    let minX = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxZ = -Infinity;
+    let height = 2.7;
+    for (const r of rooms) {
+      const b = polygonBounds(r.outline);
+      minX = Math.min(minX, b.min[0]);
+      minZ = Math.min(minZ, b.min[1]);
+      maxX = Math.max(maxX, b.max[0]);
+      maxZ = Math.max(maxZ, b.max[1]);
+      height = Math.max(height, r.wallHeight);
+    }
+    if (!Number.isFinite(minX)) return;
+    const center = new THREE.Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+    const span = Math.max(maxX - minX, maxZ - minZ, 3.5);
+    const fov = camera instanceof THREE.PerspectiveCamera ? THREE.MathUtils.degToRad(camera.fov) : Math.PI / 4;
+    const distance = (span * 0.62) / Math.tan(fov / 2) + height;
+    const elevation = THREE.MathUtils.degToRad(55);
+    const azimuth = THREE.MathUtils.degToRad(35);
+    const targetPos = new THREE.Vector3(
+      center.x + distance * Math.cos(elevation) * Math.sin(azimuth),
+      distance * Math.sin(elevation),
+      center.z + distance * Math.cos(elevation) * Math.cos(azimuth)
+    );
+    if (useUiStore.getState().view === '2d') useUiStore.getState().setView('3d');
+    this.animateTo(camera, controls, targetPos, center, { duration: options?.duration ?? 600, easing: easeInOutCubic, ...options });
+  }
+
+  /**
    * Fit the entire room inside the camera view
    */
   public fitRoom(

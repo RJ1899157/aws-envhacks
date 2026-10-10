@@ -43,6 +43,7 @@ const CATEGORIES = [
   'Bathroom',
   'Office',
   'Appliances and Airflow',
+  'Pollution sources',
   'Openings',
   'Walls',
   'Decor',

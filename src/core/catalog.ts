@@ -24,6 +24,9 @@ export const AssetDefSchema = z.object({
 });
 export type AssetDef = z.infer<typeof AssetDefSchema>;
 
+// `defaultAirflow` is m³/h. Device values follow DEFAULT_DEVICE_FLOW_M3H in simulation/constants.ts:
+// ceiling fan ≈ BIS IS 374 minimum air delivery of a 1200 mm fan, pedestal fan ≈ 400 mm fan,
+// split AC ≈ 1.5 TR indoor unit, purifier = PM2.5 CADR, exhaust fan / range hood = extraction rate.
 export const CATALOG_ASSETS: readonly AssetDef[] = [
   // BEDROOM
   { id: 'single-bed', label: 'Single Bed', category: 'Bedroom', size: [1.0, 0.5, 2.0], elevation: 0, role: 'solid', color: '#4f46e5', variants: ['#4f46e5', '#374151', '#fcd34d'] },
@@ -70,14 +73,26 @@ export const CATALOG_ASSETS: readonly AssetDef[] = [
   { id: 'filing-cabinet', label: 'Filing Cabinet', category: 'Office', size: [0.4, 0.6, 0.5], elevation: 0, role: 'solid', color: '#64748b', variants: ['#64748b', '#cbd5e1', '#0f172a'] },
 
   // APPLIANCES & AIRFLOW
-  { id: 'pedestal-fan', label: 'Pedestal Fan', category: 'Appliances and Airflow', size: [0.45, 1.3, 0.45], elevation: 0, role: 'source', defaultAirflow: 500, color: '#0284c7', variants: ['#0284c7', '#0f172a', '#e2e8f0'] },
-  { id: 'ceiling-fan', label: 'Ceiling Fan', category: 'Appliances and Airflow', size: [1.2, 0.35, 1.2], elevation: 2.4, role: 'source', defaultAirflow: 800, color: '#0369a1', variants: ['#0369a1', '#ffffff', '#78350f'] },
+  { id: 'pedestal-fan', label: 'Pedestal Fan', category: 'Appliances and Airflow', size: [0.45, 1.3, 0.45], elevation: 0, role: 'source', defaultAirflow: 4500, color: '#0284c7', variants: ['#0284c7', '#0f172a', '#e2e8f0'] },
+  { id: 'ceiling-fan', label: 'Ceiling Fan', category: 'Appliances and Airflow', size: [1.2, 0.35, 1.2], elevation: 2.4, role: 'source', defaultAirflow: 12600, color: '#0369a1', variants: ['#0369a1', '#ffffff', '#78350f'] },
   { id: 'air-purifier', label: 'Air Purifier', category: 'Appliances and Airflow', size: [0.38, 0.6, 0.38], elevation: 0, role: 'source', defaultAirflow: 300, color: '#e0e7ff', variants: ['#e0e7ff', '#1e293b', '#cbd5e1'] },
-  { id: 'ac-split', label: 'Split AC', category: 'Appliances and Airflow', size: [0.9, 0.3, 0.25], elevation: 2.2, wallMounted: true, role: 'source', defaultAirflow: 600, color: '#f8fafc', variants: ['#f8fafc', '#e2e8f0'] },
+  { id: 'ac-split', label: 'Split AC', category: 'Appliances and Airflow', size: [0.9, 0.3, 0.25], elevation: 2.2, wallMounted: true, role: 'source', defaultAirflow: 1000, color: '#f8fafc', variants: ['#f8fafc', '#e2e8f0'] },
   { id: 'exhaust-fan', label: 'Exhaust Fan', category: 'Appliances and Airflow', size: [0.3, 0.3, 0.15], elevation: 2.0, wallMounted: true, role: 'source', defaultAirflow: 250, color: '#cbd5e1', variants: ['#cbd5e1', '#475569'] },
   { id: 'humidifier', label: 'Humidifier', category: 'Appliances and Airflow', size: [0.2, 0.4, 0.2], elevation: 0, role: 'source', defaultAirflow: 50, color: '#bae6fd', variants: ['#bae6fd', '#ffffff'] },
   { id: 'dehumidifier', label: 'Dehumidifier', category: 'Appliances and Airflow', size: [0.3, 0.5, 0.3], elevation: 0, role: 'source', defaultAirflow: 150, color: '#94a3b8', variants: ['#94a3b8', '#e2e8f0'] },
   { id: 'heater', label: 'Space Heater', category: 'Appliances and Airflow', size: [0.25, 0.6, 0.2], elevation: 0, role: 'source', defaultAirflow: 100, color: '#ef4444', variants: ['#ef4444', '#1e293b'] },
+
+  // POLLUTION SOURCES (device 'pm25Source'; rates and emission heights in simulation/constants.ts PM25_SOURCE_PRESETS).
+  // Small markers that do not block air (role 'none'); the top of each sits near its emission height.
+  { id: 'pm25-stove-frying', label: 'Gas Stove: Frying', category: 'Pollution sources', size: [0.36, 0.1, 0.36], elevation: 0.9, role: 'none', color: '#f97316', variants: ['#f97316'] },
+  { id: 'pm25-stove-boiling', label: 'Gas Stove: Boiling', category: 'Pollution sources', size: [0.3, 0.18, 0.3], elevation: 0.9, role: 'none', color: '#94a3b8', variants: ['#94a3b8'] },
+  { id: 'pm25-tawa', label: 'Tawa / Roti', category: 'Pollution sources', size: [0.32, 0.06, 0.32], elevation: 0.92, role: 'none', color: '#44403c', variants: ['#44403c'] },
+  { id: 'pm25-incense', label: 'Incense (Agarbatti)', category: 'Pollution sources', size: [0.1, 0.3, 0.1], elevation: 0.6, role: 'none', color: '#a16207', variants: ['#a16207'] },
+  { id: 'pm25-mosquito-coil', label: 'Mosquito Coil', category: 'Pollution sources', size: [0.15, 0.05, 0.15], elevation: 0.05, role: 'none', color: '#15803d', variants: ['#15803d'] },
+  { id: 'pm25-candle', label: 'Candle / Diya', category: 'Pollution sources', size: [0.1, 0.12, 0.1], elevation: 0.68, role: 'none', color: '#fbbf24', variants: ['#fbbf24'] },
+  { id: 'pm25-cigarette', label: 'Cigarette', category: 'Pollution sources', size: [0.12, 0.05, 0.12], elevation: 0.95, role: 'none', color: '#e7e5e4', variants: ['#e7e5e4'] },
+  { id: 'pm25-sweeping', label: 'Sweeping / Dusting', category: 'Pollution sources', size: [0.3, 0.3, 0.12], elevation: 0, role: 'none', color: '#ca8a04', variants: ['#ca8a04'] },
+  { id: 'pm25-heater', label: 'Kerosene / Coal Heater', category: 'Pollution sources', size: [0.4, 0.5, 0.3], elevation: 0, role: 'none', color: '#b91c1c', variants: ['#b91c1c'] },
 
   // OPENINGS
   { id: 'single-door', label: 'Single Door', category: 'Openings', size: [0.9, 2.1, 0.15], elevation: 0, role: 'none', wallMounted: true, color: '#a16207', variants: ['#a16207', '#ffffff', '#1e293b'] },
