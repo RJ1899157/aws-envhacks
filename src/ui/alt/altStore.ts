@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { useUiStore } from '../../store/uiStore';
 
-/** Where the user is in the app: choosing a start, designing, looking at results, or in an example. */
-export type AltPhase = 'start' | 'design' | 'results' | 'example';
+/** Where the user is in the app: choosing a start, designing, or looking at results. */
+export type AltPhase = 'start' | 'design' | 'results';
 
 export type DesignStep = 'rooms' | 'ventilation' | 'pollution' | 'furniture';
 

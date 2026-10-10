@@ -10,6 +10,7 @@ import { ComparePanel } from '../simulation/ComparePanel';
 import { InsightsPanel } from '../simulation/InsightsPanel';
 import { ModeSwitch } from '../simulation/ModeSwitch';
 import { homeSummary } from './AboutHomeCard';
+import { HealthCard } from './HealthCard';
 
 const OUTDOOR = [
   { id: 'clean', label: 'Clean', valueUgM3: 15 },
@@ -28,7 +29,7 @@ export function runSimulation(): void {
  * Right panel of Results mode: outdoor air, what to look at, insights and fixes. In an example the
  * story sets the conditions, so outdoor air is not offered and the panel clears the story bar.
  */
-export const ResultsPanel: React.FC<{ onEdit?: () => void; example?: boolean }> = ({ onEdit, example = false }) => {
+export const ResultsPanel: React.FC<{ onEdit?: () => void }> = ({ onEdit }) => {
   const { room, stale } = useSimulationModel();
   const status = useSimulationStore((s) => s.status);
   const error = useSimulationStore((s) => s.error);
@@ -65,15 +66,15 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void; example?: boolean }> 
     <aside
       data-testid="alt-results-panel"
       data-viewport-right
-      className={`pointer-events-auto fixed ${example ? 'top-[112px]' : 'top-14'} right-3 bottom-3 z-[15] w-[320px] flex flex-col rounded-[12px] bg-neutral-900/90 backdrop-blur-md border border-white/10 shadow-2xl text-neutral-200`}
+      className="pointer-events-auto fixed top-14 right-3 bottom-3 z-[15] w-[320px] flex flex-col rounded-[12px] bg-neutral-900/90 backdrop-blur-md border border-white/10 shadow-2xl text-neutral-200"
     >
       <div className="px-4 pt-3.5 pb-3 border-b border-white/10 flex flex-col gap-2.5">
         <div>
           <h2 className="text-[15px] font-semibold text-white">Results</h2>
-          <p className="text-[11px] text-neutral-400">{example ? 'Example flat, conditions set by the story.' : 'Simulated over 4 hours.'}</p>
-          {!example && <p className="text-[10.5px] text-neutral-500 mt-0.5" data-testid="alt-results-home">Home: {homeSummary(room.params)}</p>}
+          <p className="text-[11px] text-neutral-400">Simulated over 4 hours.</p>
+          <p className="text-[10.5px] text-neutral-500 mt-0.5" data-testid="alt-results-home">Home: {homeSummary(room.params)}</p>
         </div>
-        {!example && <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <span className="text-[10.5px] uppercase tracking-wider font-semibold text-neutral-400">Outdoor air</span>
           <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Outdoor air">
             {OUTDOOR.map((o) => (
@@ -91,7 +92,7 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void; example?: boolean }> 
               </button>
             ))}
           </div>
-        </div>}
+        </div>
         <div className="flex flex-col gap-1">
           <span className="text-[10.5px] uppercase tracking-wider font-semibold text-neutral-400">Show</span>
           <ModeSwitch />
@@ -122,6 +123,7 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void; example?: boolean }> 
             </button>
           </div>
         )}
+        {!comparing && hasResult && <HealthCard />}
         {comparing ? <ComparePanel variant="docked" /> : <InsightsPanel variant="docked" />}
       </div>
 

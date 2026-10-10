@@ -68,7 +68,7 @@ export const POLLUTION_GROUPS: AltGroup[] = [
       { assetId: 'pm25-mosquito-coil', label: 'Mosquito coil', hint: 'Burns for hours' },
       { assetId: 'pm25-candle', label: 'Candle / diya', hint: 'Small flame' },
       { assetId: 'pm25-cigarette', label: 'Cigarette', hint: 'Smoking indoors' },
-      { assetId: 'pm25-heater', label: 'Kerosene / coal heater', hint: 'Very high emissions' },
+      { assetId: 'pm25-heater', label: 'Kerosene / coal heater', hint: 'Carbon monoxide risk: never in a closed room' },
     ],
   },
   {

@@ -6,6 +6,7 @@ import { polygonBounds } from '../../core/parser';
 import { ROOM_TYPES, ROOM_TYPE_ORDER, roomTypeOf } from '../../core/rooms';
 import type { Opening, Room, RoomType, SceneObject } from '../../core/schema';
 import { deviceFor } from '../../simulation/devices';
+import { occupantsOf } from '../../simulation/health';
 import { isOpeningOpen } from '../../simulation/geometry';
 import { isPm25SourceObject, placedSourceParams } from '../../simulation/sources';
 import { useSceneStore } from '../../store/sceneStore';
@@ -212,6 +213,33 @@ const HomeChip: React.FC = () => {
 // Steps
 // ---------------------------------------------------------------------------
 
+/** How many people are usually in the room (for the stale-air / CO₂ estimate). */
+const PeopleField: React.FC<{ room: Room }> = ({ room }) => {
+  const setOccupants = useSceneStore((s) => s.setOccupants);
+  const occ = occupantsOf(room);
+  const set = (n: number) => room.id && setOccupants(room.id, Math.max(0, Math.min(20, n)));
+  const btn = 'w-7 h-7 rounded-[6px] bg-white/10 hover:bg-white/15 disabled:opacity-30 flex items-center justify-center text-[14px]';
+  return (
+    <div className="flex items-center justify-between text-[10.5px] text-neutral-400">
+      <span>
+        People usually here
+        <span className="block text-[10px] text-neutral-500">{occ.activity === 'sleeping' ? 'sleeping' : occ.activity === 'light' ? 'cooking / chores' : 'sitting'}; for the stale-air check</span>
+      </span>
+      <span className="flex items-center gap-1.5">
+        <button type="button" aria-label="Fewer people" className={btn} disabled={occ.count <= 0} onClick={() => set(occ.count - 1)}>
+          −
+        </button>
+        <span className="w-4 text-center text-[12px] text-white tabular-nums" data-testid="alt-people-count">
+          {occ.count}
+        </span>
+        <button type="button" aria-label="More people" className={btn} onClick={() => set(occ.count + 1)}>
+          +
+        </button>
+      </span>
+    </div>
+  );
+};
+
 const SHAPES: { type: QuickShapeType; label: string; path: string }[] = [
   { type: 'rectangle', label: 'Square', path: 'M4 5h16v14H4z' },
   { type: 'l-shape', label: 'L', path: 'M4 5h16v8h-7v6H4z' },
@@ -301,6 +329,7 @@ const RoomsStep: React.FC = () => {
               ))}
             </select>
           </label>
+          <PeopleField room={room} />
           <div className="flex gap-2">
             <NumberField label="Width" value={b.width} min={1} max={20} onCommit={(w) => scaleRoom(w, b.depth)} />
             <NumberField label="Length" value={b.depth} min={1} max={20} onCommit={(d) => scaleRoom(b.width, d)} />

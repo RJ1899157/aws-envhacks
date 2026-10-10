@@ -6,7 +6,8 @@ import { clearPreviousDesign, readPreviousDesign } from '../../store/resetSessio
 import type { RoomType } from '../../core/schema';
 import { ROOM_TYPES } from '../../core/rooms';
 import { useSceneStore } from '../../store/sceneStore';
-import { openExamples } from '../showcase/ExamplesPicker';
+import { createShowcaseHouse } from '../../showcase/house';
+import { openRooms } from './buildActions';
 import { useAltStore } from './altStore';
 import { createSingleRoom, createStarterHouse, type HouseCounts } from './starterHouse';
 import { AboutHomeCard } from './AboutHomeCard';
@@ -49,14 +50,13 @@ const Card: React.FC<{ icon: React.ElementType; title: string; text: string; onC
   </button>
 );
 
-/** First thing a new user sees: room, house or an example (or their previous design). */
+/** First thing a new user sees: room, house or a ready-made example home (or their previous design). */
 export const StartScreen: React.FC = () => {
   const [choice, setChoice] = useState<'none' | 'room' | 'house' | 'about'>('none');
   // What was picked before "About your home" (its Back returns there; Next starts designing it)
   const [picked, setPicked] = useState<'room' | 'house'>('room');
   const [counts, setCounts] = useState<Required<HouseCounts>>(DEFAULT_COUNTS);
   const startDesign = useAltStore((s) => s.startDesign);
-  const setPhase = useAltStore((s) => s.setPhase);
 
   const load = (rooms: ReturnType<typeof createStarterHouse>) => {
     useSceneStore.getState().loadRoom(rooms[0]!, rooms.slice(1));
@@ -89,11 +89,8 @@ export const StartScreen: React.FC = () => {
               <Card
                 icon={Sparkles}
                 title="See an example"
-                text="A ready-made flat with results, no setup."
-                onClick={() => {
-                  setPhase('example');
-                  openExamples();
-                }}
+                text="A ready-made 2BHK flat to explore, change and simulate."
+                onClick={() => openRooms(createShowcaseHouse(), null)}
                 testId="alt-start-example"
               />
             </div>

@@ -288,6 +288,7 @@ export const RoomSchema = z.object({
   wallOverrides: z.record(z.coerce.number(), WallOverrideSchema).optional(),
   // Phase 2 (air simulation), optional so older designs parse unchanged:
   occupancyWeight: z.number().nonnegative().optional(), // share of time people spend here; default by room type (OCCUPANCY_WEIGHTS)
+  occupants: z.number().int().min(0).max(20).optional(), // people usually in the room (CO₂ estimate); default by room type
   scenarios: z.array(ScenarioSchema).optional(), // what-if scenarios of the whole house, kept on the active room
   floorMaterial: z.string().default('wood'),
   wallMaterial: z.string().default('paint'),

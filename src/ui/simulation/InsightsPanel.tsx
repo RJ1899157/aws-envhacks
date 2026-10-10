@@ -32,12 +32,7 @@ export const InsightsPanel: React.FC<{ variant: 'docked' | 'floating' }> = ({ va
   const collapsed = useSimulationStore((s) => s.insightsCollapsed);
   const setUi = useSimulationStore((s) => s.setUi);
   const activeRoomId = useSceneStore((s) => s.room.id);
-  const result = useSimulationStore((s) => s.result);
   const ref = useRef<HTMLElement>(null);
-  // A finished run brings the docked panel back into view (the tab may be scrolled down to Run)
-  useEffect(() => {
-    if (variant === 'docked' && result) ref.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [variant, result]);
   if (!insights) return null;
   const floating = variant === 'floating';
 

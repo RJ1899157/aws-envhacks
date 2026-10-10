@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect } from 'react';
 import { Canvas, CanvasErrorBoundary } from '../../builder';
 import { useSceneStore } from '../../store/sceneStore';
-import { useShowcaseStore } from '../../store/showcaseStore';
 import { useSimulationStore } from '../../store/simulationStore';
 import { useUiStore } from '../../store/uiStore';
 import { resetToNewUser } from '../../store/resetSession';
@@ -39,8 +38,6 @@ const AltToast: React.FC = () => {
 export const AltApp: React.FC = () => {
   const phase = useAltStore((s) => s.phase);
   const setPhase = useAltStore((s) => s.setPhase);
-  const showcaseActive = useShowcaseStore((s) => s.active !== null);
-  const pickerOpen = useShowcaseStore((s) => s.pickerOpen);
 
   // On load: resume the saved design where the user left off; with nothing saved (a first visit),
   // start at the start screen
@@ -78,20 +75,10 @@ export const AltApp: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Results are only drawn on the Results screen (and in examples)
+  // Results are only drawn on the Results screen
   useEffect(() => {
-    useSimulationStore.getState().setViz({ show: phase === 'results' || phase === 'example' });
+    useSimulationStore.getState().setViz({ show: phase === 'results' });
   }, [phase]);
-
-  // Leaving an example goes back to the start, unless it was copied as the user's design (it brings
-  // its results along); closing the picker without opening one also goes back
-  useEffect(() => {
-    if (phase !== 'example' || showcaseActive || pickerOpen) return;
-    if (useSimulationStore.getState().result) {
-      useAltStore.setState({ project: 'house', step: 'ventilation' });
-      setPhase('results');
-    } else setPhase('start');
-  }, [phase, showcaseActive, pickerOpen, setPhase]);
 
   const simulate = useCallback(() => {
     useSceneStore.getState().clearSelection();
@@ -124,7 +111,6 @@ export const AltApp: React.FC = () => {
         </>
       )}
       {phase === 'results' && <ResultsPanel onEdit={edit} />}
-      {phase === 'example' && showcaseActive && <ResultsPanel example />}
       <BuildsDialogs />
       <AltToast />
     </main>

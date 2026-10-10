@@ -1288,8 +1288,8 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false 
       <CompareOverlay />
       <WhatIfBanner />
       <ScenarioEngine />
-      <StoryBar />
-      <ExamplesPicker />
+      {!minimal && <StoryBar />}
+      {!minimal && <ExamplesPicker />}
       {!minimal && <FirstUseCard />}
       <RunProgress />
     </div>

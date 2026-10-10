@@ -97,6 +97,8 @@ export interface SceneState {
   replaceDesign: (rooms: Room[]) => void;
   /** The house's what-if scenarios, stored on the active room (other rooms' copies are dropped) */
   setScenarios: (scenarios: Scenario[]) => void;
+  /** People usually in a room (CO₂ estimate); undefined = default for its type */
+  setOccupants: (roomId: string, count: number | undefined) => void;
   /** Occupancy weight of a room (house PM2.5 metric); undefined = default for its type */
   setOccupancyWeight: (roomId: string, weight: number | undefined) => void;
   addObject: (object: SceneObject) => void;
@@ -561,6 +563,12 @@ export const useSceneStore = create<SceneState>()(
         set((state) => {
           state.room.scenarios = scenarios.length > 0 ? scenarios : undefined;
           for (const r of state.otherRooms) if (r.scenarios) r.scenarios = undefined;
+        }),
+
+      setOccupants: (roomId, count) =>
+        set((state) => {
+          const r = [state.room, ...state.otherRooms].find((x) => x.id === roomId);
+          if (r) r.occupants = count;
         }),
 
       setOccupancyWeight: (roomId, weight) =>
