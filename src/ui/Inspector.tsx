@@ -3,6 +3,7 @@ import {
   Sliders,
   Wind,
   Home,
+  Activity,
   X,
   Copy,
   Trash2,
@@ -17,6 +18,12 @@ import {
 import { useSceneStore, useUiStore } from '../store';
 import { signedArea, wallSegment } from '../core/parser';
 import { radToDeg, degToRad } from '../core/units';
+import { bearingToScreen, compassPoint } from '../core/wind';
+import { computeVentilation, ventilationEnvFromRoom } from '../simulation/ventilation';
+import { SimulationPanel } from './simulation/SimulationPanel';
+import { OccupancyWeightField } from './simulation/OccupancyWeightField';
+import { DeviceProperties } from './simulation/DeviceProperties';
+import { SourceProperties } from './simulation/SourceProperties';
 import type { LengthAnchor } from '../core/wallOperations';
 import type { QuickShapeType, QuickShapeDimensions } from '../core/quickShapes';
 import {
@@ -33,10 +40,12 @@ export interface InspectorProps {
   className?: string;
 }
 
-type InspectorTab = 'properties' | 'airflow' | 'room';
+type InspectorTab = 'properties' | 'airflow' | 'room' | 'simulation';
 
 /**
- * Interactive SVG Compass Dial for wind direction (0-360 deg)
+ * Interactive SVG compass for the wind direction (convention: src/core/wind.ts). North is up, as in
+ * the plan and top views. Clicking a bearing sets where the wind comes FROM; the arrow is drawn from
+ * that side across the dial in the direction the air moves.
  */
 interface CompassWidgetProps {
   degrees: number;
@@ -117,13 +126,16 @@ const CompassWidget: React.FC<CompassWidgetProps> = ({ degrees, onChange, onComm
           W
         </text>
 
+        {/* Wind arrow: tail on the upwind (from) side, head downwind. rotate(θ) turns "up" to bearing θ. */}
         <g transform={`rotate(${degrees})`}>
-          <polygon points="0,-33 -4,-12 4,-12" fill="#ef4444" />
-          <polygon points="0,33 -3,12 3,12" fill="#71717a" />
-          <circle r={3.5} fill="#ffffff" />
+          <line x1={0} y1={-16} x2={0} y2={9} stroke="#38bdf8" strokeWidth={3} strokeLinecap="round" />
+          <polygon points="0,18 -5,7 5,7" fill="#38bdf8" />
         </g>
+        <circle cx={bearingToScreen(degrees, 33)[0]} cy={bearingToScreen(degrees, 33)[1]} r={3} fill="#ef4444" />
       </svg>
-      <span className="text-[11px] font-mono font-medium text-indigo-400">{degrees}°</span>
+      <span className="text-[11px] font-mono font-medium text-indigo-400">
+        from {compassPoint(degrees)} · {degrees}°
+      </span>
     </div>
   );
 };
@@ -181,6 +193,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
   // Manual open/close state when nothing is selected
   const [isManuallyOpened, setIsManuallyOpened] = useState(false);
   const [activeTab, setActiveTab] = useState<InspectorTab>('properties');
+  const setShowWindIndicator = useUiStore((state) => state.setShowWindIndicator);
 
   // Auto-switch to properties tab and open on new selection
   useEffect(() => {
@@ -190,6 +203,12 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
   }, [hasSelection, selectedObjectId, selectedWallIndex, selectedVertexIndex, selectedOpening]);
 
   const isVisible = hasSelection || isManuallyOpened;
+
+  // The scene wind arrow follows the Airflow tab
+  useEffect(() => {
+    setShowWindIndicator(isVisible && activeTab === 'airflow');
+    return () => setShowWindIndicator(false);
+  }, [isVisible, activeTab, setShowWindIndicator]);
 
   // Selected Wall segment
   const selectedWallSegment = useMemo(() => {
@@ -219,28 +238,20 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
   // Wall Anchor state for wall length resizing
   const [wallAnchor, setWallAnchor] = useState<LengthAnchor>('start');
 
-  // Ventilation stats
+  // Ventilation stats: inlet/outlet counts from the computed airflow direction, not the role tags
+  const otherRooms = useSceneStore((state) => state.otherRooms);
   const ventilationStats = useMemo(() => {
-    let inletCount = 0;
-    let outletCount = 0;
-    let totalOpenArea = 0;
-
-    for (const op of room.openings) {
-      if (op.role === 'inlet') {
-        inletCount++;
-        totalOpenArea += op.width * op.height * op.openFraction;
-      } else if (op.role === 'outlet') {
-        outletCount++;
-        totalOpenArea += op.width * op.height * op.openFraction;
-      }
-    }
+    const v = computeVentilation(room, ventilationEnvFromRoom(room), { neighbours: otherRooms });
+    const inletCount = v.openings.filter((o) => o.computedRole === 'inlet').length;
+    const outletCount = v.openings.filter((o) => o.computedRole === 'outlet').length;
+    const totalOpenArea = v.openings.filter((o) => !o.excluded).reduce((sum, o) => sum + o.effectiveArea, 0);
     return {
       inletCount,
       outletCount,
       totalOpenArea: Number(totalOpenArea.toFixed(2)),
-      hasCrossVentilation: inletCount > 0 && outletCount > 0,
+      hasCrossVentilation: v.type === 'cross',
     };
-  }, [room.openings]);
+  }, [room, otherRooms]);
 
   // Quick Shapes State
   const [quickShapeType, setQuickShapeType] = useState<QuickShapeType>('rectangle');
@@ -289,13 +300,13 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
             : 'translate-x-[calc(100%+24px)] opacity-0 pointer-events-none'
         } ${className}`}
       >
-        {/* Header Tabs: Properties | Airflow | Room */}
-        <div className="flex items-center justify-between px-2 pt-2 pb-1.5 border-b border-neutral-200/10 dark:border-white/10 bg-black/20 dark:bg-white/5">
-          <div className="flex items-center gap-1">
+        {/* Header Tabs: Properties | Airflow | Room | Simulate */}
+        <div className="flex items-center justify-between gap-1 px-2 pt-2 pb-1.5 border-b border-neutral-200/10 dark:border-white/10 bg-black/20 dark:bg-white/5">
+          <div className="flex items-center gap-0.5 min-w-0">
             <button
               type="button"
               onClick={() => setActiveTab('properties')}
-              className={`px-2.5 py-1 rounded-[6px] font-medium transition-colors flex items-center gap-1.5 text-xs ${
+              className={`px-1.5 py-1 rounded-[6px] font-medium transition-colors flex items-center gap-1 text-[11px] whitespace-nowrap ${
                 activeTab === 'properties'
                   ? 'bg-indigo-600 text-white font-semibold shadow-sm'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -308,7 +319,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
             <button
               type="button"
               onClick={() => setActiveTab('airflow')}
-              className={`px-2.5 py-1 rounded-[6px] font-medium transition-colors flex items-center gap-1.5 text-xs ${
+              className={`px-1.5 py-1 rounded-[6px] font-medium transition-colors flex items-center gap-1 text-[11px] whitespace-nowrap ${
                 activeTab === 'airflow'
                   ? 'bg-indigo-600 text-white font-semibold shadow-sm'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -321,7 +332,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
             <button
               type="button"
               onClick={() => setActiveTab('room')}
-              className={`px-2.5 py-1 rounded-[6px] font-medium transition-colors flex items-center gap-1.5 text-xs ${
+              className={`px-1.5 py-1 rounded-[6px] font-medium transition-colors flex items-center gap-1 text-[11px] whitespace-nowrap ${
                 activeTab === 'room'
                   ? 'bg-indigo-600 text-white font-semibold shadow-sm'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
@@ -329,6 +340,20 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
             >
               <Home size={13} strokeWidth={1.75} />
               <span>Room</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="inspector-tab-simulation"
+              onClick={() => setActiveTab('simulation')}
+              className={`px-1.5 py-1 rounded-[6px] font-medium transition-colors flex items-center gap-1 text-[11px] whitespace-nowrap ${
+                activeTab === 'simulation'
+                  ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Activity size={13} strokeWidth={1.75} />
+              <span>Simulate</span>
             </button>
           </div>
 
@@ -350,7 +375,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
         </div>
 
         {/* Tab Contents */}
-        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-3">
           {/* ========================================================= */}
           {/* TAB 1: PROPERTIES                                         */}
           {/* ========================================================= */}
@@ -508,6 +533,9 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
                   </CollapsibleSection>
 
                   {/* Simulation Role */}
+                  <DeviceProperties object={selectedObject} />
+                  <SourceProperties object={selectedObject} />
+
                   <CollapsibleSection title="Airflow Role" defaultOpen={false} summary={selectedObject.role}>
                     <Select
                       value={selectedObject.role}
@@ -783,6 +811,8 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
           {/* ========================================================= */}
           {/* TAB 2: AIRFLOW                                            */}
           {/* ========================================================= */}
+          {activeTab === 'simulation' && <SimulationPanel visible={isVisible} />}
+
           {activeTab === 'airflow' && (
             <div className="flex flex-col gap-3 animate-in fade-in duration-100">
               {/* Ventilation Status Badge */}
@@ -968,6 +998,7 @@ export const Inspector: React.FC<InspectorProps> = ({ className = '' }) => {
           {/* ========================================================= */}
           {activeTab === 'room' && (
             <div className="flex flex-col gap-3 animate-in fade-in duration-100">
+              <OccupancyWeightField room={room} />
               {/* Room Dimensions & Height */}
               <CollapsibleSection title="Room Dimensions" defaultOpen={false} summary={`${room.name} · ${roomAreaM2.toFixed(1)} m²`}>
                 <div className="flex flex-col gap-2">

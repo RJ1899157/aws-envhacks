@@ -9,11 +9,14 @@ export interface GraphicsState {
   wallOpacityMode: WallOpacityMode;
   theme: ThemeMode;
   fps: number;
-  
+  /** While set (the simulation view), walls are cut to this height (m) and drawn opaque */
+  wallCutHeight: number | null;
+
   setQuality: (quality: QualitySetting) => void;
   setWallOpacityMode: (mode: WallOpacityMode) => void;
   setTheme: (theme: ThemeMode) => void;
   setFps: (fps: number) => void;
+  setWallCutHeight: (h: number | null) => void;
 }
 
 const getInitialTheme = (): ThemeMode => {
@@ -48,6 +51,7 @@ export const useGraphicsStore = create<GraphicsState>()((set) => ({
   wallOpacityMode: 'Auto-fade',
   theme: initialTheme,
   fps: 60,
+  wallCutHeight: null,
 
   setQuality: (quality) => set({ quality }),
   setWallOpacityMode: (wallOpacityMode) => set({ wallOpacityMode }),
@@ -61,4 +65,5 @@ export const useGraphicsStore = create<GraphicsState>()((set) => ({
     applyThemeToDOM(theme);
   },
   setFps: (fps) => set({ fps }),
+  setWallCutHeight: (wallCutHeight) => set({ wallCutHeight }),
 }));

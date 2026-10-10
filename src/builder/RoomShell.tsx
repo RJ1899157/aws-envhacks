@@ -11,6 +11,65 @@ import { useUiStore, type ViewMode } from '../store/uiStore';
 import { useGraphicsStore, type WallOpacityMode } from '../store/graphicsStore';
 import { getFloorMaterialProps, getWallMaterialProps } from '../core/materials';
 import { OpeningVisual } from './OpeningVisual';
+import { isOpeningOpen } from '../simulation/geometry';
+
+/** Simulation cutaway: walls drawn at this share of their thickness, semi-transparent. */
+const CUTAWAY_THICKNESS = 0.5;
+const CUTAWAY_OPACITY = 0.6;
+/** Opening marks on cut walls: open windows sky, open doors teal, closed ones slate (amber is kept for stale air). */
+const CUT_MARK_COLORS = { windowOpen: '#38bdf8', windowClosed: '#64748b', doorOpen: '#2dd4bf', doorClosed: '#64748b' } as const;
+
+/**
+ * Where walls are cut low for the simulation view, each opening shows as a coloured mark: a frame
+ * along the top of the low wall for windows, a threshold strip with jambs across the gap for doors.
+ */
+const CutawayOpeningMarks: React.FC<{ openings: readonly Opening[]; segment: NonNullable<ReturnType<typeof wallSegment>>; thickness: number; cutHeight: number }> = ({ openings, segment, thickness, cutHeight }) => {
+  const quaternion = useMemo(() => wallQuaternion(segment.dir), [segment]);
+  return (
+    <group name="cutaway-opening-marks">
+      {openings.map((op) => {
+        const open = isOpeningOpen(op);
+        const isDoor = op.type === 'door' || op.sill < 0.05;
+        const color = isDoor ? (open ? CUT_MARK_COLORS.doorOpen : CUT_MARK_COLORS.doorClosed) : open ? CUT_MARK_COLORS.windowOpen : CUT_MARK_COLORS.windowClosed;
+        const u0 = Math.max(0, op.offset);
+        const u1 = Math.min(segment.len, op.offset + op.width);
+        if (u1 - u0 < 1e-3) return null;
+        const at = (u: number, y: number): [number, number, number] => [
+          segment.a[0] + u * segment.dir[0] + (thickness / 2) * segment.normal[0],
+          y,
+          segment.a[1] + u * segment.dir[1] + (thickness / 2) * segment.normal[1],
+        ];
+        const depth = thickness + 0.06;
+        const mat = <meshBasicMaterial color={color} toneMapped={false} />;
+        if (isDoor) {
+          const jambH = Math.min(cutHeight, op.sill + op.height);
+          return (
+            <group key={op.id}>
+              <mesh position={at((u0 + u1) / 2, 0.025)} quaternion={quaternion} raycast={() => null}>
+                <boxGeometry args={[u1 - u0, 0.05, depth]} />
+                {mat}
+              </mesh>
+              {[u0, u1].map((u) => (
+                <mesh key={u} position={at(u, jambH / 2)} quaternion={quaternion} raycast={() => null}>
+                  <boxGeometry args={[0.05, jambH, depth]} />
+                  {mat}
+                </mesh>
+              ))}
+            </group>
+          );
+        }
+        // Window: a frame on top of the low wall (filling the notch where the sill is below the cut)
+        const y0 = Math.min(op.sill, cutHeight - 0.05);
+        return (
+          <mesh key={op.id} position={at((u0 + u1) / 2, (y0 + cutHeight + 0.02) / 2)} quaternion={quaternion} raycast={() => null}>
+            <boxGeometry args={[u1 - u0, cutHeight + 0.02 - y0, depth]} />
+            {open ? <meshBasicMaterial color={color} toneMapped={false} transparent opacity={0.85} /> : mat}
+          </mesh>
+        );
+      })}
+    </group>
+  );
+};
 
 export interface WallPiece {
   uStart: number;
@@ -155,6 +214,8 @@ interface WallSegmentMeshProps {
   view: ViewMode;
   wallOpacityMode: WallOpacityMode;
   wallMaterialProps: ReturnType<typeof getWallMaterialProps>;
+  /** Simulation view: walls cut low, opaque, without opening frames */
+  cutaway?: boolean;
   /** Openings from a neighbouring room on this shared wall: cut the hole, but render no door */
   sharedOpenings?: readonly SharedWallOpening[];
   /** False for rooms that aren't active: no selection or dragging, a click activates the room */
@@ -176,6 +237,7 @@ interface MiteredCornerMeshProps {
   view: ViewMode;
   wallOpacityMode: WallOpacityMode;
   wallMaterialProps: ReturnType<typeof getWallMaterialProps>;
+  cutaway?: boolean;
 }
 
 const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
@@ -187,6 +249,7 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
   view,
   wallOpacityMode,
   wallMaterialProps,
+  cutaway = false,
 }) => {
   const n = outline.length;
   const prevIndex = (cornerIndex - 1 + n) % n;
@@ -262,7 +325,10 @@ const MiteredCornerMesh: React.FC<MiteredCornerMeshProps> = ({
   useFrame(({ camera }, delta) => {
     if (!cornerPos || !normalOut) return;
 
-    if (view === '2d') {
+    if (cutaway) {
+      cornerMaterial.opacity = THREE.MathUtils.lerp(cornerMaterial.opacity, CUTAWAY_OPACITY, Math.min(1, delta * 10));
+      cornerMaterial.depthWrite = true;
+    } else if (view === '2d') {
       cornerMaterial.opacity = THREE.MathUtils.lerp(cornerMaterial.opacity, 0.85, Math.min(1, delta * 10));
       cornerMaterial.depthWrite = true;
     } else {
@@ -325,6 +391,7 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
     view,
     wallOpacityMode,
     wallMaterialProps,
+    cutaway = false,
     sharedOpenings,
     interactive = true,
     onActivateRoom,
@@ -404,7 +471,10 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
     useFrame(({ camera }, delta) => {
       if (!segment) return;
 
-      if (view === '2d') {
+      if (cutaway) {
+        wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, CUTAWAY_OPACITY, Math.min(1, delta * 10));
+        wallMaterial.depthWrite = true;
+      } else if (view === '2d') {
         // In 2D top-down mode, keep walls crisp and solid
         wallMaterial.opacity = THREE.MathUtils.lerp(wallMaterial.opacity, 0.85, Math.min(1, delta * 10));
         wallMaterial.depthWrite = true;
@@ -492,7 +562,8 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
         ))}
 
         {/* Render Opening Visuals in the cutouts */}
-        {wallOpenings.map((opening) => (
+        {cutaway && <CutawayOpeningMarks openings={wallOpenings} segment={segment} thickness={wallThickness} cutHeight={wallHeight} />}
+        {!cutaway && wallOpenings.map((opening) => (
           <OpeningVisual
             key={opening.id}
             opening={opening}
@@ -510,6 +581,7 @@ const WallSegmentMesh = React.memo<WallSegmentMeshProps>(
       prev.wallHeight !== next.wallHeight ||
       prev.wallThickness !== next.wallThickness ||
       prev.wallOpacityMode !== next.wallOpacityMode ||
+      prev.cutaway !== next.cutaway ||
       prev.wallMaterialProps.color !== next.wallMaterialProps.color ||
       prev.wallMaterialProps.roughness !== next.wallMaterialProps.roughness ||
       prev.isSelected !== next.isSelected ||
@@ -588,6 +660,8 @@ export const RoomShell: React.FC<RoomShellProps> = ({ room: roomProp, interactiv
   const setHoveredWallIndex = useUiStore((state) => state.setHoveredWallIndex);
 
   const wallOpacityMode = useGraphicsStore((state) => state.wallOpacityMode);
+  const wallCut = useGraphicsStore((state) => state.wallCutHeight);
+  const cutaway = wallCut !== null;
 
   const floorProps = useMemo(() => getFloorMaterialProps(floorMaterialType), [floorMaterialType]);
 
@@ -661,8 +735,9 @@ export const RoomShell: React.FC<RoomShellProps> = ({ room: roomProp, interactiv
       {outline.map((_, index) => {
         const wallOpenings = openings.filter((op) => op.wallIndex === index);
         const override = wallOverrides[index];
-        const segHeight = override?.height ?? wallHeight;
-        const segThickness = override?.thickness ?? wallThickness;
+        const fullHeight = override?.height ?? wallHeight;
+        const segHeight = cutaway ? Math.min(fullHeight, wallCut) : fullHeight;
+        const segThickness = (override?.thickness ?? wallThickness) * (cutaway ? CUTAWAY_THICKNESS : 1);
         const segColor = override?.color ?? '#e2e8f0';
         
         const wallMaterialProps = getWallMaterialProps(wallMaterialType, segColor);
@@ -685,6 +760,7 @@ export const RoomShell: React.FC<RoomShellProps> = ({ room: roomProp, interactiv
             view={view}
             wallOpacityMode={wallOpacityMode}
             wallMaterialProps={wallMaterialProps}
+            cutaway={cutaway}
             onSelectWall={override?.isLocked ? () => {} : setSelectedWallIndex}
             onHoverWall={override?.isLocked ? () => {} : setHoveredWallIndex}
           />
@@ -694,12 +770,14 @@ export const RoomShell: React.FC<RoomShellProps> = ({ room: roomProp, interactiv
       {/* 3. Mitered Corner Prisms */}
       {outline.map((_, index) => {
         const prevIndex = (index - 1 + outline.length) % outline.length;
-        const tIn = wallOverrides[prevIndex]?.thickness ?? wallThickness;
-        const tOut = wallOverrides[index]?.thickness ?? wallThickness;
-        const hCorner = Math.max(
+        const thin = cutaway ? CUTAWAY_THICKNESS : 1;
+        const tIn = (wallOverrides[prevIndex]?.thickness ?? wallThickness) * thin;
+        const tOut = (wallOverrides[index]?.thickness ?? wallThickness) * thin;
+        const hFull = Math.max(
           wallOverrides[prevIndex]?.height ?? wallHeight,
           wallOverrides[index]?.height ?? wallHeight
         );
+        const hCorner = cutaway ? Math.min(hFull, wallCut) : hFull;
         const cornerColor = wallOverrides[index]?.color ?? '#e2e8f0';
         const cornerWallMaterialProps = getWallMaterialProps(wallMaterialType, cornerColor);
 
@@ -716,12 +794,13 @@ export const RoomShell: React.FC<RoomShellProps> = ({ room: roomProp, interactiv
             view={view}
             wallOpacityMode={wallOpacityMode}
             wallMaterialProps={cornerWallMaterialProps}
+            cutaway={cutaway}
           />
         );
       })}
 
       {/* 4. Optional Ceiling Mesh */}
-      {showCeiling && (
+      {showCeiling && !cutaway && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, wallHeight, 0]} receiveShadow userData={{ isExportable: true, exportType: 'wall' }}>
           <shapeGeometry args={[floorShape]} />
           {/* BackSide: visible from inside the room, invisible when orbiting from above */}

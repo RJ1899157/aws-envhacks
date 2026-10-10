@@ -3,7 +3,7 @@ import { RoomSchema, type Room } from './schema';
 /**
  * Creates a rich, realistic sample room for immediate demonstration and testing:
  * - 5.0m x 4.0m master bedroom & study
- * - Cross-ventilated with south inlet window and north outlet window, plus west entrance door
+ * - Cross-ventilated with a north inlet window and south outlet window (wind from the NE), plus west entrance door
  * - Fully furnished with double bed, work desk, ergonomic chair, bookshelf, ceiling fan, and air purifier
  * - Environmental conditions and IAQ pollutant source configured
  */

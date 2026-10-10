@@ -51,6 +51,8 @@ export interface UiState {
   showSolidVoxels: boolean;
   voxelStats: import('../core/voxelizer').VoxelStats | null;
   showScaleReference: boolean;
+  /** Draw the wind arrow and north marker in the scene (on while the Airflow tab is open) */
+  showWindIndicator: boolean;
   showPrecisionGizmo: boolean;
   autoOrientToWall: boolean;
 
@@ -78,6 +80,7 @@ export interface UiState {
   setShowCeiling: (show: boolean) => void;
   toggleCeiling: () => void;
   setShowScaleReference: (show: boolean) => void;
+  setShowWindIndicator: (show: boolean) => void;
   toggleScaleReference: () => void;
   setSelectedVertexIndex: (index: number | null) => void;
   setSelectedWallIndex: (index: number | null) => void;
@@ -128,6 +131,7 @@ export const initialUiState = {
   showSolidVoxels: true,
   voxelStats: null as import('../core/voxelizer').VoxelStats | null,
   showScaleReference: false,
+  showWindIndicator: false,
   showPrecisionGizmo: false, // Default OFF as requested
   autoOrientToWall: false, // Opt-in toggle as requested
 };
@@ -158,6 +162,7 @@ export const useUiStore = create<UiState>()((set) => ({
   setShowCeiling: (showCeiling) => set({ showCeiling }),
   toggleCeiling: () => set((state) => ({ showCeiling: !state.showCeiling })),
   setShowScaleReference: (showScaleReference) => set({ showScaleReference }),
+  setShowWindIndicator: (showWindIndicator) => set({ showWindIndicator }),
   toggleScaleReference: () => set((state) => ({ showScaleReference: !state.showScaleReference })),
   setSelectedVertexIndex: (selectedVertexIndex) => set({ selectedVertexIndex }),
   setSelectedWallIndex: (selectedWallIndex) => set({ selectedWallIndex }),

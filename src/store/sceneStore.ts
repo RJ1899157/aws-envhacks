@@ -11,6 +11,7 @@ import type {
   Room,
   RoomParams,
   RoomType,
+  Scenario,
   SceneObject,
   Vec2,
   WallOverride,
@@ -75,6 +76,14 @@ export interface SceneState {
   setFloorMaterial: (material: string) => void;
   setWallMaterial: (material: string) => void;
   setParams: (params: Partial<RoomParams>) => void;
+  /** House-wide inputs (outdoor PM2.5, exposure): written to every room, so switching the active room keeps them */
+  setHouseParams: (params: Partial<RoomParams>) => void;
+  /** Replaces every room at once (scenario "Apply to my design": one undo step); keeps the active room active */
+  replaceDesign: (rooms: Room[]) => void;
+  /** The house's what-if scenarios, stored on the active room (other rooms' copies are dropped) */
+  setScenarios: (scenarios: Scenario[]) => void;
+  /** Occupancy weight of a room (house PM2.5 metric); undefined = default for its type */
+  setOccupancyWeight: (roomId: string, weight: number | undefined) => void;
   addObject: (object: SceneObject) => void;
   updateObject: (id: string, updates: Partial<Omit<SceneObject, 'id'>>) => void;
   removeObject: (id: string) => void;
@@ -438,6 +447,36 @@ export const useSceneStore = create<SceneState>()(
       setParams: (params) =>
         set((state) => {
           state.room.params = { ...state.room.params, ...params };
+        }),
+
+      replaceDesign: (rooms) => {
+        resetDragTracking();
+        set((state) => {
+          const activeId = state.room.id;
+          const active = rooms.find((r) => r.id === activeId) ?? rooms[0];
+          if (!active) return;
+          state.room = active as Room;
+          state.otherRooms = rooms.filter((r) => r !== active) as Room[];
+          clearSelectionDraft(state);
+        });
+      },
+
+      setScenarios: (scenarios) =>
+        set((state) => {
+          state.room.scenarios = scenarios.length > 0 ? scenarios : undefined;
+          for (const r of state.otherRooms) if (r.scenarios) r.scenarios = undefined;
+        }),
+
+      setOccupancyWeight: (roomId, weight) =>
+        set((state) => {
+          const r = [state.room, ...state.otherRooms].find((x) => x.id === roomId);
+          if (r) r.occupancyWeight = weight;
+        }),
+
+      setHouseParams: (params) =>
+        set((state) => {
+          state.room.params = { ...state.room.params, ...params };
+          for (const r of state.otherRooms) r.params = { ...r.params, ...params };
         }),
 
       addObject: (object) =>

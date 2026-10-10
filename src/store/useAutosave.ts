@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSceneStore } from './sceneStore';
+import { useScenarioStore } from './scenarioStore';
+import { useShowcaseStore } from './showcaseStore';
 import type { Room } from '../core/types';
 
 export const AUTOSAVE_STORAGE_KEY = 'airforce_autosave_room_v1';
@@ -83,7 +85,12 @@ export function useAutosave() {
     }
 
     timerRef.current = setTimeout(() => {
-      saveSessionToStorage(room, otherRooms);
+      // In what-if mode or an example the live rooms are a scratch copy: keep saving the user's design
+      const example = useShowcaseStore.getState().saved;
+      const baseline = useScenarioStore.getState().whatIf?.baseline;
+      if (example) saveSessionToStorage(example.room, example.otherRooms);
+      else if (baseline) saveSessionToStorage(baseline[0]!, baseline.slice(1));
+      else saveSessionToStorage(room, otherRooms);
     }, AUTOSAVE_DEBOUNCE_MS);
 
     return () => {

@@ -12,6 +12,8 @@ export const CellType = {
   OUTLET: 3,
   SOURCE: 4,
   POROUS: 5,
+  /** Open to both directions: single-sided/no-net-flow outdoor opening, or a passage to another room */
+  OPENING: 6,
 } as const;
 
 export type CellTypeValue = (typeof CellType)[keyof typeof CellType];
@@ -23,6 +25,7 @@ export const CELL_TYPE_NAMES: Record<CellTypeValue, string> = {
   [CellType.OUTLET]: 'OUTLET',
   [CellType.SOURCE]: 'SOURCE',
   [CellType.POROUS]: 'POROUS',
+  [CellType.OPENING]: 'OPENING',
 };
 
 export const CELL_TYPE_COLORS: Record<CellTypeValue, string> = {
@@ -32,6 +35,22 @@ export const CELL_TYPE_COLORS: Record<CellTypeValue, string> = {
   [CellType.OUTLET]: '#f97316', // orange
   [CellType.SOURCE]: '#22c55e', // green
   [CellType.POROUS]: '#eab308', // yellow
+  [CellType.OPENING]: '#a855f7', // purple
+};
+
+/**
+ * Role of an opening computed from the airflow physics (simulation/ventilation.ts
+ * `computedOpeningRoles`). Defined here so core does not depend on the simulation layer.
+ */
+export type OpeningFlowRole = 'inlet' | 'outlet' | 'bidirectional' | 'interior' | 'closed';
+export type OpeningFlowRoles = Readonly<Record<string, OpeningFlowRole>>;
+
+const FLOW_ROLE_CELL: Record<OpeningFlowRole, CellTypeValue> = {
+  inlet: CellType.INLET,
+  outlet: CellType.OUTLET,
+  bidirectional: CellType.OPENING,
+  interior: CellType.OPENING,
+  closed: CellType.SOLID,
 };
 
 export interface VoxelGrid {
@@ -54,6 +73,7 @@ export interface VoxelStats {
   outletCount: number;
   sourceCount: number;
   porousCount: number;
+  openingCount: number;
 }
 
 /**
@@ -67,8 +87,17 @@ export interface VoxelStats {
  *   with the role reversed (air entering the neighbour leaves this room, and vice versa).
  * - Objects (rotated by rotationY, scaled, elevated) fill SOLID / POROUS / SOURCE.
  * - Loops are restricted to each object's axis-aligned bounding box.
+ *
+ * `flowRoles` (from the ventilation model) replaces the user's role tags: each opening's cells come
+ * from its computed role, and neighbours' openings on shared walls become two-way OPENING cells.
+ * Without it the Phase 1 tag-based behaviour is kept.
  */
-export function voxelize(room: Room, dx = 0.1, neighbours: readonly Room[] = []): VoxelGrid {
+export function voxelize(
+  room: Room,
+  dx = 0.1,
+  neighbours: readonly Room[] = [],
+  flowRoles?: OpeningFlowRoles
+): VoxelGrid {
   if (dx <= 0) {
     throw new Error('dx grid resolution must be positive');
   }
@@ -119,23 +148,26 @@ export function voxelize(room: Room, dx = 0.1, neighbours: readonly Room[] = [])
 
   // 3. Openings: Punch INLET/OUTLET cells through the wall thickness
   const reversed = { inlet: 'outlet', outlet: 'inlet', closed: 'closed' } as const;
+  const tagCell = { inlet: CellType.INLET, outlet: CellType.OUTLET, closed: CellType.SOLID } as const;
   const allOpenings = [
-    ...room.openings,
+    ...room.openings.map((o) => ({
+      ...o,
+      cell: flowRoles ? FLOW_ROLE_CELL[flowRoles[o.id] ?? 'closed'] : tagCell[o.role],
+    })),
     ...room.outline.flatMap((_, wallIndex) =>
-      sharedWallOpenings(room, wallIndex, neighbours).map((o) => ({ ...o, wallIndex, role: reversed[o.role] }))
+      sharedWallOpenings(room, wallIndex, neighbours).map((o) => ({
+        ...o,
+        wallIndex,
+        cell: flowRoles ? (o.role === 'closed' ? CellType.SOLID : CellType.OPENING) : tagCell[reversed[o.role]],
+      }))
     ),
   ];
   for (const op of allOpenings) {
     if (op.wallIndex < 0 || op.wallIndex >= room.outline.length) continue;
-    if (op.role === 'closed' || op.openFraction <= 0) continue;
+    if (op.openFraction <= 0) continue;
 
     const seg = wallSegment(room, op.wallIndex);
-    const roleType: CellTypeValue =
-      op.role === 'inlet'
-        ? CellType.INLET
-        : op.role === 'outlet'
-          ? CellType.OUTLET
-          : CellType.SOLID;
+    const roleType: CellTypeValue = op.cell;
 
     if (roleType === CellType.SOLID) continue;
 
@@ -317,6 +349,7 @@ export function computeVoxelStats(grid: VoxelGrid, computeTimeMs: number): Voxel
   let outletCount = 0;
   let sourceCount = 0;
   let porousCount = 0;
+  let openingCount = 0;
 
   const total = grid.cells.length;
   for (let i = 0; i < total; i++) {
@@ -340,6 +373,9 @@ export function computeVoxelStats(grid: VoxelGrid, computeTimeMs: number): Voxel
       case CellType.POROUS:
         porousCount++;
         break;
+      case CellType.OPENING:
+        openingCount++;
+        break;
     }
   }
 
@@ -353,6 +389,7 @@ export function computeVoxelStats(grid: VoxelGrid, computeTimeMs: number): Voxel
     outletCount,
     sourceCount,
     porousCount,
+    openingCount,
   };
 }
 
@@ -367,7 +404,8 @@ let workerTaskId = 0;
 export async function voxelizeAsync(
   room: Room,
   dx = 0.1,
-  neighbours: readonly Room[] = []
+  neighbours: readonly Room[] = [],
+  flowRoles?: OpeningFlowRoles
 ): Promise<{ grid: VoxelGrid; timeMs: number }> {
   // Use Web Worker if available and execution previously exceeded 50 ms
   if (typeof window !== 'undefined' && typeof Worker !== 'undefined' && lastExecDurationMs > 50) {
@@ -402,7 +440,7 @@ export async function voxelizeAsync(
         };
 
         workerInstance?.addEventListener('message', handler);
-        workerInstance?.postMessage({ room, dx, neighbours, id });
+        workerInstance?.postMessage({ room, dx, neighbours, flowRoles, id });
       });
 
       lastExecDurationMs = res.duration;
@@ -425,7 +463,7 @@ export async function voxelizeAsync(
   }
 
   const start = performance.now();
-  const grid = voxelize(room, dx, neighbours);
+  const grid = voxelize(room, dx, neighbours, flowRoles);
   const timeMs = performance.now() - start;
   lastExecDurationMs = timeMs;
   return { grid, timeMs };

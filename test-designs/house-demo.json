@@ -1,0 +1,864 @@
+{
+  "version": 1,
+  "id": "room-living",
+  "type": "living",
+  "name": "Living Room",
+  "wallHeight": 2.7,
+  "wallThickness": 0.15,
+  "outline": [
+    [
+      -3,
+      -3.5
+    ],
+    [
+      3.15,
+      -3.5
+    ],
+    [
+      3.15,
+      1.5
+    ],
+    [
+      -3,
+      1.5
+    ]
+  ],
+  "openings": [
+    {
+      "id": "living-window-n1",
+      "wallIndex": 0,
+      "type": "window",
+      "subType": "window",
+      "offset": 1,
+      "width": 1.6,
+      "height": 1.2,
+      "sill": 0.9,
+      "role": "closed",
+      "openFraction": 0
+    },
+    {
+      "id": "living-window-n2",
+      "wallIndex": 0,
+      "type": "window",
+      "subType": "window",
+      "offset": 3.6,
+      "width": 1.6,
+      "height": 1.2,
+      "sill": 0.9,
+      "role": "closed",
+      "openFraction": 0
+    },
+    {
+      "id": "living-window-east",
+      "wallIndex": 1,
+      "type": "window",
+      "subType": "window",
+      "offset": 1.6,
+      "width": 1.4,
+      "height": 1.2,
+      "sill": 0.9,
+      "role": "inlet",
+      "openFraction": 0.8
+    },
+    {
+      "id": "living-window-west",
+      "wallIndex": 3,
+      "type": "window",
+      "subType": "window",
+      "offset": 1.6,
+      "width": 1.4,
+      "height": 1.2,
+      "sill": 0.9,
+      "role": "outlet",
+      "openFraction": 0.8
+    }
+  ],
+  "objects": [
+    {
+      "id": "sofa-3-seater-demo-0",
+      "assetId": "sofa-3-seater",
+      "name": "Sofa",
+      "position": [
+        -1.4,
+        0,
+        -2.6
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        2.1,
+        0.85,
+        0.9
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false
+    },
+    {
+      "id": "coffee-table-demo-1",
+      "assetId": "coffee-table",
+      "name": "Coffee Table",
+      "position": [
+        -1.4,
+        0,
+        -1.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        1,
+        0.45,
+        0.6
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false
+    },
+    {
+      "id": "dining-table-demo-2",
+      "assetId": "dining-table",
+      "name": "Dining Table",
+      "position": [
+        1.8,
+        0,
+        0.4
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        1.6,
+        0.76,
+        0.9
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false
+    },
+    {
+      "id": "tv-unit-demo-3",
+      "assetId": "tv-unit",
+      "name": "TV Unit",
+      "position": [
+        -1.4,
+        0,
+        1.25
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        1.5,
+        0.45,
+        0.4
+      ],
+      "elevation": 0,
+      "role": "solid",
+      "wallMounted": false
+    },
+    {
+      "id": "demo-incense",
+      "assetId": "pm25-incense",
+      "name": "Incense",
+      "position": [
+        0.4,
+        0,
+        -3
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.1,
+        0.3,
+        0.1
+      ],
+      "elevation": 0.6,
+      "role": "none",
+      "wallMounted": false,
+      "color": "#a16207"
+    }
+  ],
+  "params": {
+    "windSpeed": 2,
+    "windDirDeg": 90,
+    "pressurePa": 101325,
+    "indoorTempC": 25,
+    "outdoorTempC": 30,
+    "humidity": 50,
+    "datetime": "2026-10-05T12:00:00Z",
+    "outdoorPm25": {
+      "valueUgM3": 60,
+      "source": "manual"
+    },
+    "exposure": "urbanDense"
+  },
+  "floorMaterial": "wood",
+  "wallMaterial": "paint",
+  "otherRooms": [
+    {
+      "version": 1,
+      "id": "room-muzt1csa-fycm",
+      "type": "bedroom",
+      "name": "Bedroom 2",
+      "wallHeight": 2.7,
+      "wallThickness": 0.15,
+      "outline": [
+        [
+          -3,
+          1.65
+        ],
+        [
+          0.6,
+          1.65
+        ],
+        [
+          0.6,
+          4.85
+        ],
+        [
+          -3,
+          4.85
+        ]
+      ],
+      "openings": [
+        {
+          "id": "b2-window-west",
+          "wallIndex": 3,
+          "type": "window",
+          "subType": "window",
+          "offset": 1,
+          "width": 1.2,
+          "height": 1.2,
+          "sill": 0.9,
+          "role": "closed",
+          "openFraction": 0
+        },
+        {
+          "id": "b2-door-living",
+          "wallIndex": 0,
+          "type": "door",
+          "subType": "single-door",
+          "offset": 2.4,
+          "width": 0.9,
+          "height": 2.1,
+          "sill": 0,
+          "role": "closed",
+          "openFraction": 0
+        },
+        {
+          "id": "b2-door-bath",
+          "wallIndex": 2,
+          "type": "door",
+          "subType": "single-door",
+          "offset": 1.8,
+          "width": 0.8,
+          "height": 2.1,
+          "sill": 0,
+          "role": "closed",
+          "openFraction": 0
+        }
+      ],
+      "objects": [
+        {
+          "id": "double-bed-muzt1csa-0",
+          "assetId": "double-bed",
+          "name": "Double Bed",
+          "position": [
+            -1.2,
+            0,
+            2.65
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.5,
+            0.55,
+            2
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false,
+          "color": "#4338ca"
+        },
+        {
+          "id": "nightstand-muzt1csa-1",
+          "assetId": "nightstand",
+          "name": "Nightstand",
+          "position": [
+            -2.3,
+            0,
+            1.85
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.5,
+            0.5,
+            0.4
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false,
+          "color": "#78350f"
+        },
+        {
+          "id": "nightstand-muzt1csa-2",
+          "assetId": "nightstand",
+          "name": "Nightstand",
+          "position": [
+            -0.1,
+            0,
+            1.85
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.5,
+            0.5,
+            0.4
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false,
+          "color": "#78350f"
+        },
+        {
+          "id": "wardrobe-muzt1csa-3",
+          "assetId": "wardrobe",
+          "name": "Wardrobe",
+          "position": [
+            -2.7,
+            0,
+            4.15
+          ],
+          "rotation": [
+            0,
+            1.5708,
+            0
+          ],
+          "size": [
+            1.2,
+            2,
+            0.6
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false,
+          "color": "#78350f"
+        },
+        {
+          "id": "dresser-muzt1csa-4",
+          "assetId": "dresser",
+          "name": "Dresser",
+          "position": [
+            0.35,
+            0,
+            4.15
+          ],
+          "rotation": [
+            0,
+            -1.5708,
+            0
+          ],
+          "size": [
+            1.2,
+            0.8,
+            0.5
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false,
+          "color": "#78350f"
+        }
+      ],
+      "params": {
+        "windSpeed": 2,
+        "windDirDeg": 90,
+        "pressurePa": 101325,
+        "indoorTempC": 25,
+        "outdoorTempC": 30,
+        "humidity": 50,
+        "datetime": "2026-10-05T12:00:00Z",
+        "outdoorPm25": {
+          "valueUgM3": 60,
+          "source": "manual"
+        },
+        "exposure": "urbanDense"
+      },
+      "floorMaterial": "wood",
+      "wallMaterial": "paint"
+    },
+    {
+      "version": 1,
+      "id": "room-kitchen",
+      "type": "kitchen",
+      "name": "Kitchen",
+      "wallHeight": 2.7,
+      "wallThickness": 0.15,
+      "outline": [
+        [
+          0.75,
+          1.65
+        ],
+        [
+          3.15,
+          1.65
+        ],
+        [
+          3.15,
+          4.85
+        ],
+        [
+          0.75,
+          4.85
+        ]
+      ],
+      "openings": [
+        {
+          "id": "kitchen-window-east",
+          "wallIndex": 1,
+          "type": "window",
+          "subType": "window",
+          "offset": 1,
+          "width": 1.2,
+          "height": 1.2,
+          "sill": 0.9,
+          "role": "inlet",
+          "openFraction": 0.5
+        },
+        {
+          "id": "kitchen-door-living",
+          "wallIndex": 0,
+          "type": "door",
+          "subType": "single-door",
+          "offset": 0.6,
+          "width": 0.9,
+          "height": 2.1,
+          "sill": 0,
+          "role": "outlet",
+          "openFraction": 1
+        }
+      ],
+      "objects": [
+        {
+          "id": "kitchen-counter-demo-4",
+          "assetId": "kitchen-counter",
+          "name": "Counter",
+          "position": [
+            2.3,
+            0,
+            4.55
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.6,
+            0.9,
+            0.6
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false
+        },
+        {
+          "id": "oven-demo-5",
+          "assetId": "oven",
+          "name": "Gas Stove",
+          "position": [
+            2.85,
+            0,
+            2.3
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.6,
+            0.9,
+            0.6
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false
+        },
+        {
+          "id": "fridge-demo-6",
+          "assetId": "fridge",
+          "name": "Refrigerator",
+          "position": [
+            1.1,
+            0,
+            4.45
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.7,
+            1.8,
+            0.7
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false
+        },
+        {
+          "id": "demo-frying",
+          "assetId": "pm25-stove-frying",
+          "name": "Frying",
+          "position": [
+            2.85,
+            0,
+            2.3
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.36,
+            0.1,
+            0.36
+          ],
+          "elevation": 0.9,
+          "role": "none",
+          "wallMounted": false,
+          "color": "#f97316",
+          "sourceSchedule": [
+            {
+              "startMin": 10,
+              "durationMin": 45
+            }
+          ]
+        }
+      ],
+      "params": {
+        "windSpeed": 2,
+        "windDirDeg": 90,
+        "pressurePa": 101325,
+        "indoorTempC": 25,
+        "outdoorTempC": 30,
+        "humidity": 50,
+        "datetime": "2026-10-05T12:00:00Z",
+        "outdoorPm25": {
+          "valueUgM3": 60,
+          "source": "manual"
+        },
+        "exposure": "urbanDense"
+      },
+      "floorMaterial": "wood",
+      "wallMaterial": "paint"
+    },
+    {
+      "version": 1,
+      "id": "room-bath",
+      "type": "bathroom",
+      "name": "Bathroom",
+      "wallHeight": 2.7,
+      "wallThickness": 0.15,
+      "outline": [
+        [
+          -3,
+          5
+        ],
+        [
+          -0.6,
+          5
+        ],
+        [
+          -0.6,
+          7.4
+        ],
+        [
+          -3,
+          7.4
+        ]
+      ],
+      "openings": [
+        {
+          "id": "bath-window-south",
+          "wallIndex": 2,
+          "type": "window",
+          "subType": "window",
+          "offset": 0.8,
+          "width": 0.6,
+          "height": 0.6,
+          "sill": 1.6,
+          "role": "closed",
+          "openFraction": 0
+        }
+      ],
+      "objects": [
+        {
+          "id": "toilet-demo-7",
+          "assetId": "toilet",
+          "name": "Toilet",
+          "position": [
+            -2.6,
+            0,
+            6.9
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.4,
+            0.8,
+            0.7
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false
+        },
+        {
+          "id": "sink-vanity-demo-8",
+          "assetId": "sink-vanity",
+          "name": "Vanity",
+          "position": [
+            -1.4,
+            0,
+            5.3
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.9,
+            0.85,
+            0.5
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false
+        }
+      ],
+      "params": {
+        "windSpeed": 2,
+        "windDirDeg": 90,
+        "pressurePa": 101325,
+        "indoorTempC": 25,
+        "outdoorTempC": 30,
+        "humidity": 50,
+        "datetime": "2026-10-05T12:00:00Z",
+        "outdoorPm25": {
+          "valueUgM3": 60,
+          "source": "manual"
+        },
+        "exposure": "urbanDense"
+      },
+      "floorMaterial": "wood",
+      "wallMaterial": "paint"
+    },
+    {
+      "version": 1,
+      "id": "room-bedroom-1",
+      "type": "bedroom",
+      "name": "Bedroom 1",
+      "wallHeight": 2.7,
+      "wallThickness": 0.15,
+      "outline": [
+        [
+          -0.45,
+          5
+        ],
+        [
+          3.15,
+          5
+        ],
+        [
+          3.15,
+          8.2
+        ],
+        [
+          -0.45,
+          8.2
+        ]
+      ],
+      "openings": [
+        {
+          "id": "b1-window-east",
+          "wallIndex": 1,
+          "type": "window",
+          "subType": "window",
+          "offset": 1,
+          "width": 1.4,
+          "height": 1.2,
+          "sill": 0.9,
+          "role": "closed",
+          "openFraction": 0
+        },
+        {
+          "id": "b1-window-south",
+          "wallIndex": 2,
+          "type": "window",
+          "subType": "window",
+          "offset": 1.1,
+          "width": 1.4,
+          "height": 1.2,
+          "sill": 0.9,
+          "role": "closed",
+          "openFraction": 0
+        },
+        {
+          "id": "b1-door-kitchen",
+          "wallIndex": 0,
+          "type": "door",
+          "subType": "single-door",
+          "offset": 1.7,
+          "width": 0.9,
+          "height": 2.1,
+          "sill": 0,
+          "role": "closed",
+          "openFraction": 0
+        }
+      ],
+      "objects": [
+        {
+          "id": "double-bed-demo-9",
+          "assetId": "double-bed",
+          "name": "Double Bed",
+          "position": [
+            1.6,
+            0,
+            7.1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.5,
+            0.55,
+            2
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false
+        },
+        {
+          "id": "wardrobe-demo-10",
+          "assetId": "wardrobe",
+          "name": "Wardrobe",
+          "position": [
+            0.1,
+            0,
+            6.6
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.6,
+            2,
+            1.2
+          ],
+          "elevation": 0,
+          "role": "solid",
+          "wallMounted": false
+        },
+        {
+          "id": "demo-purifier",
+          "assetId": "air-purifier",
+          "name": "Air Purifier",
+          "position": [
+            2.6,
+            0,
+            5.6
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.38,
+            0.6,
+            0.38
+          ],
+          "elevation": 0,
+          "role": "source",
+          "wallMounted": false,
+          "defaultAirflow": 300
+        }
+      ],
+      "params": {
+        "windSpeed": 2,
+        "windDirDeg": 90,
+        "pressurePa": 101325,
+        "indoorTempC": 25,
+        "outdoorTempC": 30,
+        "humidity": 50,
+        "datetime": "2026-10-05T12:00:00Z",
+        "outdoorPm25": {
+          "valueUgM3": 60,
+          "source": "manual"
+        },
+        "exposure": "urbanDense"
+      },
+      "floorMaterial": "wood",
+      "wallMaterial": "paint"
+    }
+  ]
+}

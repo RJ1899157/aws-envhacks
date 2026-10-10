@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { signedArea } from '../core/parser';
 import { useSceneStore, useUiStore } from '../store';
+import { computeVentilation, ventilationEnvFromRoom } from '../simulation/ventilation';
 
 export interface HeaderOverlayProps {
   className?: string;
@@ -22,35 +23,20 @@ export const HeaderOverlay: React.FC<HeaderOverlayProps> = ({ className = '' }) 
     return Math.abs(signedArea(room.outline));
   }, [room.outline]);
 
-  // Ventilation Summary calculations
+  // Ventilation summary from the computed airflow direction, not the role tags
+  const otherRooms = useSceneStore((state) => state.otherRooms);
   const ventilationStats = useMemo(() => {
-    let inletCount = 0;
-    let outletCount = 0;
-    let closedCount = 0;
-    let totalOpenArea = 0;
-
-    for (const op of room.openings) {
-      if (op.role === 'inlet') {
-        inletCount++;
-        totalOpenArea += op.width * op.height * op.openFraction;
-      } else if (op.role === 'outlet') {
-        outletCount++;
-        totalOpenArea += op.width * op.height * op.openFraction;
-      } else {
-        closedCount++;
-      }
-    }
-
-    const hasCrossVentilation = inletCount > 0 && outletCount > 0;
-
+    const v = computeVentilation(room, ventilationEnvFromRoom(room), { neighbours: otherRooms });
+    const count = (role: string) => v.openings.filter((o) => o.computedRole === role).length;
+    const totalOpenArea = v.openings.filter((o) => !o.excluded).reduce((sum, o) => sum + o.effectiveArea, 0);
     return {
-      inletCount,
-      outletCount,
-      closedCount,
+      inletCount: count('inlet'),
+      outletCount: count('outlet'),
+      closedCount: count('closed'),
       totalOpenArea: Number(totalOpenArea.toFixed(2)),
-      hasCrossVentilation,
+      hasCrossVentilation: v.type === 'cross',
     };
-  }, [room.openings]);
+  }, [room, otherRooms]);
 
   return (
     <header

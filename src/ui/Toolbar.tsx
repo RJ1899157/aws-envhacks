@@ -21,8 +21,11 @@ import {
   Sparkles,
   Menu,
   X,
+  Activity,
 } from 'lucide-react';
 import { useSceneStore, useUiStore } from '../store';
+import { useSimulationStore } from '../store/simulationStore';
+import { openExamples } from './showcase/ExamplesPicker';
 import { useCameraStore, type PivotMode } from '../store/cameraStore';
 import { useGraphicsStore, type QualitySetting, type WallOpacityMode } from '../store/graphicsStore';
 import { createStudioSample, createBedroomSample, createLivingRoomSample } from '../core/samples';
@@ -102,6 +105,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
   const showCeiling = useUiStore((state) => state.showCeiling);
   const toggleCeiling = useUiStore((state) => state.toggleCeiling);
   const showVoxelDebug = useUiStore((state) => state.showVoxelDebug);
+  const showSimulation = useSimulationStore((state) => state.viz.show);
+  const toggleSimulation = useSimulationStore((state) => state.toggleShow);
   const toggleVoxelDebug = useUiStore((state) => state.toggleVoxelDebug);
   const showScaleReference = useUiStore((state) => state.showScaleReference);
   const toggleScaleReference = useUiStore((state) => state.toggleScaleReference);
@@ -154,7 +159,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
         }
 
         if (result.room) {
-          loadRoom(result.room);
+          // Multi-room plans carry the other rooms in `otherRooms`
+          const rawOthers = (parsed as { otherRooms?: unknown }).otherRooms;
+          const others = Array.isArray(rawOthers)
+            ? rawOthers.map((r) => parseRoom(r).room).filter((r): r is NonNullable<typeof r> => Boolean(r))
+            : [];
+          loadRoom(result.room, others);
           if (result.issues.length > 0) {
             setImportModal({ isOpen: true, issues: result.issues, hasErrors: false });
           }
@@ -378,6 +388,36 @@ export const Toolbar: React.FC<ToolbarProps> = ({ className = '', onOpenOnboardi
             >
               <Layers size={14} strokeWidth={1.75} />
               <span>{view === '3d' ? '3D' : '2D'}</span>
+            </button>
+          </Tooltip>
+
+          {/* Example stories (showcase house with precomputed results) */}
+          <Tooltip label="Example stories: see every simulation feature in seconds">
+            <button
+              type="button"
+              data-testid="examples-btn"
+              onClick={openExamples}
+              className="h-7 px-2.5 rounded-[6px] font-medium border flex items-center gap-1.5 transition-colors bg-black/20 dark:bg-white/5 hover:bg-black/30 dark:hover:bg-white/10 border-white/10 text-neutral-300"
+            >
+              <Sparkles size={14} strokeWidth={1.75} />
+              <span className="hidden xl:inline">Examples</span>
+            </button>
+          </Tooltip>
+
+          {/* Simulation layer toggle */}
+          <Tooltip label="Show / hide simulation results">
+            <button
+              type="button"
+              data-testid="toggle-simulation-btn"
+              onClick={toggleSimulation}
+              className={`h-7 px-2.5 rounded-[6px] font-medium border flex items-center gap-1.5 transition-colors ${
+                showSimulation
+                  ? 'bg-indigo-600 border-indigo-400 text-white font-semibold'
+                  : 'bg-black/20 dark:bg-white/5 hover:bg-black/30 dark:hover:bg-white/10 border-white/10 text-neutral-300'
+              }`}
+            >
+              <Activity size={14} strokeWidth={1.75} />
+              <span className="hidden xl:inline">Simulation</span>
             </button>
           </Tooltip>
 

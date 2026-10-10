@@ -2,7 +2,8 @@ import { RoomSchema, type Room } from '../schema';
 
 /**
  * Sample 3: L-Shaped Living & Dining Room (Non-rectangular 6-vertex polygon)
- * Features cross-ventilation, living area with sofa and TV, dining area with dining table, and fan.
+ * Features cross-ventilation (wind from the north enters the north window, wall 0, and leaves by the
+ * south window, wall 4), living area with sofa and TV, dining area with dining table, and fan.
  */
 export function createLivingRoomSample(): Room {
   const roomData = {
@@ -20,7 +21,7 @@ export function createLivingRoomSample(): Room {
     ] as [number, number][],
     openings: [
       {
-        id: 'living-window-south',
+        id: 'living-window-north',
         wallIndex: 0,
         type: 'window' as const,
         offset: 1.0,
@@ -31,7 +32,7 @@ export function createLivingRoomSample(): Room {
         openFraction: 0.8,
       },
       {
-        id: 'living-window-north',
+        id: 'living-window-south',
         wallIndex: 4,
         type: 'window' as const,
         offset: 2.0,
@@ -118,7 +119,7 @@ export function createLivingRoomSample(): Room {
     ],
     params: {
       windSpeed: 2.8,
-      windDirDeg: 90,
+      windDirDeg: 0,
       pressurePa: 101325,
       indoorTempC: 23.0,
       outdoorTempC: 27.5,

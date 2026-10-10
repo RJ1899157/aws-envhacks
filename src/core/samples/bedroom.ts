@@ -2,7 +2,8 @@ import { RoomSchema, type Room } from '../schema';
 
 /**
  * Sample 2: Master Bedroom with Two Windows (4.0m x 3.5m)
- * Features cross-ventilation via opposing north/south windows, double bed, wardrobe, ceiling fan, and nightstand.
+ * Features cross-ventilation via opposing north/south windows (wind from the south enters the south
+ * window, wall 2, and leaves by the north window, wall 0), double bed, wardrobe, ceiling fan, and nightstand.
  */
 export function createBedroomSample(): Room {
   const roomData = {
@@ -18,25 +19,25 @@ export function createBedroomSample(): Room {
     ] as [number, number][],
     openings: [
       {
-        id: 'bed-window-south',
+        id: 'bed-window-north',
         wallIndex: 0,
         type: 'window' as const,
         offset: 1.25,
         width: 1.5,
         height: 1.2,
         sill: 0.9,
-        role: 'inlet' as const,
+        role: 'outlet' as const,
         openFraction: 0.8,
       },
       {
-        id: 'bed-window-north',
+        id: 'bed-window-south',
         wallIndex: 2,
         type: 'window' as const,
         offset: 1.4,
         width: 1.2,
         height: 1.2,
         sill: 0.9,
-        role: 'outlet' as const,
+        role: 'inlet' as const,
         openFraction: 0.8,
       },
       {
