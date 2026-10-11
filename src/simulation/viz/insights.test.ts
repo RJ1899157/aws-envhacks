@@ -35,10 +35,10 @@ describe('insight wording', () => {
   });
 
   it('sums the house up in one line', () => {
-    expect(houseSummary('pollution', rooms)).toBe('2 of 4 rooms are above the Indian 24-h limit (60 µg/m³); worst: Kitchen');
+    expect(houseSummary('pollution', rooms)).toBe("While every source is on, 2 of 4 rooms are above 60 µg/m³ (India's 24-h limit); worst: Kitchen");
     expect(houseSummary('ventilation', rooms)).toMatch(/^1 of 4 rooms have stale air .*stalest: Bedroom 1$/);
     expect(houseSummary('airflow', rooms)).toMatch(/^1 of 4 rooms get under 1 .*least: Bedroom 1$/);
-    expect(houseSummary('pollution', rooms.slice(2))).toMatch(/^All 2 rooms are within/);
+    expect(houseSummary('pollution', rooms.slice(2))).toMatch(/^While every source is on, all 2 rooms stay within/);
   });
 });
 

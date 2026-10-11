@@ -20,6 +20,7 @@ const noRaycast = () => null;
 export const RoomPlacementController: React.FC = () => {
   const toolMode = useUiStore((state) => state.toolMode);
   const pendingRoomType = useUiStore((state) => state.pendingRoomType);
+  const furnish = useUiStore((state) => state.furnishNewRooms);
   const active = toolMode === 'room' && pendingRoomType !== null;
   const { camera, gl } = useThree();
 
@@ -101,8 +102,10 @@ export const RoomPlacementController: React.FC = () => {
       update(p);
       const g = ghostRef.current;
       if (g?.valid && pendingRoomType) {
-        // Furnished preset for the room type (the basic room has none), turned with the room
-        useSceneStore.getState().addRoom(pendingRoomType, g.outline, buildPresetObjects(pendingRoomType, g.outline, rotatedRef.current));
+        // Furnished preset for the room type (the basic room has none), turned with the room, unless
+        // an empty room was asked for
+        const objects = useUiStore.getState().furnishNewRooms ? buildPresetObjects(pendingRoomType, g.outline, rotatedRef.current) : [];
+        useSceneStore.getState().addRoom(pendingRoomType, g.outline, objects);
         useUiStore.getState().setToolMode('select');
       } else if (g) {
         useUiStore.getState().setToastMessage('Rooms can’t overlap: move it to free space or against a wall');
@@ -151,7 +154,7 @@ export const RoomPlacementController: React.FC = () => {
   }, [ghostGeometry]);
 
   if (!active || !ghost || !ghostGeometry || !pendingRoomType) return null;
-  const furniture = buildPresetObjects(pendingRoomType, ghost.outline, rotated);
+  const furniture = furnish ? buildPresetObjects(pendingRoomType, ghost.outline, rotated) : [];
   const color = ghost.valid ? '#6366f1' : '#ef4444';
   const xs = ghost.outline.map((p) => p[0]);
   const zs = ghost.outline.map((p) => p[1]);

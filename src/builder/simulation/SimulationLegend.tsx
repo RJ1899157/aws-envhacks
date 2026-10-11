@@ -102,7 +102,7 @@ const CompareLegend: React.FC<{ fields: CompareFields; view: CompareView; mode: 
 };
 
 const TITLES: Record<SimViewMode, string> = {
-  pollution: 'Colour = how polluted the air is (PM2.5)',
+  pollution: 'Colour = PM2.5 while every source is on',
   ventilation: 'Colour = how old / stale the air is',
   airflow: 'Lines = where air flows',
 };
@@ -346,7 +346,7 @@ export const SimulationLegend: React.FC = () => {
               Steady
             </button>
             <span className="ml-auto text-neutral-200 tabular-nums text-[9.5px]" data-testid="sim-playback-time">
-              {timeS === null ? 'Steady state, sources on' : `t = ${fmtClock(timeS)}`}
+              {timeS === null ? 'While every source is on' : `t = ${fmtClock(timeS)}`}
             </span>
           </div>
           <div

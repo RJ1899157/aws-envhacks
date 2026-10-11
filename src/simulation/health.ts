@@ -1,5 +1,5 @@
 import type { Room, RoomType } from '../core/schema';
-import { INDIA_NAAQS_PM25_24H, SECONDS_PER_HOUR, WHO_2021_PM25_24H } from './constants';
+import { INDIA_NAAQS_PM25_24H, SECONDS_PER_HOUR, WHO_2021_PM25_24H, type Pm25SourcePresetId } from './constants';
 import type { NetworkResult } from './house/network';
 import { AQI_PM25_BANDS } from './viz/colormap';
 import { placedSourceParams } from './sources';
@@ -195,6 +195,40 @@ export function dailyPm25(rooms: readonly Room[], simulate: (rooms: readonly Roo
       .map((o) => `${o.name} (${r.name})`)
   );
   return { meanUgM3, alwaysOn };
+}
+
+/** What a source is doing, to finish "While …" */
+const SOURCE_ACTIVITY: Partial<Record<Pm25SourcePresetId, string>> = {
+  'gas-stove-frying': 'frying',
+  'gas-stove-boiling': 'boiling on the gas stove',
+  'tawa-roti': 'making rotis on the tawa',
+  incense: 'incense burns',
+  'mosquito-coil': 'the mosquito coil burns',
+  'candle-diya': 'candles or diyas burn',
+  cigarette: 'someone smokes',
+  'sweeping-dusting': 'sweeping or dusting',
+  'kerosene-coal-heater': 'the heater burns',
+  'toilet-flush': 'flushing',
+};
+
+/** Enabled sources that run on a schedule (so the day average is lower than while they run). */
+export function scheduledSources(rooms: readonly Room[]): { activity: string; roomId: string; roomName: string }[] {
+  return rooms.flatMap((r) =>
+    r.objects.flatMap((o) => {
+      const p = placedSourceParams(o);
+      if (!p || !p.enabled || p.schedule.length === 0) return [];
+      return [{ activity: SOURCE_ACTIVITY[p.preset] ?? `the ${p.label.toLowerCase()} is on`, roomId: r.id ?? '', roomName: r.name }];
+    })
+  );
+}
+
+/**
+ * PM2.5 while the sources run (the steady state the 3D view shows), when it is worth stating next
+ * to the day average: a worse band than the day average and at least 1.5× it. Null otherwise.
+ */
+export function peakExposure(dayMeanUgM3: number, whileOnUgM3: number): Pm25Health | null {
+  const peak = pm25Health(whileOnUgM3);
+  return peak.level > pm25Health(dayMeanUgM3).level && whileOnUgM3 >= 1.5 * dayMeanUgM3 ? peak : null;
 }
 
 // ---------------------------------------------------------------------------

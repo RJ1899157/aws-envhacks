@@ -3,7 +3,7 @@ import { RoomSchema, type Room } from '../core/schema';
 import { opening, rectRoom } from '../test/simulationFixtures';
 import { createShowcaseHouse } from '../showcase/house';
 import { simulateHouseNetwork } from './house/network';
-import { CO2_GENERATION_M3H, OUTDOOR_CO2_PPM, co2Health, dailyPm25, effectiveOutdoorAch, estimateCo2, pm25Health, roomHazards } from './health';
+import { CO2_GENERATION_M3H, OUTDOOR_CO2_PPM, co2Health, dailyPm25, effectiveOutdoorAch, estimateCo2, peakExposure, pm25Health, roomHazards, scheduledSources } from './health';
 
 describe('health guidance', () => {
   it('PM2.5 uses the CPCB AQI bands and statements, and guideline multiples', () => {
@@ -69,6 +69,19 @@ describe('health guidance', () => {
     const kitchen = RoomSchema.parse({ ...rectRoom(3, 3, 2.7), objects: [stove] });
     expect(titles(kitchen, 0.5)).toContain('Gas cooking fumes build up');
     expect(titles(kitchen, 0.5, true)).not.toContain('Gas cooking fumes build up');
+  });
+
+  it('flags the PM2.5 while sources run when it is much worse than the day average', () => {
+    // Kitchen: frying for half an hour a day; ~500 while it runs, ~60 over the day
+    expect(peakExposure(60, 500)!.band).toBe('Severe');
+    // Same band, or barely higher: nothing extra to say
+    expect(peakExposure(70, 85)).toBeNull();
+    expect(peakExposure(58, 62)).toBeNull();
+    // Sources on a schedule are listed; unscheduled or switched-off ones are not
+    const src = (extra = {}) => ({ id: 's', assetId: 'pm25-stove-frying', name: 'Frying', position: [1, 0, 1], size: [0.36, 0.1, 0.36], role: 'none', ...extra });
+    const k = (o: object) => RoomSchema.parse({ ...rectRoom(3, 3, 2.7), id: 'k', name: 'Kitchen', objects: [o] });
+    expect(scheduledSources([k(src({ sourceSchedule: [{ startMin: 0, durationMin: 30 }] }))])).toEqual([{ activity: 'frying', roomId: 'k', roomName: 'Kitchen' }]);
+    expect(scheduledSources([k(src())])).toEqual([]);
   });
 
   it('a room fed outdoor air through other rooms is not "poorly ventilated"', () => {
