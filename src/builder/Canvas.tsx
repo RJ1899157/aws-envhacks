@@ -67,7 +67,7 @@ import { ScenarioEngine } from './simulation/ScenarioEngine';
 import { ExamplesPicker, openExamples } from '../ui/showcase/ExamplesPicker';
 import { StoryBar } from '../ui/showcase/StoryBar';
 import { registerShowcaseCamera } from '../store/showcaseStore';
-import { focusSimulationRoom, freeViewport } from './simulation/simulationCamera';
+import { fitRoomsToRect, focusSimulationRoom, freeViewport } from './simulation/simulationCamera';
 import { SourceWisps } from './simulation/SourceWisps';
 import { ScaleReference } from './ScaleReference';
 import { Scenery } from './Scenery';
@@ -735,10 +735,17 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
       }
     };
 
-    // "Simulation view": top-down isometric framing of the whole house
+    // "Simulation view": 3D framing of the whole house in the part of the view the side panels
+    // leave free (a lone room smaller, so there is space around it to add the next one)
     const handleSimulationView = () => {
       const { room: active, otherRooms } = useSceneStore.getState();
-      cameraController.goToHouseView([active, ...otherRooms], camera, controlsRef.current);
+      const rooms = [active, ...otherRooms];
+      if (useUiStore.getState().view === '2d') useUiStore.getState().setView('3d');
+      const r = gl.domElement.getBoundingClientRect();
+      fitRoomsToRect(rooms, camera, controlsRef.current, { width: r.width, height: r.height }, freeViewport(gl.domElement.parentElement ?? gl.domElement), {
+        fill: rooms.length === 1 ? 0.6 : 0.85,
+        height: Math.max(...rooms.map((x) => x.wallHeight)),
+      });
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -750,7 +757,7 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
       window.removeEventListener('fly-focus-object', handleFlyFocusEvent);
       window.removeEventListener('airforce:simulation-view', handleSimulationView);
     };
-  }, [camera, controlsRef, room]);
+  }, [camera, controlsRef, room, gl]);
 
   // Adjust camera when view mode switches between 2D and 3D
   // Room is read from the store (not a dependency) so editing the room doesn't reset the camera.

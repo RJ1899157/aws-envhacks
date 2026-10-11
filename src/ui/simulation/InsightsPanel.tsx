@@ -8,7 +8,7 @@ import { SuggestedActions } from './SuggestedActions';
 import { ComparePanel } from './ComparePanel';
 import { useScenarioStore } from '../../store/scenarioStore';
 
-const METRIC_NAME = { pollution: 'PM2.5', ventilation: 'Air age', airflow: 'Air changes' } as const;
+const METRIC_NAME = { pollution: 'PM2.5 while sources on', ventilation: 'Air age', airflow: 'Air changes' } as const;
 
 /** Black or white text for a CSS colour ("rgb(r g b)" or "#rrggbb") used as a background. */
 function textOn(color: string): string {

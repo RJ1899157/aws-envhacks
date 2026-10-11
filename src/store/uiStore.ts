@@ -23,6 +23,8 @@ export interface UiState {
   roomSelected: boolean;
   /** Room type being placed while toolMode is 'room' */
   pendingRoomType: import('../core/schema').RoomType | null;
+  /** Rooms placed next come with the furniture preset of their type (false = empty room) */
+  furnishNewRooms: boolean;
   transformMode: TransformMode;
   view: ViewMode;
   snapEnabled: boolean;
@@ -63,6 +65,7 @@ export interface UiState {
   setToolMode: (mode: ToolMode) => void;
   setRoomSelected: (selected: boolean) => void;
   setPendingRoomType: (type: import('../core/schema').RoomType | null) => void;
+  setFurnishNewRooms: (furnish: boolean) => void;
   setTransformMode: (mode: TransformMode) => void;
   setView: (view: ViewMode) => void;
   setSnapEnabled: (enabled: boolean) => void;
@@ -107,6 +110,7 @@ export const initialUiState = {
   toolMode: 'select' as ToolMode,
   roomSelected: false,
   pendingRoomType: null as import('../core/schema').RoomType | null,
+  furnishNewRooms: true,
   transformMode: 'translate' as TransformMode,
   view: '3d' as ViewMode,
   snapEnabled: true,
@@ -146,6 +150,7 @@ export const useUiStore = create<UiState>()((set) => ({
   setToolMode: (toolMode) => set({ toolMode }),
   setRoomSelected: (roomSelected) => set({ roomSelected }),
   setPendingRoomType: (pendingRoomType) => set({ pendingRoomType }),
+  setFurnishNewRooms: (furnishNewRooms) => set({ furnishNewRooms }),
   setTransformMode: (transformMode) => set({ transformMode }),
   setView: (view) => set({ view }),
   setSnapEnabled: (snapEnabled) => set({ snapEnabled }),

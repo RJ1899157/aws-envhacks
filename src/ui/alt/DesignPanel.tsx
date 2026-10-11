@@ -13,6 +13,7 @@ import { useSceneStore } from '../../store/sceneStore';
 import { useUiStore } from '../../store/uiStore';
 import { DESIGN_STEPS, cancelPlacement, useAltStore, type DesignStep } from './altStore';
 import { AboutHomeCard, homeSummary } from './AboutHomeCard';
+import { RoomTemplatePicker } from './RoomTemplatePicker';
 import { FURNITURE_ITEMS, MORE_FURNITURE_ITEMS, PARTITION_ITEMS, POLLUTION_GROUPS, VENTILATION_GROUPS, altLabel, searchItems, type AltItem } from './altCatalog';
 import type { QuickShapeType } from '../../core/quickShapes';
 
@@ -269,14 +270,21 @@ const RoomsStep: React.FC = () => {
     if (removed > 0) useUiStore.getState().setToastMessage(`${removed} ${removed === 1 ? 'opening was' : 'openings were'} removed (no longer on a wall). Undo with Ctrl+Z.`);
   };
 
-  const placeRoom = (type: RoomType) => {
-    const ui = useUiStore.getState();
-    if (ui.pendingRoomType === type) {
+  // Picking a room type asks first: furnished template or empty room (3D previews of both)
+  const [choosing, setChoosing] = useState<RoomType | null>(null);
+  const pickRoom = (type: RoomType) => {
+    if (useUiStore.getState().pendingRoomType === type) {
       cancelPlacement();
       return;
     }
     cancelPlacement();
+    setChoosing(type);
+  };
+  const placeRoom = (type: RoomType, furnished: boolean) => {
+    const ui = useUiStore.getState();
+    setChoosing(null);
     useSceneStore.getState().clearSelection();
+    ui.setFurnishNewRooms(furnished);
     ui.setPendingRoomType(type);
     ui.setToolMode('room');
   };
@@ -284,6 +292,26 @@ const RoomsStep: React.FC = () => {
   return (
     <>
       <HomeChip />
+      <Section title={project === 'house' || rooms.length > 1 ? 'Add a room' : 'Add another room'}>
+        <Grid>
+          {ROOM_TYPE_ORDER.filter((t) => t !== 'basic').map((t) => (
+            <button
+              key={t}
+              type="button"
+              data-testid={`alt-add-room-${t}`}
+              onClick={() => pickRoom(t)}
+              className={`p-2 rounded-[8px] border text-left text-[12px] font-medium transition-colors ${
+                pendingRoomType === t ? 'border-indigo-400 bg-indigo-500/20 text-white' : 'border-white/10 bg-white/[0.04] text-neutral-200 hover:bg-white/[0.08]'
+              }`}
+            >
+              {ROOM_TYPES[t].label}
+            </button>
+          ))}
+        </Grid>
+        <Tip>Pick a room, choose furnished or empty, then click next to your rooms to place it. Rooms that touch share a wall; add a door on it in the Doors & windows step.</Tip>
+        {choosing && <RoomTemplatePicker type={choosing} onPick={(furnished) => placeRoom(choosing, furnished)} onClose={() => setChoosing(null)} />}
+      </Section>
+
       {rooms.length > 1 && (
         <Section title={`Your rooms (${rooms.length})`}>
           <div className="flex flex-col gap-1">
@@ -386,24 +414,6 @@ const RoomsStep: React.FC = () => {
         </Grid>
       </Section>
 
-      <Section title={project === 'house' || rooms.length > 1 ? 'Add a room' : 'Add another room'}>
-        <Grid>
-          {ROOM_TYPE_ORDER.filter((t) => t !== 'basic').map((t) => (
-            <button
-              key={t}
-              type="button"
-              data-testid={`alt-add-room-${t}`}
-              onClick={() => placeRoom(t)}
-              className={`p-2 rounded-[8px] border text-left text-[12px] font-medium transition-colors ${
-                pendingRoomType === t ? 'border-indigo-400 bg-indigo-500/20 text-white' : 'border-white/10 bg-white/[0.04] text-neutral-200 hover:bg-white/[0.08]'
-              }`}
-            >
-              {ROOM_TYPES[t].label}
-            </button>
-          ))}
-        </Grid>
-        <Tip>Pick a room, then click next to your rooms to place it. Rooms that touch share a wall; add a door on it in the Doors & windows step.</Tip>
-      </Section>
     </>
   );
 };

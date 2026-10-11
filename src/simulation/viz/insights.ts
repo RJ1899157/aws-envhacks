@@ -99,7 +99,11 @@ export function rankRooms<T extends RoomMetrics>(mode: InsightMode, rooms: reado
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
-/** One-line conclusion for the house, e.g. "3 of 6 rooms are above the Indian 24-h limit; worst: Kitchen". */
+/**
+ * One-line conclusion for the house, e.g. "While every source is on, 3 of 6 rooms are above 60 µg/m³
+ * (India's 24-h limit); worst: Kitchen". The values are steady state with every source on, not day
+ * averages (the Health card has those), so the sentence says so.
+ */
 export function houseSummary(mode: InsightMode, rooms: readonly RoomMetrics[]): string {
   if (rooms.length === 0) return 'No rooms to summarise.';
   const ranked = rankRooms(mode, rooms);
@@ -107,8 +111,8 @@ export function houseSummary(mode: InsightMode, rooms: readonly RoomMetrics[]): 
   const n = rooms.length;
   if (mode === 'pollution') {
     const bad = rooms.filter((r) => r.pm25 > INDIA_NAAQS_PM25_24H).length;
-    if (bad === 0) return `All ${n} rooms are within the Indian 24-h limit (${INDIA_NAAQS_PM25_24H} µg/m³); highest: ${worst.name}`;
-    return `${bad} of ${n} ${plural(n, 'room is', 'rooms are')} above the Indian 24-h limit (${INDIA_NAAQS_PM25_24H} µg/m³); worst: ${worst.name}`;
+    if (bad === 0) return `While every source is on, all ${n} rooms stay within ${INDIA_NAAQS_PM25_24H} µg/m³ (India's 24-h limit); highest: ${worst.name}`;
+    return `While every source is on, ${bad} of ${n} ${plural(n, 'room is', 'rooms are')} above ${INDIA_NAAQS_PM25_24H} µg/m³ (India's 24-h limit); worst: ${worst.name}`;
   }
   if (mode === 'ventilation') {
     const bad = rooms.filter((r) => r.ageMinutes > STALE_AGE_MINUTES).length;
