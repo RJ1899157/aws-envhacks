@@ -19,8 +19,17 @@ export type SimViewMode = 'pollution' | 'ventilation' | 'airflow';
 
 export interface SimulationState {
   settings: SimulationSettings;
-  /** Last live outdoor lookup (value is also written into room.params.outdoorPm25) */
-  outdoorLookup: { status: 'idle' | 'loading' | 'done'; reading: OutdoorAirReading | null };
+  /**
+   * Last live outdoor lookup (value is also written into room.params.outdoorPm25). Display-only
+   * details (where, when, weather) stay here so they never enter the design or the simulation key.
+   */
+  outdoorLookup: {
+    status: 'idle' | 'loading' | 'done' | 'error';
+    reading: OutdoorAirReading | null;
+    /** "your location" or "Delhi" */
+    place?: string;
+    weather?: { temperatureC: number; windSpeedMs: number; windDirDeg: number } | null;
+  };
 
   status: RunStatus;
   progress: VoxelProgress | null;

@@ -117,16 +117,24 @@ const VERIFY_TOP = 3;
  * baseline has a current voxel result, voxel-verifies the top results in the background.
  * Mount once while the simulation layer is on.
  */
-export function useScenarioEngine(active: boolean): void {
+/** The design that gets ranked and the key the ranking should have (compare with `rankingKey`). */
+export function useRankingKey(): { design: Room[]; key: string } {
   const rooms = useDesign();
   const objective = useScenarioStore((s) => s.objective);
   const whatIf = useScenarioStore((s) => s.whatIf);
   const settings = useSimulationStore((s) => s.settings);
-  const resultKey = useSimulationStore((s) => s.resultKey);
-  const verifyStart = useRef(0);
   // In what-if mode rank the baseline (the scratch copy isn't the design)
   const design = whatIf ? whatIf.baseline : rooms;
   const key = useMemo(() => `${simulationInputKey(design[0]!, design.slice(1), settings)}|${JSON.stringify(objective)}`, [design, settings, objective]);
+  return { design, key };
+}
+
+export function useScenarioEngine(active: boolean): void {
+  const { design, key } = useRankingKey();
+  const objective = useScenarioStore((s) => s.objective);
+  const settings = useSimulationStore((s) => s.settings);
+  const resultKey = useSimulationStore((s) => s.resultKey);
+  const verifyStart = useRef(0);
 
   useEffect(() => {
     if (!active || useScenarioStore.getState().rankingKey === key) return;

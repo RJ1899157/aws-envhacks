@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Eye, Loader2, Wand2 } from 'lucide-react';
+import { useRankingKey } from '../../builder/simulation/useScenarios';
+import { apiBaseUrl } from '../../config';
+import { buildExplainPayload, requestExplanation, useExplainStore, type ExplanationEntry } from '../../services/explain';
+import { DEFAULT_OUTDOOR_PM25 } from '../../simulation/constants';
 import { useScenarioStore } from '../../store/scenarioStore';
 import { useSceneStore } from '../../store/sceneStore';
+import { useSimulationStore } from '../../store/simulationStore';
 import type { Effort } from '../../simulation/scenarios/generate';
 import { deltaLabel, type RankedAction } from '../../simulation/scenarios/rank';
 
@@ -36,13 +41,55 @@ const Verified: React.FC<{ r: RankedAction }> = ({ r }) => {
   return null;
 };
 
+const fmtUg = (v: number) => (Math.abs(v) < 10 ? (Math.round(v * 10) / 10).toString() : Math.round(v).toString());
+
+/**
+ * "Why?" details of a suggestion: the model's own facts and its main per-room change (instant), then,
+ * with a backend, a short AI explanation of those numbers (`entry`: its cached request).
+ */
+export const WhyDetails: React.FC<{ r: Pick<RankedAction, 'facts' | 'roomDeltas'>; entry?: ExplanationEntry }> = ({ r, entry }) => {
+  const main = r.roomDeltas[0];
+  return (
+    <div className="mt-0.5 pl-1.5 border-l border-white/10 flex flex-col gap-1 text-[9.5px] leading-snug text-neutral-400" data-testid="sim-action-why">
+      {main && (
+        <span className="text-neutral-300 tabular-nums">
+          {main.name}: {fmtUg(main.before)} → {fmtUg(main.after)} µg/m³
+        </span>
+      )}
+      {r.facts.length > 0 && (
+        <ul className="list-disc pl-3.5 flex flex-col gap-0.5">
+          {r.facts.slice(0, 6).map((f, i) => (
+            <li key={i}>{f}</li>
+          ))}
+        </ul>
+      )}
+      {apiBaseUrl && entry?.status === 'loading' && <span className="text-neutral-500">Explaining…</span>}
+      {apiBaseUrl && entry?.status === 'done' && entry.text && (
+        <span className="flex flex-col gap-0.5" data-testid="sim-action-why-ai">
+          <span className="text-neutral-200">{entry.text}</span>
+          <span className="text-[8.5px] text-neutral-500">AI explanation · numbers from the simulation</span>
+        </span>
+      )}
+    </div>
+  );
+};
+
 const ActionRow: React.FC<{ r: RankedAction; worse?: boolean; roomName?: string }> = ({ r, worse = false, roomName }) => {
   const objective = useScenarioStore((s) => s.objective);
+  const outdoorPm25 = useSceneStore((s) => s.room.params.outdoorPm25?.valueUgM3 ?? DEFAULT_OUTDOOR_PM25);
+  const [why, setWhy] = useState<{ open: boolean; key: string | null }>({ open: false, key: null });
+  const explanation = useExplainStore((s) => (why.key ? s.entries[why.key] : undefined));
   const st = useScenarioStore.getState;
   const text = r.texts.join(' + ');
   const preview = () => {
     st().setPreview({ id: 'preview', name: text, actions: r.actions });
     st().openCompare({ kind: 'baseline' }, { kind: 'preview' }, 'swipe');
+  };
+  const toggleWhy = () => {
+    if (why.open) return setWhy({ ...why, open: false });
+    // Ask the backend only when the user opens it; cached and de-duplicated by payload
+    const objectiveName = objective.kind === 'room' ? (roomName ?? 'Room') : 'Whole house';
+    setWhy({ open: true, key: apiBaseUrl ? requestExplanation(buildExplainPayload(r, objectiveName, outdoorPm25)) : null });
   };
   return (
     <li className="flex flex-col gap-1 px-1.5 py-1.5 rounded-[6px] bg-white/[0.03] border border-white/5" data-testid={worse ? 'sim-avoid-row' : 'sim-action-row'}>
@@ -55,6 +102,11 @@ const ActionRow: React.FC<{ r: RankedAction; worse?: boolean; roomName?: string 
           {r.effort}
         </span>
         <Verified r={r} />
+        {!worse && (
+          <button type="button" onClick={toggleWhy} aria-expanded={why.open} className="text-[9.5px] text-neutral-400 hover:text-neutral-200 hover:underline" data-testid="sim-action-why-toggle">
+            Why?
+          </button>
+        )}
         {!worse && (
           <span className="ml-auto flex gap-1">
             <button type="button" onClick={preview} className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/15 text-[9.5px] flex items-center gap-0.5" data-testid="sim-action-preview">
@@ -71,6 +123,7 @@ const ActionRow: React.FC<{ r: RankedAction; worse?: boolean; roomName?: string 
           </button>
         )}
       </span>
+      {!worse && why.open && <WhyDetails r={r} entry={explanation} />}
     </li>
   );
 };
@@ -87,6 +140,9 @@ export const SuggestedActions: React.FC<{ limit?: number }> = ({ limit = 5 }) =>
   const room = useSceneStore((s) => s.room);
   const otherRooms = useSceneStore((s) => s.otherRooms);
   const [avoidOpen, setAvoidOpen] = useState(false);
+  const { key } = useRankingKey();
+  const rankingKey = useScenarioStore((s) => s.rankingKey);
+  const engineOn = useSimulationStore((s) => s.viz.show);
   const rooms = [room, ...otherRooms];
   const focusName = objective.kind === 'room' ? rooms.find((r) => r.id === objective.roomId)?.name : undefined;
 
@@ -114,6 +170,11 @@ export const SuggestedActions: React.FC<{ limit?: number }> = ({ limit = 5 }) =>
       {!ranking && (
         <span className="text-[10px] text-neutral-500 flex items-center gap-1">
           <Loader2 size={11} className="animate-spin" /> Ranking actions…
+        </span>
+      )}
+      {ranking && engineOn && rankingKey !== key && (
+        <span className="text-[10px] text-neutral-500" data-testid="sim-ranking-updating">
+          Updating suggestions…
         </span>
       )}
       {ranking && ranking.better.length === 0 && <span className="text-[10px] text-neutral-400">No single change improves this noticeably.</span>}

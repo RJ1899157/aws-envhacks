@@ -11,6 +11,8 @@ import { InsightsPanel } from '../simulation/InsightsPanel';
 import { ModeSwitch } from '../simulation/ModeSwitch';
 import { homeSummary } from './AboutHomeCard';
 import { HealthCard } from './HealthCard';
+import { LiveOutdoorCaption, LiveOutdoorChip } from './LiveOutdoor';
+import type { RoomParams } from '../../core/schema';
 
 const OUTDOOR = [
   { id: 'clean', label: 'Clean', valueUgM3: 15 },
@@ -38,6 +40,8 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void }> = ({ onEdit }) => {
   const comparing = useScenarioStore((s) => s.compare !== null);
   const whatIf = useScenarioStore((s) => s.whatIf !== null);
   const outdoor = room.params.outdoorPm25?.valueUgM3 ?? DEFAULT_OUTDOOR_PM25;
+  const live = room.params.outdoorPm25?.source === 'live';
+  const outdoorLookup = useSimulationStore((s) => s.outdoorLookup);
   const lastApplied = useScenarioStore((s) => s.lastApplied);
 
   // Applying a suggested fix changes the design: say so and re-run, so the results show its effect
@@ -55,11 +59,17 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void }> = ({ onEdit }) => {
     return () => setUi({ insightsDocked: false });
   }, [setUi]);
 
-  const setOutdoor = (valueUgM3: number) => {
-    const params = { outdoorPm25: { valueUgM3, source: 'manual' as const } };
+  const applyHouseParams = (params: Partial<RoomParams>) => {
     if (whatIf) useScenarioStore.getState().setHouseParamsEverywhere(params);
     else useSceneStore.getState().setHouseParams(params);
     runSimulation();
+  };
+
+  const setOutdoor = (valueUgM3: number) => {
+    // A failed live lookup's caption no longer applies once a preset is chosen
+    const sim = useSimulationStore.getState();
+    if (sim.outdoorLookup.status === 'error') sim.setOutdoorLookup({ ...sim.outdoorLookup, status: 'idle' });
+    applyHouseParams({ outdoorPm25: { valueUgM3, source: 'manual' } });
   };
 
   return (
@@ -82,16 +92,18 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void }> = ({ onEdit }) => {
                 key={o.id}
                 type="button"
                 role="radio"
-                aria-checked={outdoor === o.valueUgM3}
+                aria-checked={!live && outdoor === o.valueUgM3}
                 onClick={() => setOutdoor(o.valueUgM3)}
                 className={`px-2 py-0.5 rounded-full text-[10.5px] border ${
-                  outdoor === o.valueUgM3 ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10'
+                  !live && outdoor === o.valueUgM3 ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10'
                 }`}
               >
                 {o.label} · {o.valueUgM3}
               </button>
             ))}
+            <LiveOutdoorChip selected={live} loading={outdoorLookup.status === 'loading'} apply={applyHouseParams} />
           </div>
+          <LiveOutdoorCaption lookup={outdoorLookup} liveSelected={live} />
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-[10.5px] uppercase tracking-wider font-semibold text-neutral-400">Show</span>
