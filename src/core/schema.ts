@@ -166,6 +166,8 @@ export const OutdoorPm25Schema = z.object({
   valueUgM3: z.number().nonnegative(), // µg/m³
   source: OutdoorPm25SourceSchema.default('manual'),
   observedAt: z.string().optional(), // ISO timestamp of a live reading
+  /** The user picked this value; otherwise Results replaces it with live conditions when a backend is set */
+  chosen: z.boolean().optional(),
 });
 export type OutdoorPm25 = z.infer<typeof OutdoorPm25Schema>;
 

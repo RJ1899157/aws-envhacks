@@ -13,6 +13,7 @@ import { SelectionPanel } from './SelectionPanel';
 import { StartScreen } from './StartScreen';
 import { BuildsDialogs, saveBuild } from './BuildsDialogs';
 import { hasUnsavedWork } from './buildActions';
+import { Landing } from './Landing';
 
 /** Toasts from the editor (e.g. "Deleted"). */
 const AltToast: React.FC = () => {
@@ -75,10 +76,11 @@ export const AltApp: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Results are only drawn on the Results screen
+  // Results are drawn on the Results screen and behind the landing intro
+  const intro = useAltStore((s) => s.phase === 'start' && s.intro);
   useEffect(() => {
-    useSimulationStore.getState().setViz({ show: phase === 'results' });
-  }, [phase]);
+    useSimulationStore.getState().setViz({ show: phase === 'results' || intro });
+  }, [phase, intro]);
 
   const simulate = useCallback(() => {
     useSceneStore.getState().clearSelection();
@@ -95,15 +97,17 @@ export const AltApp: React.FC = () => {
     clearAltSession();
     resetToNewUser();
     useAltStore.getState().reset();
+    useAltStore.getState().setIntro(false);
   }, []);
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-neutral-950 select-none" data-testid="alt-app">
       <CanvasErrorBoundary>
-        <Canvas minimal />
+        <Canvas minimal presentation={intro} />
       </CanvasErrorBoundary>
       <AltTopBar onSimulate={simulate} onEdit={edit} onStartOver={startOver} />
-      {phase === 'start' && <StartScreen />}
+      {intro && <Landing />}
+      {phase === 'start' && !intro && <StartScreen />}
       {phase === 'design' && (
         <>
           <DesignPanel onSimulate={simulate} />

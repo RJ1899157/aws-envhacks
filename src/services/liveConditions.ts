@@ -90,6 +90,14 @@ export function liveCaption(lookup: SimulationState['outdoorLookup'], liveSelect
   return `Live · ${lookup.place ?? 'your location'}${time}${weather}`;
 }
 
+/**
+ * Live is the default outdoor air: look it up on opening Results when there is a backend, unless
+ * the value is live already or the user picked one (a preset chip).
+ */
+export function shouldAutoLive(params: Pick<RoomParams, 'outdoorPm25'>, hasBackend: boolean): boolean {
+  return hasBackend && params.outdoorPm25?.source !== 'live' && !params.outdoorPm25?.chosen;
+}
+
 let inFlight = false;
 
 /**

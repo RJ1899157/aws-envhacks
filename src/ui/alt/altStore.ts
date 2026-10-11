@@ -23,6 +23,9 @@ export interface OpenBuild {
 
 interface AltState {
   phase: AltPhase;
+  /** The landing intro (animated example + why this exists) before the start choices; first visit only */
+  intro: boolean;
+  setIntro: (intro: boolean) => void;
   /** Saved build this design belongs to (null = never saved) */
   build: OpenBuild | null;
   setBuild: (build: OpenBuild | null) => void;
@@ -48,6 +51,8 @@ export function cancelPlacement(): void {
 
 export const useAltStore = create<AltState>()((set) => ({
   phase: 'start',
+  intro: true,
+  setIntro: (intro) => set({ intro }),
   step: 'rooms',
   project: 'room',
   build: null,

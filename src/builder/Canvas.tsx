@@ -67,7 +67,7 @@ import { ScenarioEngine } from './simulation/ScenarioEngine';
 import { ExamplesPicker, openExamples } from '../ui/showcase/ExamplesPicker';
 import { StoryBar } from '../ui/showcase/StoryBar';
 import { registerShowcaseCamera } from '../store/showcaseStore';
-import { focusSimulationRoom } from './simulation/simulationCamera';
+import { focusSimulationRoom, freeViewport } from './simulation/simulationCamera';
 import { SourceWisps } from './simulation/SourceWisps';
 import { ScaleReference } from './ScaleReference';
 import { Scenery } from './Scenery';
@@ -806,6 +806,51 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
 };
 
 /**
+ * Scene pointer events (selecting, dragging, wall and opening clicks) on or off. Off for the landing
+ * showcase: OrbitControls listens on the canvas itself, so the camera still moves.
+ */
+const SceneEventsGate: React.FC<{ enabled: boolean }> = ({ enabled }) => {
+  const setEvents = useThree((s) => s.setEvents);
+  useEffect(() => {
+    setEvents({ enabled });
+    return () => setEvents({ enabled: true });
+  }, [enabled, setEvents]);
+  return null;
+};
+
+/**
+ * Landing showcase: shifts the rendered image so the screen point the camera looks at sits in the
+ * middle of the area the side panel leaves free. The house is then framed with the camera aimed at
+ * its centre, so turning and zooming keep it in place instead of swinging it under the panel.
+ */
+const PresentationViewOffset: React.FC<{ enabled: boolean }> = ({ enabled }) => {
+  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera | THREE.OrthographicCamera;
+  const size = useThree((s) => s.size);
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    if (!enabled) return;
+    const apply = () => {
+      const { full } = freeViewport(gl.domElement.parentElement ?? gl.domElement);
+      // A panel covering most of the width (phones): no shift, the house sits behind it
+      const wide = full.w >= size.width * 0.4;
+      const dx = wide ? full.x + full.w / 2 - size.width / 2 : 0;
+      const dy = wide ? full.y + full.h / 2 - size.height / 2 : 0;
+      camera.setViewOffset(size.width, size.height, -dx, -dy, size.width, size.height);
+      camera.updateProjectionMatrix();
+    };
+    // After the side panel has laid out
+    const id = window.setTimeout(apply, 0);
+    apply();
+    return () => {
+      window.clearTimeout(id);
+      camera.clearViewOffset();
+      camera.updateProjectionMatrix();
+    };
+  }, [enabled, camera, size.width, size.height, gl]);
+  return null;
+};
+
+/**
  * Auto-rotates camera gracefully for turntable presentation, canceled on any user input
  */
 const TurntableController: React.FC<{ controlsRef: React.RefObject<OrbitControlsImpl | null> }> = ({
@@ -817,7 +862,7 @@ const TurntableController: React.FC<{ controlsRef: React.RefObject<OrbitControls
   // Auto-rotate per frame when active
   useFrame((_, delta) => {
     if (!isTurntableActive || !controlsRef.current) return;
-    const speed = 0.25; // Graceful spin speed (rad/s)
+    const speed = 0.15; // Graceful spin speed (rad/s): a full turn in ~40 s
     const controls = controlsRef.current;
     const cam = controls.object;
     const target = controls.target;
@@ -981,9 +1026,11 @@ export interface CanvasProps {
   className?: string;
   /** Guided app: no view cube, empty-state card, floating insights or debug controls */
   minimal?: boolean;
+  /** Landing showcase: view only (camera, no editing), simulation without its legend or run progress card */
+  presentation?: boolean;
 }
 
-export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false }) => {
+export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false, presentation = false }) => {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const isDragging = useSceneStore((state) => state.isDragging);
   const room = useSceneStore((state) => state.room);
@@ -1024,6 +1071,18 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false 
   const roomBounds = useMemo(() => polygonBounds(room.outline), [room.outline]);
   const maxRoomDim = Math.max(roomBounds.width, roomBounds.depth, room.wallHeight || 2.8, 4);
   const maxOrbitDistance = Math.max(100, maxRoomDim * 6);
+  // Landing showcase: zoom stays around the framed house (from ~1× to 2× its size; more room to
+  // zoom out on tall, narrow screens, where framing it needs the camera further away)
+  const houseSpan = useMemo(() => {
+    const b = [room, ...otherRooms].filter((r) => r.outline.length >= 3).map((r) => polygonBounds(r.outline));
+    if (b.length === 0) return maxRoomDim;
+    const w = Math.max(...b.map((x) => x.max[0])) - Math.min(...b.map((x) => x.min[0]));
+    const d = Math.max(...b.map((x) => x.max[1])) - Math.min(...b.map((x) => x.min[1]));
+    return Math.max(w, d, 4);
+  }, [room, otherRooms, maxRoomDim]);
+  const narrow = typeof window !== 'undefined' ? Math.max(1, window.innerHeight / Math.max(1, window.innerWidth)) : 1;
+  const orbitMin = presentation ? houseSpan : Math.max(0.5, maxRoomDim * 0.08);
+  const orbitMax = presentation ? houseSpan * 2 * narrow : maxOrbitDistance;
 
   // Run Phase B placement validation off the hot path (debounced 100ms)
   usePlacementValidation();
@@ -1226,6 +1285,8 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false 
           <WalkthroughControls />
           <KeyboardPanControls controlsRef={controlsRef} />
           <TurntableController controlsRef={controlsRef} />
+          <SceneEventsGate enabled={!presentation} />
+          <PresentationViewOffset enabled={presentation} />
 
           {/* Blender-like OrbitControls with trackpad & touch gestures */}
           <OrbitControls
@@ -1234,8 +1295,8 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false 
             enabled={!isDragging && !isWalkthroughActive}
             enableDamping={dampedInertia}
             dampingFactor={0.05}
-            minDistance={Math.max(0.5, maxRoomDim * 0.08)}
-            maxDistance={maxOrbitDistance}
+            minDistance={orbitMin}
+            maxDistance={orbitMax}
             minPolarAngle={view === '2d' ? 0 : 0.04}
             maxPolarAngle={view === '2d' ? 0 : Math.PI / 2 - 0.04} // Clamped above floor plane in 3D
             enableRotate={view === '3d'} // Locked rotation in 2D mode
@@ -1283,7 +1344,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false 
       {!minimal && <VoxelDebugControls />}
       <RoomChips />
       <HoverReadout />
-      <SimulationLegend />
+      {!presentation && <SimulationLegend />}
       {!minimal && <FloatingInsights />}
       <CompareOverlay />
       <WhatIfBanner />
@@ -1291,7 +1352,7 @@ export const Canvas: React.FC<CanvasProps> = ({ className = '', minimal = false 
       {!minimal && <StoryBar />}
       {!minimal && <ExamplesPicker />}
       {!minimal && <FirstUseCard />}
-      <RunProgress />
+      {!presentation && <RunProgress />}
     </div>
   );
 };

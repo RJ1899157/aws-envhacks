@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConditionsResponse } from './api';
-import { conditionsToParams, DELHI, fetchLiveConditions, formatLocalTime, liveCaption, resolveLocation } from './liveConditions';
+import { conditionsToParams, DELHI, fetchLiveConditions, formatLocalTime, liveCaption, resolveLocation, shouldAutoLive } from './liveConditions';
 import { useSimulationStore } from '../store/simulationStore';
 
 vi.mock('../config', () => ({ apiBaseUrl: 'https://api.test' }));
@@ -98,5 +98,16 @@ describe('liveCaption', () => {
     expect(formatLocalTime('2026-10-11T07:00')).toMatch(/^\d\d:\d\d$/);
     const d = new Date('2026-10-11T07:00Z');
     expect(formatLocalTime('2026-10-11T07:00')).toBe(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+  });
+});
+
+describe('shouldAutoLive', () => {
+  it('fetches live by default, but never without a backend, when already live, or after a preset was picked', () => {
+    expect(shouldAutoLive({}, true)).toBe(true);
+    // A design's built-in value (e.g. the example flat's 60) is not a user choice
+    expect(shouldAutoLive({ outdoorPm25: { valueUgM3: 60, source: 'manual' } }, true)).toBe(true);
+    expect(shouldAutoLive({}, false)).toBe(false);
+    expect(shouldAutoLive({ outdoorPm25: { valueUgM3: 143, source: 'live' } }, true)).toBe(false);
+    expect(shouldAutoLive({ outdoorPm25: { valueUgM3: 250, source: 'manual', chosen: true } }, true)).toBe(false);
   });
 });

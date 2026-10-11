@@ -167,7 +167,7 @@ export const useScenarioStore = create<ScenarioUiState>()((set, get) => ({
     const c = get().compare;
     if (c) set({ compare: { ...c, ...patch } });
   },
-  closeCompare: () => set({ compare: null }),
+  closeCompare: () => set({ compare: null, preview: null }),
   setPreview: (preview) => set({ preview }),
 
   setObjective: (objective) => set({ objective }),

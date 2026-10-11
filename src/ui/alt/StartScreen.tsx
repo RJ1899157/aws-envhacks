@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Building2, DoorOpen, History, Minus, Plus, Sparkles, Upload, Wind } from 'lucide-react';
+import { ArrowLeft, Building2, DoorOpen, History, Minus, Plus, Sparkles, Upload, Wind, X } from 'lucide-react';
 import { useBuildsStore } from '../../store/buildsStore';
 import { BuildList, OpenFileButton } from './BuildsDialogs';
 import { clearPreviousDesign, readPreviousDesign } from '../../store/resetSession';
@@ -71,11 +71,21 @@ export const StartScreen: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[40] bg-neutral-950/75 backdrop-blur-sm flex items-center justify-center p-4" data-testid="alt-start-screen">
-      <div className="w-[640px] max-w-full rounded-[16px] bg-neutral-900 border border-white/10 shadow-2xl p-6 text-neutral-200">
+      <div className="relative w-[640px] max-w-full rounded-[16px] bg-neutral-900 border border-white/10 shadow-2xl p-6 text-neutral-200">
         <div className="flex items-center gap-2 mb-1">
           <Wind size={20} className="text-indigo-400" />
           <span className="text-[13px] font-semibold text-white">AirForce</span>
         </div>
+        <button
+          type="button"
+          aria-label="Close"
+          title="Back to the start page"
+          onClick={() => useAltStore.getState().setIntro(true)}
+          className="absolute top-4 right-4 p-1.5 rounded-[8px] text-neutral-400 hover:text-white hover:bg-white/10"
+          data-testid="alt-start-close"
+        >
+          <X size={18} />
+        </button>
 
         {choice === 'none' && (
           <>

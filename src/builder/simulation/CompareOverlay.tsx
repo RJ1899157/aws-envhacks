@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { GripVertical } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { ArrowLeft, GripVertical } from 'lucide-react';
 import { useScenarioStore, type CompareView } from '../../store/scenarioStore';
 import { useSimulationStore } from '../../store/simulationStore';
 import { useCompareSides } from './useScenarios';
@@ -23,6 +23,24 @@ export const CompareOverlay: React.FC = () => {
   const sides = useCompareSides();
   const rootRef = useRef<HTMLDivElement>(null);
   const storyOpen = useShowcaseStore((s) => s.active !== null);
+  const open = compare !== null;
+  // Escape leaves the preview, like the Back button
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (
+        e.key === 'Escape' &&
+        !(
+          e.target instanceof HTMLInputElement ||
+          e.target instanceof HTMLTextAreaElement ||
+          e.target instanceof HTMLSelectElement
+        )
+      )
+        useScenarioStore.getState().closeCompare();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
   if (!compare || !show || !sides) return null;
   const set = useScenarioStore.getState().setCompare;
   const aName = sides.a.name;
@@ -43,38 +61,78 @@ export const CompareOverlay: React.FC = () => {
     window.addEventListener('pointerup', up);
   };
   const label = (side: 'A' | 'B', name: string) => (
-    <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold text-white whitespace-nowrap max-w-[220px] truncate ${side === 'A' ? 'bg-sky-700/90' : 'bg-orange-700/90'}`} title={name}>
+    <span
+      className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold text-white whitespace-nowrap max-w-[220px] truncate ${side === 'A' ? 'bg-sky-700/90' : 'bg-orange-700/90'}`}
+      title={name}
+    >
       {side} · {name}
     </span>
   );
   return (
-    <div ref={rootRef} className="absolute inset-0 z-[11] pointer-events-none" data-testid="sim-compare-overlay">
-      <div className={`absolute ${storyOpen ? 'top-[108px]' : 'top-14'} left-1/2 -translate-x-1/2 flex flex-col items-center gap-1`}>
-        <div role="radiogroup" aria-label="Compare view" className="pointer-events-auto flex p-0.5 rounded-[8px] bg-neutral-900/95 border border-white/15 shadow-xl" data-testid="sim-compare-toggle">
-          {VIEWS.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              role="radio"
-              aria-checked={compare.view === v.id}
-              data-view={v.id}
-              onClick={() => set({ view: v.id })}
-              className={`rounded-[6px] px-2 py-0.5 text-[11px] font-medium ${compare.view === v.id ? 'bg-indigo-600 text-white' : 'text-neutral-300 hover:bg-white/10'}`}
-            >
-              {v.label}
-            </button>
-          ))}
+    <div
+      ref={rootRef}
+      className="absolute inset-0 z-[11] pointer-events-none"
+      data-testid="sim-compare-overlay"
+    >
+      <div
+        className={`absolute ${storyOpen ? 'top-[108px]' : 'top-14'} left-1/2 -translate-x-1/2 flex flex-col items-center gap-1`}
+      >
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => useScenarioStore.getState().closeCompare()}
+            className="pointer-events-auto px-2.5 py-1 rounded-[8px] bg-neutral-900/95 hover:bg-neutral-800 border border-white/15 shadow-xl text-[11px] font-medium text-white flex items-center gap-1"
+            data-testid="sim-compare-back-canvas"
+          >
+            <ArrowLeft size={12} /> Back to my simulation
+          </button>
+          <div
+            role="radiogroup"
+            aria-label="Compare view"
+            className="pointer-events-auto flex p-0.5 rounded-[8px] bg-neutral-900/95 border border-white/15 shadow-xl"
+            data-testid="sim-compare-toggle"
+          >
+            {VIEWS.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                role="radio"
+                aria-checked={compare.view === v.id}
+                data-view={v.id}
+                onClick={() => set({ view: v.id })}
+                className={`rounded-[6px] px-2 py-0.5 text-[11px] font-medium ${compare.view === v.id ? 'bg-indigo-600 text-white' : 'text-neutral-300 hover:bg-white/10'}`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
         </div>
         {compare.view === 'a' && label('A', aName)}
         {compare.view === 'b' && label('B', bName)}
-        {compare.view === 'diff' && <span className="px-1.5 py-0.5 rounded bg-neutral-900/90 text-[10.5px] text-neutral-200">Change from A ({aName}) to B ({bName})</span>}
-        {mode === 'airflow' && <span className="px-1.5 py-0.5 rounded bg-neutral-900/90 text-[10px] text-neutral-400">Airflow has no heatmap: see the table</span>}
+        {compare.view === 'diff' && (
+          <span className="px-1.5 py-0.5 rounded bg-neutral-900/90 text-[10.5px] text-neutral-200">
+            Change from A ({aName}) to B ({bName})
+          </span>
+        )}
+        {mode === 'airflow' && (
+          <span className="px-1.5 py-0.5 rounded bg-neutral-900/90 text-[10px] text-neutral-400">
+            Airflow has no heatmap: see the table
+          </span>
+        )}
       </div>
       {compare.view === 'swipe' && mode !== 'airflow' && (
-        <div className="absolute top-0 bottom-0" style={{ left: `${compare.swipe * 100}%` }} data-testid="sim-compare-swipe">
+        <div
+          className="absolute top-0 bottom-0"
+          style={{ left: `${compare.swipe * 100}%` }}
+          data-testid="sim-compare-swipe"
+        >
           <div className="absolute top-0 bottom-0 -translate-x-1/2 w-0.5 bg-white/85 shadow-[0_0_0_1px_rgba(0,0,0,0.5)]" />
-          <div className={`absolute ${storyOpen ? 'top-[170px]' : 'top-[118px]'} right-2`}>{label('A', aName)}</div>
-          <div className={`absolute ${storyOpen ? 'top-[170px]' : 'top-[118px]'} left-2`}>{label('B', bName)}</div>
+          <div className={`absolute ${storyOpen ? 'top-[170px]' : 'top-[118px]'} right-2`}>
+            {label('A', aName)}
+          </div>
+          <div className={`absolute ${storyOpen ? 'top-[170px]' : 'top-[118px]'} left-2`}>
+            {label('B', bName)}
+          </div>
           <button
             type="button"
             aria-label="Drag to compare"

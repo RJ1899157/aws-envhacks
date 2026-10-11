@@ -11,6 +11,8 @@ import { InsightsPanel } from '../simulation/InsightsPanel';
 import { ModeSwitch } from '../simulation/ModeSwitch';
 import { homeSummary } from './AboutHomeCard';
 import { HealthCard } from './HealthCard';
+import { apiBaseUrl } from '../../config';
+import { fetchLiveConditions, shouldAutoLive } from '../../services/liveConditions';
 import { LiveOutdoorCaption, LiveOutdoorChip } from './LiveOutdoor';
 import type { RoomParams } from '../../core/schema';
 
@@ -69,8 +71,19 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void }> = ({ onEdit }) => {
     // A failed live lookup's caption no longer applies once a preset is chosen
     const sim = useSimulationStore.getState();
     if (sim.outdoorLookup.status === 'error') sim.setOutdoorLookup({ ...sim.outdoorLookup, status: 'idle' });
-    applyHouseParams({ outdoorPm25: { valueUgM3, source: 'manual' } });
+    applyHouseParams({ outdoorPm25: { valueUgM3, source: 'manual', chosen: true } });
   };
+
+  // Live is the default outdoor air: fetched once on opening Results unless the user picked a preset
+  // (or it is live already). The lookup re-runs the simulation with the live values.
+  const autoLive = shouldAutoLive(room.params, !!apiBaseUrl);
+  const triedLive = React.useRef(false);
+  useEffect(() => {
+    if (!autoLive || triedLive.current) return;
+    triedLive.current = true;
+    void fetchLiveConditions(useSceneStore.getState().room.params, applyHouseParams);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLive]);
 
   return (
     <aside
@@ -87,6 +100,7 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void }> = ({ onEdit }) => {
         <div className="flex flex-col gap-1">
           <span className="text-[10.5px] uppercase tracking-wider font-semibold text-neutral-400">Outdoor air</span>
           <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Outdoor air">
+            <LiveOutdoorChip selected={live} loading={outdoorLookup.status === 'loading'} apply={applyHouseParams} />
             {OUTDOOR.map((o) => (
               <button
                 key={o.id}
@@ -101,7 +115,6 @@ export const ResultsPanel: React.FC<{ onEdit?: () => void }> = ({ onEdit }) => {
                 {o.label} · {o.valueUgM3}
               </button>
             ))}
-            <LiveOutdoorChip selected={live} loading={outdoorLookup.status === 'loading'} apply={applyHouseParams} />
           </div>
           <LiveOutdoorCaption lookup={outdoorLookup} liveSelected={live} />
         </div>

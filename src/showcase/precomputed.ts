@@ -44,7 +44,7 @@ export function storyHash(rooms: readonly Room[], settings: { durationS: number;
 }
 
 /** Un-gzips a blob in the browser (DecompressionStream) when it starts with the gzip magic bytes. */
-async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
+export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
   const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
