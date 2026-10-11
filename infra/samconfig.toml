@@ -1,0 +1,26 @@
+version = 0.1
+
+[default.global.parameters]
+stack_name = "airforce-backend"
+region = "us-east-1"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+confirm_changeset = true
+parameter_overrides = "AllowedOrigins=\"https://main.d2iwbt8w1yhn6o.amplifyapp.com/,http://localhost:3000\" BedrockModelId=\"us.amazon.nova-lite-v1:0\""
+s3_prefix = "airforce-backend"
+disable_rollback = true
+image_repositories = []
+
+[default.logs.parameters]
+stack_name = "airforce-backend"
+region = "us-east-1"

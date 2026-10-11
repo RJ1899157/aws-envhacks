@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  AirForce backend: GET /conditions (Open-Meteo PM2.5 + weather proxy with cache) and
+  POST /explain (Strands Agent on Bedrock that explains a ranked action in plain words).
+
+Parameters:
+  AllowedOrigins:
+    Type: String
+    Description: Comma-separated list of origins allowed by CORS (no trailing slashes).
+    Default: https://main.d2iwbt8w1yhn6o.amplifyapp.com,http://localhost:3000
+  BedrockModelId:
+    Type: String
+    Description: Bedrock model or inference profile id used by /explain.
+    Default: us.amazon.nova-lite-v1:0
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref CacheTable
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: !Split [',', !Ref AllowedOrigins]
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - content-type
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 5
+        ThrottlingBurstLimit: 10
+
+  CacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  ConditionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/conditions/
+      Handler: conditions.handler
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          CACHE_TTL_SECONDS: '1800'
+          HTTP_TIMEOUT_SECONDS: '8'
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt CacheTable.Arn
+      Events:
+        GetConditions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /conditions
+
+  ConditionsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ConditionsFunction}
+      RetentionInDays: 7
+
+  ExplainFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/explain/
+      Handler: explain.handler
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          CACHE_TTL_SECONDS: '604800'
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          BEDROCK_TEMPERATURE: '0.2'
+          BEDROCK_MAX_TOKENS: '250'
+          MAX_BODY_BYTES: '8192'
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt CacheTable.Arn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                # Cross-region inference profiles (us.*) route to foundation models in several regions
+                - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
+                - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+      Events:
+        PostExplain:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /explain
+
+  ExplainLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExplainFunction}
+      RetentionInDays: 7
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the HTTP API (no trailing slash)
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  CacheTableName:
+    Description: DynamoDB cache table
+    Value: !Ref CacheTable

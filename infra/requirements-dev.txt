@@ -1,0 +1,3 @@
+-r functions/explain/requirements.txt
+boto3
+pytest

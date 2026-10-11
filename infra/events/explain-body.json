@@ -1,0 +1,28 @@
+{
+  "objective": "Bedroom 1",
+  "action": {
+    "texts": [
+      "Add an air purifier (300 m³/h) to Bedroom 1",
+      "Close the north window in Bedroom 1"
+    ],
+    "effort": "Purchase",
+    "before": 244.6,
+    "after": 189.0,
+    "fraction": -0.227,
+    "roomDeltas": [
+      {
+        "name": "Bedroom 1",
+        "before": 244.6,
+        "after": 189.0
+      }
+    ],
+    "facts": [
+      "outdoor 250 > indoor 245 µg/m³ (Bedroom 1)",
+      "Bedroom 1: 39.6 outdoor-air changes/h",
+      "Living Room → Bedroom 1 377 m³/h",
+      "Bedroom 1: Outdoor air entering through the north window"
+    ],
+    "verified": "verified"
+  },
+  "outdoorPm25": 250
+}

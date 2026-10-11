@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# AWS SAM / Python (infra/)
+.aws-sam/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets
+.env

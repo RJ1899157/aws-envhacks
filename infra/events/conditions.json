@@ -1,0 +1,26 @@
+{
+  "version": "2.0",
+  "routeKey": "GET /conditions",
+  "rawPath": "/conditions",
+  "rawQueryString": "lat=28.61&lon=77.21",
+  "headers": {
+    "content-type": "application/json",
+    "origin": "http://localhost:3000"
+  },
+  "requestContext": {
+    "http": {
+      "method": "GET",
+      "path": "/conditions",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "127.0.0.1",
+      "userAgent": "curl"
+    },
+    "routeKey": "GET /conditions",
+    "stage": "$default"
+  },
+  "isBase64Encoded": false,
+  "queryStringParameters": {
+    "lat": "28.61",
+    "lon": "77.21"
+  }
+}
