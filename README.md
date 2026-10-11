@@ -2,6 +2,10 @@
 
 ## Visualise the way pollution spreads through your house
 
+## Deployed app
+
+Live demo: https://main.d2iwbt8w1yhn6o.amplifyapp.com/
+
 AirForce is an interactive home-design and ventilation simulator. It helps people
 understand how the layout of a home, its doors and windows, everyday activities,
 and ventilation devices affect indoor air quality.
