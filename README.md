@@ -6,7 +6,7 @@
 
 # AirForce
 
-### Visualise the way air and pollution move through your home
+### Visualise the way pollution spreads through your house
 
 Design your home in 3D, see where the air goes stale and where pollution builds up, and find out which simple changes make the biggest difference.
 
