@@ -1,328 +1,164 @@
+<div align="center">
+
+<!-- Add a hero screenshot or GIF here once it exists, e.g.:
+<img src="docs/assets/hero.png" alt="AirForce: a home shown in 3D with an indoor air-pollution heatmap" width="100%" />
+-->
+
 # AirForce
 
-## Visualise the way pollution spreads through your house
+### Visualise the way air and pollution move through your home
 
-## Deployed app
+Design your home in 3D, see where the air goes stale and where pollution builds up, and find out which simple changes make the biggest difference.
 
-Live demo: https://main.d2iwbt8w1yhn6o.amplifyapp.com/
+[**Live demo**](https://main.d2iwbt8w1yhn6o.amplifyapp.com) · [**3-minute video**](https://www.youtube.com/watch?v=_shyE4hxEuE) · [**Build blog**](https://builder.aws.com/content/3KYWlGSOJfHdaJsP5HY6AECSj6T/airforce-visualise-the-way-pollution-spreads-through-your-house)
 
-AirForce is an interactive home-design and ventilation simulator. It helps people
-understand how the layout of a home, its doors and windows, everyday activities,
-and ventilation devices affect indoor air quality.
+![Built for](https://img.shields.io/badge/WeMakeDevs_×_AWS-Environmental_Hacks_·_Air_track-blue)
+![Hosted on](https://img.shields.io/badge/hosted_on-AWS_Amplify-orange)
 
-Most people know that smoke, cooking, incense, and poor ventilation can make
-indoor air unhealthy. What is difficult is seeing **where the problem is**, why
-it happens, and what change would actually help. AirForce turns that invisible
-problem into something people can explore visually.
+</div>
 
-The user can create a home from scratch, start with a sample design, or inspect
-a single room. They then place openings, furniture, fans, purifiers, and common
-pollution sources such as cooking, incense, smoking, and bathroom-related
-sources. AirForce simulates the resulting airflow and PM2.5 movement, identifies
-weakly ventilated rooms, and ranks practical actions that can improve the design.
+---
 
-## Why this matters
+## Why AirForce?
 
-Indoor air quality is not determined by a purifier alone. It depends on a
-combination of:
+In winter, Indian homes seal up. Windows close to keep the smog out and fans switch off, but the pollution already inside, from cooking, incense, mosquito coils or the smog that slipped in earlier, has nowhere to go. It builds up in the rooms and corners where air barely moves, and sometimes that corner is your bed.
 
-- the position and size of windows and doors;
-- wind direction and speed outside the building;
-- the surrounding environment, such as open, suburban, or dense urban areas;
-- temperature differences that create stack ventilation;
-- the location and strength of pollution sources;
-- exhaust fans, range hoods, ceiling fans, and air purifiers; and
-- how air moves between rooms.
+**The pollution that affects you most isn't on the street outside, but in the room where you sleep.** AirForce makes that invisible air visible.
 
-AirForce brings these factors together in one visual workflow. Instead of
-giving generic advice such as “open a window,” it can answer questions such as:
+## What you can do
 
-- Which room is accumulating pollution?
-- Is a window acting as an inlet or an outlet in the current wind?
-- Would opening another window create cross-ventilation?
-- Should a cooking source be moved closer to an exhaust fan?
-- Would a purifier help the affected room?
-- Which low-effort change gives the biggest improvement?
+| Feature | Description |
+|---|---|
+| **Build your home** | Start from a single room or a whole house, then drag in doors, windows, furniture, fans, purifiers and pollution sources. No drawing skills needed. |
+| **Describe its surroundings** | Floor level, how built-up the area is and your window type. The 3D scene updates as you answer. |
+| **Simulate the air** | See PM2.5 levels, how stale the air is and how it flows, room by room and spot by spot. |
+| **Use live conditions** | One click pulls the current outdoor PM2.5, wind and temperature for your location. |
+| **Get ranked suggestions** | AirForce tries dozens of changes, like closing a window, moving the purifier or turning on the hood, and ranks them by how much they help. |
+| **See why and compare** | Each suggestion shows the facts behind it, and you can preview it side by side before applying it. |
+| **Save your builds** | Saved in your browser, or downloaded as a file to share. |
 
-## How the product works
+<!-- Add the three view screenshots here once they exist, e.g.:
+<p align="center">
+  <img src="docs/assets/pollution-view.png" alt="Pollution view" width="32%" />
+  <img src="docs/assets/ventilation-view.png" alt="Ventilation view" width="32%" />
+  <img src="docs/assets/airflow-view.png" alt="Airflow view" width="32%" />
+</p>
+<p align="center"><em>Pollution · Ventilation (age of air) · Airflow</em></p>
+-->
 
-### 1. Choose a starting point
+## How the simulation works
 
-The user can:
+AirForce combines three models, each answering a different question.
 
-- make a custom house;
-- open a prepared sample house; or
-- create a single room for a quick experiment.
+| Model | What it answers | How |
+|---|---|---|
+| **Room box** | How much pollution builds up in a room over time? | Each room is one well-mixed space with gains (outdoor air, sources) and losses (ventilation, settling, purifiers). |
+| **Room network** | How does air move between rooms? | Rooms are connected through windows, doors and gaps. Wind and temperature set pressures, and air flows from high to low pressure. Fast enough to update on every edit. |
+| **3D grid** | Where exactly does air go stale? | The home is split into 20 cm cubes and air movement is simulated cell by cell, all inside your browser. |
 
-### 2. Describe the home
+The numbers behind it, such as wind behaviour, how easily air passes through openings, how fast fine dust settles and how much smoke cooking or incense releases, come from British ventilation standards (BS 5925, CIBSE), Indian fan standards and published research. Where no measurement exists, the value is marked as an estimate in the code (`src/simulation/constants.ts`).
 
-For a custom home, the user provides the basic context of the space, including
-the floor/layout, surroundings, number of rooms, and bathrooms.
+> **Note:** AirForce gives simulated estimates from a simplified model. It is meant for comparing options, not for replacing a real air-quality monitor.
 
-### 3. Build the layout
+## Built on AWS
 
-The user draws or edits walls, adds rooms, and places:
+Every service is here because the app needs it.
 
-- doors and windows;
-- furniture and other objects;
-- exhaust fans, range hoods, ceiling fans, pedestal fans, air conditioners,
-  and purifiers; and
-- pollution sources such as cooking/frying, incense, or smoking.
+<!-- To add official AWS icons: download the AWS Architecture Icons package from
+https://aws.amazon.com/architecture/icons/, copy the SVGs into docs/assets/aws/,
+then add a first column like: <img src="docs/assets/aws/lambda.svg" width="40" alt="AWS Lambda" /> -->
 
-Windows and doors can be opened, closed, resized, and tagged according to their
-intended ventilation role.
+| Service | What it does in AirForce |
+|---|---|
+| **AWS Amplify Hosting** | Hosts the web app and rebuilds it from GitHub on every push to `main` |
+| **Amazon API Gateway** | Public `/conditions` endpoint, restricted to our site (CORS) and rate-limited |
+| **AWS Lambda** | Fetches live PM2.5, wind and temperature for the user's location |
+| **Amazon DynamoDB** | Caches each location's conditions for 30 minutes |
+| **AWS SAM** *(open source)* | Defines and deploys the whole backend from one template |
+| **AWS IAM** | Least-privilege role for each function |
 
-### 4. Run the simulation
+### Architecture
 
-AirForce evaluates the design using the selected outdoor conditions and the
-objects in the scene. The results show room-level PM2.5, air changes per hour,
-airflow between rooms, source impact, and ventilation warnings.
-
-### 5. Compare improvements
-
-The recommendation engine generates possible changes, evaluates them against
-the same home, and ranks the changes by their effect and effort. Users can
-compare the baseline with a proposed design before deciding what to change.
-
-## What is simulated
-
-AirForce uses a lightweight, browser-friendly model rather than a heavyweight
-CFD package. This keeps the interaction fast enough for an interactive
-design tool while still exposing the main factors that affect a household.
-
-The simulation includes:
-
-- wind-driven flow through openings;
-- single-sided ventilation;
-- cross-ventilation through inlet and outlet openings;
-- buoyancy/stack effects caused by indoor and outdoor temperature differences;
-- background infiltration;
-- exhaust and mechanical airflow;
-- purifier clean-air delivery;
-- room volumes and air changes per hour;
-- PM2.5 emitted by scheduled sources; and
-- pollutant movement through the connected room network.
-
-The recommendation system evaluates individual actions and useful combinations,
-removes changes that have almost no effect, and separates improvements from
-actions that would make the selected objective worse. A secondary voxel-based
-check can verify whether the simplified network model agrees with the direction
-of the predicted change.
-
-## Main features
-
-- 2D floor-plan editing and 3D walkthrough
-- Snap-to-angle wall drawing and editable room geometry
-- Drag-and-drop asset library
-- Doors and windows that attach to walls
-- Opening size, open fraction, and ventilation-role controls
-- Furniture, fans, exhausts, purifiers, and pollution sources
-- Outdoor PM2.5 and weather input, including optional live conditions
-- Room-by-room air-quality and ventilation results
-- Ranked recommendations with before/after values
-- Scenario comparison and snapshots
-- Project import/export
-- 3D model and 2D document export
-- Keyboard shortcuts and a command palette
-- Performance overlay for monitoring the 3D scene
-
-## Technical architecture
-
-```text
-                         Optional live conditions
-                         Open-Meteo air quality/weather
-                                      |
-                                      v
-+------------------+       +-----------------------+
-| React web app    | ----> | Optional AWS HTTP API |
-| 2D/3D editor    |       | /conditions           |
-+--------+---------+       +-----------+-----------+
-         |                             |
-         |                             v
-         |                    Lambda + DynamoDB cache
-         |
-         v
-+---------------------------+
-| Local simulation engine   |
-| ventilation + PM2.5      |
-| network + voxel checking |
-+-------------+-------------+
-              |
-              v
-   Results, warnings, and ranked actions
+```mermaid
+flowchart LR
+    GH["GitHub<br/>main branch"] -->|"push → build"| AMP["AWS Amplify<br/>Hosting"]
+    AMP -->|"serves the app"| B["User's browser<br/>React + Three.js<br/>simulation in Web Workers"]
+    B -->|"GET /conditions"| APIGW["Amazon API Gateway<br/>HTTP API"]
+    APIGW --> L["AWS Lambda<br/>Conditions function"]
+    L <-->|"30-min cache"| DDB[("Amazon DynamoDB")]
+    L -->|"on cache miss"| OM["Open-Meteo<br/>air quality + weather"]
+    SAM["AWS SAM template"] -.->|"deploys"| APIGW
+    SAM -.-> L
+    SAM -.-> DDB
 ```
 
-The core design and simulation run in the browser. This makes the app useful
-even without a backend and keeps the editing loop responsive. The optional
-serverless endpoint provides live outdoor PM2.5 and weather data and caches
-location-based readings so the external service is not called unnecessarily.
+The simulation itself runs entirely in the browser. The backend only supplies real-world outdoor conditions.
 
-Recommendations are based on the simulation and ranking engine. They are not a
-substitute for professional indoor-air-quality or medical advice.
+## Run it locally
 
-## Technology stack
-
-### Frontend
-
-- **React 18** and **TypeScript** for the application UI
-- **Vite** for development and production builds
-- **Three.js**, **React Three Fiber**, and **Drei** for the 3D scene
-- **Tailwind CSS** for styling
-- **Zustand** and **Immer** for predictable application state updates
-- **Zod** for validating project and scene data
-- **IndexedDB** for local snapshots and browser persistence
-- **Vitest** and **Playwright** for unit and end-to-end testing
-
-### Simulation
-
-The simulation code is written in TypeScript and is divided into focused
-modules for:
-
-- room and opening geometry;
-- ventilation and airflow;
-- pollutant sources and devices;
-- room-network mixing;
-- voxel-based verification;
-- scenario generation and ranking; and
-- result reports and visual explanations.
-
-### AWS and external services
-
-The optional backend is deployed with AWS SAM and uses:
-
-- **Amazon API Gateway HTTP API** for the public endpoints
-- **AWS Lambda** with Python 3.12 for the serverless backend
-- **Amazon DynamoDB** for short-lived response caching
-- **Amazon CloudWatch Logs** for backend request logs
-- **Open-Meteo Air Quality API** for outdoor PM2.5
-- **Open-Meteo Forecast API** for temperature, wind speed, and wind direction
-
-No model-inference service is required for the core simulation or
-recommendations.
-
-## Repository structure
-
-```text
-src/
-  app/                 Application entry point and top-level UI
-  builder/             2D/3D floor-plan editor and object placement
-  core/                Shared scene schema, geometry, and domain types
-  io/                  Project import/export and file formats
-  services/            Optional backend and live-condition clients
-  simulation/          Ventilation, PM2.5, voxel, and ranking logic
-  store/               Application and scenario state
-  ui/                  Panels, controls, results, and overlays
-
-infra/
-  template.yaml        AWS SAM infrastructure definition
-  functions/           Lambda handlers
-  tests/               Backend tests
-
-e2e/                   Browser-level tests
-public/                Assets and showcase designs
-test-designs/          Reproducible sample projects
-```
-
-## Run the project locally
-
-### Prerequisites
-
-- Node.js 18 or newer
-- npm
-
-Install dependencies:
+**Requirements:** Node.js 22 and npm.
 
 ```bash
+git clone https://github.com/RJ1899157/aws-envhacks.git
+cd aws-envhacks
 npm install
+npm run dev          # http://localhost:3000
 ```
 
-Start the development server:
+To enable the **Live** conditions button, create `.env.local` with your API URL:
 
 ```bash
-npm run dev
+VITE_API_BASE_URL=https://<your-api-id>.execute-api.us-east-1.amazonaws.com
 ```
 
-Then open the local URL shown by Vite.
+Without it, the app works fully with preset outdoor values.
 
-The app can run without an AWS backend. To enable live outdoor conditions,
-set `VITE_API_BASE_URL` to the base URL of the deployed HTTP API before
-starting Vite:
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the dev server |
+| `npm test` | Run the unit tests |
+| `npm run build` | Typecheck and build for production |
+| `npm run sim:report` | Print a text report from the simulation models |
 
-```bash
-VITE_API_BASE_URL=https://your-api-id.execute-api.your-region.amazonaws.com npm run dev
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:VITE_API_BASE_URL = "https://your-api-id.execute-api.your-region.amazonaws.com"
-npm run dev
-```
-
-## Useful commands
-
-```bash
-npm run build       # Type-check and create a production build
-npm test            # Run unit tests
-npm run test:e2e    # Run Playwright browser tests
-npm run lint        # Run ESLint
-npm run format      # Format frontend source files
-```
-
-## Backend deployment
-
-The backend infrastructure is defined in [infra/template.yaml](infra/template.yaml).
-It is intentionally small: the frontend can still be used offline, while the
-deployed API adds live outdoor readings and caching.
-
-With the AWS SAM CLI and AWS credentials configured:
+### Deploy the backend
 
 ```bash
 cd infra
-sam validate --lint
 sam build
-sam deploy --guided
+sam deploy --guided   # first time; afterwards just: sam deploy
 ```
 
-After deployment, set the API URL as `VITE_API_BASE_URL` when building or
-running the frontend. CORS origins should be configured for the frontend URL.
+See [`infra/README.md`](infra/README.md) for details.
 
-## Design decisions
+## Project structure
 
-### Fast feedback over heavyweight computation
+```
+src/
+  ui/alt/         Guided interface (start, design steps, results)
+  builder/        3D canvas, placement and simulation visuals
+  simulation/     Room box, room network, 3D grid, scenarios and ranking
+  services/       Calls to the AWS backend
+infra/            AWS SAM template and Lambda function
+```
 
-The tool is meant to help users experiment with a home layout. A result that
-arrives while the user is still designing is more useful here than a highly
-detailed simulation that takes several minutes for every change.
+## Limitations
 
-### Explainable recommendations
+- Results are estimates from a simplified model, not measurements.
+- Warm air rising inside rooms, humidity and particle sizes are not modelled.
+- Weather stays constant during a simulation run.
+- Several reference values are literature-based estimates and are marked for verification in the code.
 
-Every recommendation keeps the inputs that produced it: the affected rooms,
-before/after PM2.5, air changes, airflow paths, and the action itself. This
-makes the result inspectable instead of presenting an unexplained score.
+## Team
 
-### Offline-first core
+- [Sainava Modak](https://github.com/Sainava)
+- [Piyush Singh](https://github.com/PixxySynchronous)
+- [Rishab Jain](https://github.com/RJ1899157/aws-envhacks)
+- [Gourav Garg](https://github.com/18gourav)
 
-The home editor and simulation do not depend on a network request. Live
-conditions are an enhancement, not a requirement. This is useful for demos,
-slow networks, and privacy-conscious users.
+*(Satyam in the contributors refers to Piyush Singh)*
 
-## Current limitations
 
-- The ventilation model is an engineering approximation, not a full CFD solver.
-- Complex overlapping wall corners and openings can produce visual artifacts.
-- Multi-touch editing on mobile is still being improved.
-- Live conditions depend on the availability of the Open-Meteo services.
-- Results should be treated as design guidance, not a certified air-quality
-  measurement.
+## Acknowledgements
 
-## Hackathon outcome
-
-AirForce connects a familiar activity—designing a home—with a problem that is
-usually invisible. A user can go from an empty room to a measurable answer:
-
-> “This source is affecting this room because the air is not leaving efficiently.
-> Here are the changes that improve it, and here is how much each change helps.”
-
-That is the purpose of the project: make better ventilation understandable,
-visual, and actionable for ordinary households.
+- Air-quality and weather data from [Open-Meteo](https://open-meteo.com/) (CC BY 4.0).
+- Built for the [WeMakeDevs × AWS Environmental Hacks](https://www.wemakedevs.org/aws/env) hackathon, Air track.
