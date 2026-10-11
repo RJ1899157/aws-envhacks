@@ -73,12 +73,8 @@ export const PlacementController: React.FC = () => {
   const view = useUiStore((state) => state.view);
   const lastPointerPoint = useRef<THREE.Vector3 | null>(null);
 
-  // Shift key repeat placement tracking
-  const isShiftPressed = useRef<boolean>(false);
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') isShiftPressed.current = true;
       if ((e.key === 'r' || e.key === 'R') && toolMode === 'place' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         setPlacementRotY((r) => (r + Math.PI / 2) % (2 * Math.PI));
@@ -89,15 +85,10 @@ export const PlacementController: React.FC = () => {
         setToolMode('select');
       }
     };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') isShiftPressed.current = false;
-    };
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
     };
   }, [toolMode, setActiveAssetId, setToolMode]);
 
@@ -183,7 +174,7 @@ export const PlacementController: React.FC = () => {
 
   // Pointer down handler for committing placement
   const handleGroundPointerDown = useCallback(
-    () => {
+    (shiftKey = false) => {
       if (!catalogDef) return;
       if (toolMode !== 'place' && toolMode !== 'opening') return;
 
@@ -232,8 +223,9 @@ export const PlacementController: React.FC = () => {
         );
       }
 
-      // Check Shift key for repeated placement
-      if (!isShiftPressed.current) {
+      // One door, window or wall device per pick. Shift+click repeats floor furniture only, read from
+      // the click itself (a tracked Shift key can stick when its release is missed, e.g. on app switch)
+      if (isWallMounted || isWallObject || !shiftKey) {
         setActiveAssetId(null);
         setToolMode('select');
         setGhostPos(null);
@@ -295,7 +287,7 @@ export const PlacementController: React.FC = () => {
     };
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0 || !floorPointAt(e)) return;
-      handleGroundPointerDown();
+      handleGroundPointerDown(e.shiftKey);
       // The click that completes a placement must not also activate/select what's under it
       const swallowClick = (ev: MouseEvent) => ev.stopPropagation();
       window.addEventListener('click', swallowClick, { capture: true, once: true });

@@ -173,7 +173,8 @@ export function fitRoomsToRect(
   const fill = opts.fill ?? HOUSE_FILL;
   const { full, avoid } = viewport;
   const tries: { rect: ScreenRect; fill: number }[] = [];
-  for (let f = fill; f >= 0.55; f -= 0.05) tries.push({ rect: full, fill: f });
+  // The asked fill, then smaller ones (down to 0.55) if the house would run under the legend
+  for (let f = fill; f >= Math.min(0.55, fill) - 1e-9; f -= 0.05) tries.push({ rect: full, fill: f });
   for (const a of avoid) {
     if (a.x + a.w > full.x && a.y < full.y + full.h) {
       tries.push({ rect: { ...full, h: Math.max(80, a.y - full.y) }, fill });
