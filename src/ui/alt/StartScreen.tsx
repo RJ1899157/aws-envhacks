@@ -9,6 +9,7 @@ import { createShowcaseHouse } from '../../showcase/house';
 import { openRooms } from './buildActions';
 import { useAltStore } from './altStore';
 import { createSingleRoom } from './starterHouse';
+import { AboutHomeCard } from './AboutHomeCard';
 
 function frameHouse(): void {
   window.setTimeout(() => window.dispatchEvent(new CustomEvent('airforce:simulation-view')), 120);
@@ -44,6 +45,9 @@ const Card: React.FC<{
  */
 export const StartScreen: React.FC = () => {
   const startDesign = useAltStore((s) => s.startDesign);
+  // "Create your own house" asks about the home first (floor, surroundings, windows): the
+  // simulation uses them for wind, outdoor air and how windows open
+  const [about, setAbout] = useState(false);
 
   const load = (rooms: Room[]) => {
     useSceneStore.getState().loadRoom(rooms[0]!, rooms.slice(1));
@@ -76,64 +80,76 @@ export const StartScreen: React.FC = () => {
           <X size={18} />
         </button>
 
-        <h1 className="text-[22px] font-semibold text-white mt-2">
-          How clean is the air in your home?
-        </h1>
-        <p className="text-[13px] text-neutral-400 mt-1 mb-5">
-          Sketch your home, add windows, fans and things that pollute, then simulate how the air
-          moves.
-        </p>
-        <div className="flex flex-wrap gap-3">
-          <Card
-            icon={Building2}
-            title="Create your own house"
-            text="Start with one room and add the rest of your home in the Rooms step."
-            onClick={() => {
-              load([createSingleRoom('basic')]);
-              startDesign('house');
-            }}
-            testId="alt-start-create"
-            accent
-          />
-          <Card
-            icon={Sparkles}
-            title="See an example"
-            text="A ready-made 2BHK flat to explore, change and simulate."
-            onClick={() => openRooms(createShowcaseHouse(), null)}
-            testId="alt-start-example"
-          />
-        </div>
-        {previous && (
-          <button
-            type="button"
-            data-testid="alt-start-previous"
-            onClick={() => {
-              load([previous.room, ...previous.otherRooms]);
-              clearPreviousDesign();
-              startDesign(previous.otherRooms.length > 0 ? 'house' : 'room');
-            }}
-            className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-[10px] border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] text-left text-[12px] text-neutral-300"
-          >
-            <History size={14} className="text-indigo-300 shrink-0" />
-            <span className="flex-1">
-              Continue my previous design{' '}
-              <span className="text-neutral-500">
-                ({[previous.room, ...previous.otherRooms].length}{' '}
-                {previous.otherRooms.length ? 'rooms' : 'room'})
-              </span>
-            </span>
-          </button>
+        {about ? (
+          <div className="mt-3" data-testid="alt-start-about">
+            <AboutHomeCard
+              onBack={() => setAbout(false)}
+              onDone={() => startDesign('house')}
+              doneLabel="Start designing"
+            />
+          </div>
+        ) : (
+          <>
+            <h1 className="text-[22px] font-semibold text-white mt-2">
+              How clean is the air in your home?
+            </h1>
+            <p className="text-[13px] text-neutral-400 mt-1 mb-5">
+              Sketch your home, add windows, fans and things that pollute, then simulate how the air
+              moves.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Card
+                icon={Building2}
+                title="Create your own house"
+                text="Start with one room and add the rest of your home in the Rooms step."
+                onClick={() => {
+                  load([createSingleRoom('basic')]);
+                  setAbout(true);
+                }}
+                testId="alt-start-create"
+                accent
+              />
+              <Card
+                icon={Sparkles}
+                title="See an example"
+                text="A ready-made 2BHK flat to explore, change and simulate."
+                onClick={() => openRooms(createShowcaseHouse(), null)}
+                testId="alt-start-example"
+              />
+            </div>
+            {previous && (
+              <button
+                type="button"
+                data-testid="alt-start-previous"
+                onClick={() => {
+                  load([previous.room, ...previous.otherRooms]);
+                  clearPreviousDesign();
+                  startDesign(previous.otherRooms.length > 0 ? 'house' : 'room');
+                }}
+                className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-[10px] border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] text-left text-[12px] text-neutral-300"
+              >
+                <History size={14} className="text-indigo-300 shrink-0" />
+                <span className="flex-1">
+                  Continue my previous design{' '}
+                  <span className="text-neutral-500">
+                    ({[previous.room, ...previous.otherRooms].length}{' '}
+                    {previous.otherRooms.length ? 'rooms' : 'room'})
+                  </span>
+                </span>
+              </button>
+            )}
+            <div
+              className={`mt-5 pt-4 border-t border-white/10 ${savedCount === 0 ? 'hidden' : ''}`}
+              data-testid="alt-start-builds"
+            >
+              <h2 className="text-[12px] font-semibold text-neutral-300 mb-2">My saved builds</h2>
+              <BuildList limit={5} />
+            </div>
+            <OpenFileButton className="mt-3 flex items-center gap-1.5 text-[11.5px] text-neutral-400 hover:text-white">
+              <Upload size={12} /> Open a build file…
+            </OpenFileButton>
+          </>
         )}
-        <div
-          className={`mt-5 pt-4 border-t border-white/10 ${savedCount === 0 ? 'hidden' : ''}`}
-          data-testid="alt-start-builds"
-        >
-          <h2 className="text-[12px] font-semibold text-neutral-300 mb-2">My saved builds</h2>
-          <BuildList limit={5} />
-        </div>
-        <OpenFileButton className="mt-3 flex items-center gap-1.5 text-[11.5px] text-neutral-400 hover:text-white">
-          <Upload size={12} /> Open a build file…
-        </OpenFileButton>
       </div>
     </div>
   );
