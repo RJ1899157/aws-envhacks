@@ -751,8 +751,19 @@ export const CameraController: React.FC<CameraControllerProps> = ({ controlsRef 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('fly-focus-object', handleFlyFocusEvent);
     window.addEventListener('airforce:simulation-view', handleSimulationView);
+    // One room framed in the free part of the view (e.g. after choosing where a door goes)
+    const handleFrameRoom = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      const { room: active, otherRooms } = useSceneStore.getState();
+      const target = [active, ...otherRooms].find((r) => r.id === id);
+      if (!target) return;
+      const r = gl.domElement.getBoundingClientRect();
+      fitRoomsToRect([target], camera, controlsRef.current, { width: r.width, height: r.height }, freeViewport(gl.domElement.parentElement ?? gl.domElement), { fill: 0.45, height: target.wallHeight });
+    };
+    window.addEventListener('airforce:frame-room', handleFrameRoom);
 
     return () => {
+      window.removeEventListener('airforce:frame-room', handleFrameRoom);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('fly-focus-object', handleFlyFocusEvent);
       window.removeEventListener('airforce:simulation-view', handleSimulationView);

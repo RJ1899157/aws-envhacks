@@ -281,8 +281,9 @@ export const PlacementController: React.FC = () => {
       const p = floorPointAt(e);
       if (!p) return;
       lastPointerPoint.current = p.clone();
-      // Pointing at another room while placing furniture makes that room the target
-      if (toolMode === 'place') {
+      // Pointing at another room while placing floor furniture makes that room the target. Anything
+      // on a wall (doors, windows, exhaust fans, ACs…) stays on the selected room's walls.
+      if (toolMode === 'place' && !isWallObject) {
         const { otherRooms, setActiveRoom } = useSceneStore.getState();
         const target = otherRooms.find((r) => pointInPolygon([p.x, p.z], r.outline));
         if (target?.id) {

@@ -32,6 +32,9 @@ interface AltState {
   step: DesignStep;
   /** What the user said they are designing on the start screen */
   project: 'room' | 'house';
+  /** A wall item (door, window, wall device) waiting for the user to say which room it is for */
+  roomPrompt: { assetId: string } | null;
+  setRoomPrompt: (p: { assetId: string } | null) => void;
   setPhase: (phase: AltPhase) => void;
   setStep: (step: DesignStep) => void;
   startDesign: (project: 'room' | 'house') => void;
@@ -57,6 +60,8 @@ export const useAltStore = create<AltState>()((set) => ({
   project: 'room',
   build: null,
   setBuild: (build) => set({ build }),
+  roomPrompt: null,
+  setRoomPrompt: (roomPrompt) => set({ roomPrompt }),
   setPhase: (phase) => {
     cancelPlacement();
     set({ phase });

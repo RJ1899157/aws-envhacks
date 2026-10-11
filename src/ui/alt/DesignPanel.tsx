@@ -14,6 +14,7 @@ import { useUiStore } from '../../store/uiStore';
 import { DESIGN_STEPS, cancelPlacement, useAltStore, type DesignStep } from './altStore';
 import { AboutHomeCard, homeSummary } from './AboutHomeCard';
 import { RoomTemplatePicker } from './RoomTemplatePicker';
+import { WallRoomPrompt } from './WallRoomPrompt';
 import { FURNITURE_ITEMS, MORE_FURNITURE_ITEMS, PARTITION_ITEMS, POLLUTION_GROUPS, VENTILATION_GROUPS, altLabel, searchItems, type AltItem } from './altCatalog';
 import type { QuickShapeType } from '../../core/quickShapes';
 
@@ -21,11 +22,22 @@ import type { QuickShapeType } from '../../core/quickShapes';
 // Shared bits
 // ---------------------------------------------------------------------------
 
-/** Arms placement of a catalogue asset; clicking the armed asset again cancels it. */
-function togglePlacing(assetId: string): void {
+/** Doors, windows and devices that mount on a wall: they go on one room's walls. */
+export const isWallItem = (assetId: string) => !!openingSubTypeFor(assetId) || !!getCatalogAsset(assetId)?.wallMounted;
+
+/**
+ * Arms placement of a catalogue asset; clicking the armed asset again cancels it. A wall item in a
+ * house with several rooms first asks which room it is for (WallRoomPrompt), then comes back here.
+ */
+export function togglePlacing(assetId: string, roomChosen = false): void {
   const ui = useUiStore.getState();
   if (ui.activeAssetId === assetId) {
     cancelPlacement();
+    return;
+  }
+  if (!roomChosen && isWallItem(assetId) && useSceneStore.getState().otherRooms.length > 0) {
+    cancelPlacement();
+    useAltStore.getState().setRoomPrompt({ assetId });
     return;
   }
   useSceneStore.getState().clearSelection();
@@ -128,7 +140,10 @@ const Row: React.FC<{ label: string; selected: boolean; onSelect: () => void; ch
   </div>
 );
 
-/** The room placed items go into, with a switcher (placing over another room also switches to it). */
+/**
+ * The room placed items go into, with a switcher. Placing furniture over another room also switches
+ * to it; doors, windows and wall devices stay on this room's walls.
+ */
 const ActiveRoomBar: React.FC = () => {
   const room = useSceneStore((s) => s.room);
   const otherRooms = useSceneStore((s) => s.otherRooms);
@@ -574,6 +589,12 @@ export const DesignPanel: React.FC<{ onSimulate: () => void }> = ({ onSimulate }
   const index = DESIGN_STEPS.findIndex((s) => s.id === step);
   const intro = STEP_INTRO[step];
   const placing = useUiStore((s) => s.toolMode === 'place' || s.toolMode === 'opening' || s.toolMode === 'room');
+  // Doors, windows and wall devices go on a wall of the selected room only
+  const onWall = useUiStore((s) => {
+    const id = s.activeAssetId;
+    return s.toolMode === 'opening' || (s.toolMode === 'place' && !!id && (!!openingSubTypeFor(id) || !!getCatalogAsset(id)?.wallMounted));
+  });
+  const activeRoomName = useSceneStore((s) => s.room.name);
 
   return (
     <aside
@@ -581,6 +602,7 @@ export const DesignPanel: React.FC<{ onSimulate: () => void }> = ({ onSimulate }
       data-viewport-left
       className="pointer-events-auto fixed top-14 left-3 bottom-3 z-[15] w-[300px] flex flex-col rounded-[12px] bg-neutral-900/90 backdrop-blur-md border border-white/10 shadow-2xl text-neutral-200"
     >
+      <WallRoomPrompt onChosen={(assetId) => togglePlacing(assetId, true)} />
       <div className="px-4 pt-3.5 pb-2.5 border-b border-white/10">
         <div className="text-[10.5px] font-semibold text-indigo-300">
           Step {index + 1} of {DESIGN_STEPS.length}
@@ -623,7 +645,15 @@ export const DesignPanel: React.FC<{ onSimulate: () => void }> = ({ onSimulate }
 
       {placing && (
         <div className="mx-3 mb-2 px-2.5 py-1.5 rounded-[8px] bg-indigo-500/15 border border-indigo-400/40 text-[11px] text-indigo-100 flex items-center gap-2" data-testid="alt-placing-hint">
-          <span className="flex-1">Click in the view to place it. Press R to rotate.</span>
+          <span className="flex-1">
+            {onWall ? (
+              <>
+                Click a wall of <b>{activeRoomName}</b> to place it. To use another room, pick the item again.
+              </>
+            ) : (
+              'Click in the view to place it. Press R to rotate.'
+            )}
+          </span>
           <button type="button" onClick={cancelPlacement} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/15">
             <X size={11} /> Cancel
           </button>
